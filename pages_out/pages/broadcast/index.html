@@ -7,27 +7,15 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
     html, body {
-      margin: 0;
-      padding: 0;
-      background: #000;
-      height: 100%;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      color: white;
-      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      margin: 0; padding: 0; background: #000; height: 100%;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      color: white; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
       text-align: center;
     }
     video { width: 100%; max-width: 600px; background: black; border-radius: 10px; }
     button {
-      margin-top: 16px;
-      padding: 14px 26px;
-      font-size: 18px;
-      border: none;
-      border-radius: 8px;
-      background: #00c853;
-      color: white;
+      margin-top: 16px; padding: 14px 26px; font-size: 18px;
+      border: none; border-radius: 8px; background: #00c853; color: white;
       cursor: pointer;
     }
     button.stop { background: #d50000; }
@@ -44,15 +32,16 @@
   <div id="status">Initializing…</div>
 
 <script>
-  // 🔧 Set this to your Worker origin (or proxy API through Pages)
-  const API = "https://stream-platform-api.kiwismurph.workers.dev";
+  // Worker API origin
+  const API_BASE = "https://stream-platform-api.kiwismurph.workers.dev";
 
   const preview = document.getElementById("preview");
   const button = document.getElementById("toggleBtn");
   const statusEl = document.getElementById("status");
 
+  // expected route: /broadcast/:eventId?key=...
   const parts = location.pathname.split("/").filter(Boolean);
-  const eventId = parts[1]; // /broadcast/:eventId
+  const eventId = parts[1] || null;
   const key = new URLSearchParams(location.search).get("key");
 
   let client;
@@ -68,42 +57,46 @@
     statusEl.textContent = msg;
   }
 
+  async function safeReadJson(res) {
+    const text = await res.text();
+    try { return { text, json: JSON.parse(text) }; }
+    catch { return { text, json: null }; }
+  }
+
   async function postJSON(url, body) {
     const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body)
+      body: JSON.stringify(body ?? {})
     });
-    const json = await res.json().catch(() => ({}));
-    return { res, json };
+    const { json } = await safeReadJson(res);
+    return { res, json: json || {} };
   }
 
   async function claimLock() {
-    const { res, json } = await postJSON(`${API}/api/broadcast/claim`, { eventId, key });
+    const { res, json } = await postJSON(`${API_BASE}/api/broadcast/claim`, { eventId, key });
     if (!res.ok) throw new Error(json.error || "Claim failed");
     sid = json.broadcast_session_id;
   }
 
   async function fetchConfig() {
-    const url = `${API}/api/broadcast/config?eventId=${encodeURIComponent(eventId)}&key=${encodeURIComponent(key)}&sid=${encodeURIComponent(sid)}`;
+    const url = `${API_BASE}/api/broadcast/config?eventId=${encodeURIComponent(eventId)}&key=${encodeURIComponent(key)}&sid=${encodeURIComponent(sid)}`;
     const res = await fetch(url);
-    const json = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(json.error || "Config failed");
+    const { text, json } = await safeReadJson(res);
+    if (!res.ok) throw new Error((json && json.error) || text || "Config failed");
     cfg = json;
   }
 
   async function broadcastStarted() {
-    const { res, json } = await postJSON(`${API}/api/broadcast/started`, { eventId, key });
+    const { res, json } = await postJSON(`${API_BASE}/api/broadcast/started`, { eventId, key });
     if (!res.ok) throw new Error(json.error || "Failed to mark started");
   }
 
   async function heartbeatOnce() {
-    const { res, json } = await postJSON(`${API}/api/broadcast/heartbeat`, {
+    const { res, json } = await postJSON(`${API_BASE}/api/broadcast/heartbeat`, {
       eventId, key, broadcast_session_id: sid
     });
-    if (!res.ok || json.still_owner === false) {
-      stopBecauseKicked();
-    }
+    if (!res.ok || json.still_owner === false) stopBecauseKicked();
   }
 
   function startHeartbeat() {
@@ -119,7 +112,7 @@
   async function releaseLock() {
     if (!sid) return;
     try {
-      await postJSON(`${API}/api/broadcast/release`, { eventId, key, broadcast_session_id: sid });
+      await postJSON(`${API_BASE}/api/broadcast/release`, { eventId, key, broadcast_session_id: sid });
     } catch {}
   }
 
@@ -190,7 +183,7 @@
 
     } catch (err) {
       console.error("Error starting broadcast:", err);
-      setStatus("Failed to start broadcast. Check permissions and try again.", "bad");
+      setStatus(err && err.message ? err.message : "Failed to start broadcast.", "bad");
       button.disabled = false;
     }
   }
@@ -239,7 +232,7 @@
 
   window.addEventListener("beforeunload", () => {
     try {
-      navigator.sendBeacon?.(`${API}/api/broadcast/release`, JSON.stringify({
+      navigator.sendBeacon?.(`${API_BASE}/api/broadcast/release`, JSON.stringify({
         eventId, key, broadcast_session_id: sid
       }));
     } catch {}

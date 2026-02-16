@@ -11,8 +11,10 @@
     input, select { width:100%; padding:12px; border-radius:10px; border:0; margin-top:8px; font-size:16px; }
     label { display:block; margin-top:10px; opacity:.9; }
     button { margin-top:14px; padding:12px 16px; border-radius:10px; border:0; background:#1976d2; color:#fff; font-size:16px; cursor:pointer; width:100%; }
+    button:disabled { opacity:.65; cursor:not-allowed; }
     .muted { opacity:.82; font-size:13px; }
     .bad { color:#ff8a80; }
+    .ok { color:#b9f6ca; }
   </style>
 </head>
 <body>
@@ -29,26 +31,77 @@
         <option value="8">Extended (8 hours)</option>
       </select>
       <label><input id="wl" type="checkbox" /> White-label (hide footer)</label>
-      <button id="go">Pay & Create</button>
+      <button id="go" type="button">Pay & Create</button>
       <div id="msg" class="muted"></div>
     </div>
   </div>
 
 <script>
+  // Worker API origin
   const API_BASE = "https://stream-platform-api.kiwismurph.workers.dev";
+
   const msg = document.getElementById("msg");
-  document.getElementById("go").onclick = async () => {
-    msg.textContent = "Creating checkout…";
+  const goBtn = document.getElementById("go");
+
+  function setMsg(html, cls="") {
+    msg.className = `muted ${cls}`.trim();
+    msg.innerHTML = html;
+  }
+
+  async function safeReadJson(res) {
+    const text = await res.text();
+    try { return { text, json: JSON.parse(text) }; }
+    catch { return { text, json: null }; }
+  }
+
+  goBtn.onclick = async () => {
+    goBtn.disabled = true;
+    setMsg("Creating checkout…");
+
     const body = {
-      email: document.getElementById("email").value,
-      title: document.getElementById("title").value,
+      email: (document.getElementById("email").value || "").trim(),
+      title: (document.getElementById("title").value || "").trim(),
       tier: Number(document.getElementById("tier").value),
       white_label: document.getElementById("wl").checked
     };
-    const r = await fetch(`${API}/api/events`, { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify(body) });
-    const j = await r.json();
-    if (!r.ok) { msg.innerHTML = `<span class="bad">${j.error || "Failed"}</span>`; return; }
-    location.href = j.checkout_url;
+
+    if (!body.email || !body.title) {
+      goBtn.disabled = false;
+      setMsg(`<span class="bad">Please enter email and title.</span>`);
+      return;
+    }
+
+    try {
+      const res = await fetch(`${API_BASE}/api/events`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      });
+
+      const { text, json } = await safeReadJson(res);
+
+      if (!res.ok) {
+        const err = (json && (json.error || json.message)) ? (json.error || json.message) : (text || "Request failed");
+        setMsg(`<span class="bad">${err}</span>`);
+        goBtn.disabled = false;
+        return;
+      }
+
+      const checkoutUrl = json && json.checkout_url;
+      if (!checkoutUrl) {
+        setMsg(`<span class="bad">Missing checkout_url from API response.</span><div class="muted">Response: ${text}</div>`);
+        goBtn.disabled = false;
+        return;
+      }
+
+      setMsg(`<span class="ok">Redirecting to payment…</span>`);
+      location.href = checkoutUrl;
+
+    } catch (err) {
+      console.error(err);
+      setMsg(`<span class="bad">${err && err.message ? err.message : "Network error"}</span>`);
+      goBtn.disabled = false;
+    }
   };
 </script>
 

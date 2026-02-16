@@ -24,7 +24,6 @@
     .spinner { width:18px; height:18px; border-radius:50%; border:3px solid rgba(255,255,255,0.25); border-top-color:rgba(255,255,255,0.9); animation:spin 0.9s linear infinite; flex:0 0 auto; }
     @keyframes spin { to { transform: rotate(360deg); } }
     .cta { margin-top:12px; padding-top:12px; border-top:1px solid rgba(255,255,255,0.12); display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
-    a.ctaLink { color:#90caf9; text-decoration:none; font-weight:600; }
   </style>
 </head>
 
@@ -43,12 +42,12 @@
   </div>
 
 <script>
-  const API = "https://stream-platform-api.kiwismurph.workers.dev";
-  const HOME_URL = "https://relay-cp1.pages.dev";
+  const API_BASE = "https://stream-platform-api.kiwismurph.workers.dev";
   const BRAND_NAME = "Relay";
 
+  // expected route: /watch/:eventId
   const parts = location.pathname.split("/").filter(Boolean);
-  const eventId = parts[1]; // /watch/:eventId
+  const eventId = parts[1] || null;
 
   const titleEl = document.getElementById("title");
   const panel = document.getElementById("panel");
@@ -58,7 +57,7 @@
   const unmuteBtn = document.getElementById("unmuteBtn");
   const brandEl = document.getElementById("brand");
 
-  let hls;
+  let hls = null;
   let sessionId = null;
   let hbTimer = null;
   let pollTimer = null;
@@ -66,19 +65,26 @@
   function html(s){ panel.innerHTML = s; }
   function showControls(on){ controls.style.display = on ? "flex" : "none"; }
 
+  async function safeReadJson(res) {
+    const text = await res.text();
+    try { return { text, json: JSON.parse(text) }; }
+    catch { return { text, json: null }; }
+  }
+
   async function getJSON(url) {
     const res = await fetch(url);
-    const json = await res.json().catch(()=> ({}));
-    return { res, json };
+    const { text, json } = await safeReadJson(res);
+    return { res, json: json || {}, text };
   }
+
   async function postJSON(url, body) {
     const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body ?? {})
     });
-    const json = await res.json().catch(()=> ({}));
-    return { res, json };
+    const { text, json } = await safeReadJson(res);
+    return { res, json: json || {}, text };
   }
 
   function stopTimers() {
@@ -91,7 +97,7 @@
   async function leaveSeat() {
     if (!sessionId) return;
     try {
-      navigator.sendBeacon?.(`${API}/api/events/${eventId}/leave`, JSON.stringify({ session_id: sessionId }));
+      navigator.sendBeacon?.(`${API_BASE}/api/events/${eventId}/leave`, JSON.stringify({ session_id: sessionId }));
     } catch {}
     sessionId = null;
   }
@@ -99,64 +105,7 @@
   function stopPlayback() {
     try { player.pause(); } catch {}
     player.removeAttribute("src");
-    player.
-  // Report stream
-  const reportLink = document.getElementById("reportLink");
-  const reportModal = document.getElementById("reportModal");
-  const reportClose = document.getElementById("reportClose");
-  const reportSend = document.getElementById("reportSend");
-  const reportReason = document.getElementById("reportReason");
-  const reportDesc = document.getElementById("reportDesc");
-  const reportStatus = document.getElementById("reportStatus");
-
-  if (reportLink && reportModal) {
-    reportLink.addEventListener("click", (e) => {
-      e.preventDefault();
-      reportStatus.textContent = "";
-      reportReason.value = "";
-      reportDesc.value = "";
-      reportModal.style.display = "flex";
-    });
-  }
-  if (reportClose) {
-    reportClose.addEventListener("click", () => reportModal.style.display = "none");
-  }
-  if (reportModal) {
-    reportModal.addEventListener("click", (e) => {
-      if (e.target === reportModal) reportModal.style.display = "none";
-    });
-  }
-  if (reportSend) {
-    reportSend.addEventListener("click", async () => {
-      const reason = (reportReason.value || "").trim();
-      if (!reason) { reportStatus.textContent = "Select a reason."; return; }
-      reportSend.disabled = true;
-      reportStatus.textContent = "Sending…";
-      try {
-        const r = await fetch(`${API}/api/report`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            event_id: eventId || null,
-            page: "watch",
-            reason,
-            description: (reportDesc.value || "").trim()
-          })
-        });
-        const j = await r.json().catch(()=> ({}));
-        if (!r.ok) throw new Error(j.error || "Failed");
-        reportStatus.textContent = "Thanks. Report submitted.";
-        setTimeout(()=> { reportModal.style.display="none"; }, 900);
-      } catch (err) {
-        console.error(err);
-        reportStatus.textContent = "Couldn’t send report.";
-      } finally {
-        reportSend.disabled = false;
-      }
-    });
-  }
-
-  load();
+    try { player.load(); } catch {}
     if (hls) { try { hls.destroy(); } catch {} hls = null; }
     player.style.display = "none";
   }
@@ -179,8 +128,8 @@
   }
 
   async function allocateSeat() {
-    const { res, json } = await postJSON(`${API}/api/events/${eventId}/view-session`, {});
-    if (!res.ok) throw new Error(json.error || "Seat allocation failed");
+    const { res, json, text } = await postJSON(`${API_BASE}/api/events/${eventId}/view-session`, {});
+    if (!res.ok) throw new Error(json.error || text || "Seat allocation failed");
     if (!json.granted) throw new Error("Viewer limit reached. Try again shortly.");
     sessionId = json.session_id;
   }
@@ -188,7 +137,7 @@
   function startHeartbeat() {
     hbTimer = setInterval(async () => {
       if (!sessionId) return;
-      const { res, json } = await postJSON(`${API}/api/events/${eventId}/heartbeat`, { session_id: sessionId });
+      const { res, json } = await postJSON(`${API_BASE}/api/events/${eventId}/heartbeat`, { session_id: sessionId });
       if (!res.ok || json.ok === false) {
         stopPlayback();
         stopTimers();
@@ -221,7 +170,7 @@
     document.getElementById("retryInline").onclick = loadAndPlay;
 
     pollTimer = setInterval(async () => {
-      const { res, json } = await getJSON(`${API}/api/events/${eventId}`);
+      const { res, json } = await getJSON(`${API_BASE}/api/events/${eventId}`);
       if (!res.ok) return;
 
       if (json.expired) {
@@ -276,10 +225,10 @@
     html(`<div class="muted">Loading event…</div>`);
     showControls(false);
 
-    const { res: metaRes, json: meta } = await getJSON(`${API}/api/events/${eventId}`);
+    const { res: metaRes, json: meta, text } = await getJSON(`${API_BASE}/api/events/${eventId}`);
 
     if (!metaRes.ok) {
-      html(`<div class="bad">${meta.error || "Event not found."}</div>`);
+      html(`<div class="bad">${meta.error || text || "Event not found."}</div>`);
       showControls(true);
       return;
     }
@@ -322,7 +271,6 @@
   By using this service you agree to the <a href="/terms" style="color:#9ad1ff">Terms</a> and <a href="/privacy" style="color:#9ad1ff">Privacy Policy</a>.
 </div>
 
-
 <!-- Report stream (minimal) -->
 <div id="reportLink" style="position:fixed;right:12px;bottom:12px;font-size:12px;opacity:.75">
   <a href="#" style="color:#9ad1ff;text-decoration:none">Report this stream</a>
@@ -361,6 +309,67 @@
     </div>
   </div>
 </div>
+
+<script>
+  // report modal wiring
+  (function(){
+    const API_BASE = "https://stream-platform-api.kiwismurph.workers.dev";
+    const parts = location.pathname.split("/").filter(Boolean);
+    const eventId = parts[1] || null;
+
+    const reportLink = document.getElementById("reportLink");
+    const reportModal = document.getElementById("reportModal");
+    const reportClose = document.getElementById("reportClose");
+    const reportSend = document.getElementById("reportSend");
+    const reportReason = document.getElementById("reportReason");
+    const reportDesc = document.getElementById("reportDesc");
+    const reportStatus = document.getElementById("reportStatus");
+
+    if (reportLink && reportModal) {
+      reportLink.addEventListener("click", (e) => {
+        e.preventDefault();
+        reportStatus.textContent = "";
+        reportReason.value = "";
+        reportDesc.value = "";
+        reportModal.style.display = "flex";
+      });
+    }
+
+    if (reportClose) reportClose.addEventListener("click", () => reportModal.style.display = "none");
+    if (reportModal) reportModal.addEventListener("click", (e) => { if (e.target === reportModal) reportModal.style.display = "none"; });
+
+    if (reportSend) {
+      reportSend.addEventListener("click", async () => {
+        const reason = (reportReason.value || "").trim();
+        if (!reason) { reportStatus.textContent = "Select a reason."; return; }
+        reportSend.disabled = true;
+        reportStatus.textContent = "Sending…";
+        try {
+          const r = await fetch(`${API_BASE}/api/report`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              event_id: eventId || null,
+              page: "watch",
+              reason,
+              description: (reportDesc.value || "").trim()
+            })
+          });
+          const text = await r.text();
+          let j; try { j = JSON.parse(text); } catch { j = { error: text }; }
+          if (!r.ok) throw new Error(j.error || "Failed");
+          reportStatus.textContent = "Thanks. Report submitted.";
+          setTimeout(()=> { reportModal.style.display="none"; }, 900);
+        } catch (err) {
+          console.error(err);
+          reportStatus.textContent = "Couldn’t send report.";
+        } finally {
+          reportSend.disabled = false;
+        }
+      });
+    }
+  })();
+</script>
 
 </body>
 </html>
