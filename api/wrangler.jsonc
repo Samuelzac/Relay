@@ -4,9 +4,14 @@
   "compatibility_date": "2026-02-12",
   "compatibility_flags": ["nodejs_compat"],
 
+  // ✅ Must be a UUID like: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
   "hyperdrive": [
-    { "binding": "HYPERDRIVE", "id": "YOUR_HYPERDRIVE_ID" }
+    {
+      "binding": "HYPERDRIVE",
+      "id": "98e25b838da84315bb551b3bed96032d"
+    }
   ],
+
 
   "durable_objects": {
     "bindings": [
@@ -15,12 +20,23 @@
     ]
   },
 
+  // ✅ Durable Objects migrations must be TOP-LEVEL (not inside vars)
+  "migrations": [
+    {
+      "tag": "v2",
+      "new_sqlite_classes": ["SeatsDO", "BroadcastLockDO"]
+    }
+  ],
+
+
   "triggers": {
     "crons": ["*/5 * * * *"]
   },
 
   "vars": {
-    "APP_ORIGIN": "https://YOUR-PAGES-DOMAIN",
+    // ✅ Your Cloudflare Pages domain (dev) goes here
+    "APP_ORIGIN": "https://relay-cp1.pages.dev",
+
     "AWS_REGION": "ap-southeast-2",
     "IVS_API_ENDPOINT": "https://ivs.ap-southeast-2.amazonaws.com",
 
