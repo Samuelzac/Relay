@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Privacy Policy</title>
+  <style>
+    body{margin:0;background:#0b0b0b;color:#fff;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;line-height:1.5}
+    .wrap{max-width:900px;margin:0 auto;padding:22px}
+    h1{font-size:26px;margin:0 0 10px}
+    h2{font-size:18px;margin:22px 0 8px}
+    p,li{opacity:.92}
+    a{color:#9ad1ff}
+    .muted{opacity:.78}
+    .card{background:rgba(255,255,255,.06);border-radius:14px;padding:18px}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Privacy Policy</h1>
+    <p class="muted">Last updated: <span id="d"></span></p>
+
+    <div class="card">
+      <p>We collect the minimum data required to operate a self‑serve streaming event. We do not sell your personal information.</p>
+    </div>
+
+    <h2>What we collect</h2>
+    <ul>
+      <li><b>Host details:</b> email address and event metadata (title, tier, limits).</li>
+      <li><b>Payments:</b> handled by Stripe. We do not store full card details.</li>
+      <li><b>Viewer sessions:</b> limited technical data (such as IP address and timestamps) used for concurrency control and abuse prevention.</li>
+      <li><b>Reports:</b> report reason, optional description, and related technical logs.</li>
+    </ul>
+
+    <h2>How we use data</h2>
+    <ul>
+      <li>To create and operate events and links.</li>
+      <li>To prevent abuse and enforce limits.</li>
+      <li>To respond to support requests and compliance issues.</li>
+      <li>To comply with legal obligations.</li>
+    </ul>
+
+    <h2>Sharing</h2>
+    <p>We share data with service providers strictly as needed (e.g., Stripe for payment processing, infrastructure providers for streaming). We may share information with law enforcement where required or reasonably necessary.</p>
+
+    <h2>Retention</h2>
+    <p>Event records and technical logs are kept only as long as necessary for operations, accounting, and security.</p>
+
+    <h2>Contact</h2>
+    <p>For privacy queries, contact the platform operator at the email shown on the purchase confirmation.</p>
+  </div>
+<script>
+  document.getElementById("d").textContent = new Date().toISOString().slice(0,10);
+</script>
+</body>
+</html>

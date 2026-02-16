@@ -1,0 +1,36 @@
+{
+  "name": "stream-platform-api",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-02-12",
+  "compatibility_flags": ["nodejs_compat"],
+
+  "hyperdrive": [
+    { "binding": "HYPERDRIVE", "id": "YOUR_HYPERDRIVE_ID" }
+  ],
+
+  "durable_objects": {
+    "bindings": [
+      { "name": "SEATS", "class_name": "SeatsDO" },
+      { "name": "BROADCAST_LOCK", "class_name": "BroadcastLockDO" }
+    ]
+  },
+
+  "triggers": {
+    "crons": ["*/5 * * * *"]
+  },
+
+  "vars": {
+    "APP_ORIGIN": "https://YOUR-PAGES-DOMAIN",
+    "AWS_REGION": "ap-southeast-2",
+    "IVS_API_ENDPOINT": "https://ivs.ap-southeast-2.amazonaws.com",
+
+    "DEFAULT_VIEWER_LIMIT": "150",
+    "STANDARD_PRICE_NZD": "9900",
+    "EXTENDED_PRICE_NZD": "17900",
+    "STANDARD_HOURS": "3",
+    "EXTENDED_HOURS": "8",
+    "GRACE_MINUTES": "30",
+
+    "DELETE_IVS_ON_EXPIRE": "false"
+  }
+}

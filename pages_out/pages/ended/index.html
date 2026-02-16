@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>Event Ended</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    html, body {
+      margin: 0; padding: 0;
+      background: #000; color: #fff;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      height: 100%;
+      display: grid;
+      place-items: center;
+    }
+    .wrap {
+      width: min(720px, calc(100% - 28px));
+      padding: 18px;
+      border-radius: 14px;
+      background: rgba(255,255,255,0.08);
+      line-height: 1.4;
+    }
+    h1 { margin: 0 0 10px; font-size: 22px; }
+    .muted { opacity: 0.82; }
+    .bad { color: #ff8a80; }
+    .row { display:flex; gap:10px; flex-wrap:wrap; margin-top: 14px; align-items:center; }
+    a, button {
+      padding: 12px 16px;
+      border-radius: 10px;
+      border: 0;
+      background: rgba(255,255,255,0.14);
+      color: #fff;
+      text-decoration: none;
+      font-size: 16px;
+      cursor: pointer;
+      display: inline-block;
+    }
+    a.primary { background: #1976d2; }
+    .brand { margin-top: 14px; font-size: 12px; opacity: 0.65; text-align:center; }
+  </style>
+</head>
+
+<body>
+  <div class="wrap">
+    <div class="bad"><b>Event ended</b></div>
+    <h1 id="title">This stream is no longer live.</h1>
+    <div id="detail" class="muted">If you think this is a mistake, refresh or check the link.</div>
+
+    <div class="row">
+      <a id="watchLink" href="#" class="primary">Go back to watch page</a>
+      <a id="homeLink" href="#" target="_blank" rel="noreferrer">Create your own event</a>
+      <button id="refreshBtn">Refresh</button>
+    </div>
+
+    <div id="brand" class="brand"></div>
+  </div>
+
+<script>
+  const API = "https://YOUR-WORKER-DOMAIN";
+  const HOME_URL = "https://YOUR-PAGES-DOMAIN";
+  const BRAND_NAME = "your platform";
+
+  const parts = location.pathname.split("/").filter(Boolean);
+  const eventId = parts[1]; // /ended/:eventId
+
+  const titleEl = document.getElementById("title");
+  const detailEl = document.getElementById("detail");
+  const watchLink = document.getElementById("watchLink");
+  const homeLink = document.getElementById("homeLink");
+  const refreshBtn = document.getElementById("refreshBtn");
+  const brandEl = document.getElementById("brand");
+
+  watchLink.href = `/watch/${eventId}`;
+  homeLink.href = HOME_URL;
+  brandEl.textContent = `Powered by ${BRAND_NAME}`;
+
+  async function loadMeta() {
+    if (!eventId) return;
+
+    const res = await fetch(`${API}/api/events/${eventId}`);
+    const meta = await res.json().catch(()=> ({}));
+
+    if (res.ok && meta.title) titleEl.textContent = meta.title;
+
+    if (res.ok) {
+      if (!meta.expired && meta.playback_url) { location.href = `/watch/${eventId}`; return; }
+      if (!meta.expired && !meta.playback_url) { location.href = `/watch/${eventId}`; return; }
+      detailEl.textContent = meta.expired ? "This event has reached its time limit." : "This stream is currently unavailable.";
+    } else {
+      detailEl.textContent = meta.error || "Could not load event details.";
+    }
+  }
+
+  refreshBtn.onclick = loadMeta;
+  loadMeta();
+</script>
+
+<div style="margin-top:18px; font-size:12px; opacity:.75; text-align:center">
+  By using this service you agree to the <a href="/terms" style="color:#9ad1ff">Terms</a> and <a href="/privacy" style="color:#9ad1ff">Privacy Policy</a>.
+</div>
+
+</body>
+</html>

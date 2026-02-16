@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>Admin – Reports</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body{margin:0;background:#0b0b0b;color:#fff;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;line-height:1.4}
+    .wrap{max-width:1100px;margin:0 auto;padding:18px}
+    h1{margin:0 0 10px;font-size:20px}
+    .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:10px 0 16px}
+    input{padding:10px 12px;border-radius:10px;border:1px solid rgba(255,255,255,.15);background:rgba(255,255,255,.06);color:#fff;min-width:320px}
+    button{padding:10px 14px;border-radius:10px;border:0;background:rgba(255,255,255,.14);color:#fff;cursor:pointer}
+    button.danger{background:#d50000}
+    table{width:100%;border-collapse:collapse;font-size:13px}
+    th,td{padding:10px 8px;border-bottom:1px solid rgba(255,255,255,.08);vertical-align:top}
+    th{opacity:.8;text-align:left;font-weight:650}
+    .muted{opacity:.75}
+    .pill{display:inline-block;padding:3px 8px;border-radius:999px;background:rgba(255,255,255,.12);font-size:12px}
+    .bad{color:#ff8a80}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Admin – Stream Reports</h1>
+    <div class="row">
+      <input id="key" placeholder="Admin key" />
+      <button id="load">Load reports</button>
+      <span id="status" class="muted"></span>
+    </div>
+
+    <div style="overflow:auto">
+      <table>
+        <thead>
+          <tr>
+            <th>Time</th>
+            <th>Event</th>
+            <th>Reason</th>
+            <th>Description</th>
+            <th>IP</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="tbody">
+          <tr><td colspan="6" class="muted">Enter key and click “Load reports”.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+<script>
+  const API = "https://YOUR-WORKER-DOMAIN";
+  const keyInput = document.getElementById("key");
+  const loadBtn = document.getElementById("load");
+  const tbody = document.getElementById("tbody");
+  const statusEl = document.getElementById("status");
+
+  // allow ?key=... prefill
+  const qp = new URLSearchParams(location.search);
+  const qk = qp.get("key");
+  if (qk) keyInput.value = qk;
+
+  function esc(s){ return (s||"").replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+  async function load() {
+    const key = keyInput.value.trim();
+    if (!key) { alert("Enter admin key"); return; }
+    statusEl.textContent = "Loading…";
+    tbody.innerHTML = `<tr><td colspan="6" class="muted">Loading…</td></tr>`;
+
+    const res = await fetch(`${API}/api/admin/reports?key=${encodeURIComponent(key)}`);
+    const data = await res.json().catch(()=> ({}));
+    if (!res.ok) {
+      statusEl.textContent = "";
+      tbody.innerHTML = `<tr><td colspan="6" class="bad">${esc(data.error || "Failed")}</td></tr>`;
+      return;
+    }
+
+    const rows = data.reports || [];
+    statusEl.textContent = `${rows.length} report(s)`;
+
+    if (!rows.length) {
+      tbody.innerHTML = `<tr><td colspan="6" class="muted">No reports.</td></tr>`;
+      return;
+    }
+
+    tbody.innerHTML = rows.map(r => {
+      const when = new Date(r.created_at).toLocaleString();
+      const ev = r.event_id ? `${esc(r.event_title || "(untitled)")}<div class="muted">${esc(r.event_id)}</div>` : `<span class="muted">(no event)</span>`;
+      const badge = r.event_disabled ? `<span class="pill">disabled</span>` : `<span class="pill">${esc(r.event_status||"")}</span>`;
+      const action = r.event_id
+        ? `<button class="danger" data-ev="${esc(r.event_id)}">Disable event</button>`
+        : `<span class="muted">—</span>`;
+      return `<tr>
+        <td>${esc(when)}</td>
+        <td>${ev}<div style="margin-top:6px">${badge}</div></td>
+        <td>${esc(r.reason)}</td>
+        <td>${esc(r.description || "")}</td>
+        <td class="muted">${esc(r.ip_address || "")}</td>
+        <td>${action}</td>
+      </tr>`;
+    }).join("");
+
+    tbody.querySelectorAll("button.danger").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const ev = btn.getAttribute("data-ev");
+        if (!ev) return;
+        const key = keyInput.value.trim();
+        if (!confirm("Disable this event? This will block new viewers and broadcaster config.")) return;
+        btn.disabled = true;
+        const r = await fetch(`${API}/api/admin/events/${encodeURIComponent(ev)}/disable?key=${encodeURIComponent(key)}`, { method: "POST" });
+        const j = await r.json().catch(()=> ({}));
+        if (!r.ok) { alert(j.error || "Failed"); btn.disabled=false; return; }
+        await load();
+      });
+    });
+  }
+
+  loadBtn.addEventListener("click", load);
+</script>
+</body>
+</html>

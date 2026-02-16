@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>Test Broadcast</title>
+  <script src="https://web-broadcast.live-video.net/1.10.0/amazon-ivs-web-broadcast.js"></script>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    html, body {
+      margin: 0; padding: 0; background: #000; height: 100%;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      color: white; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; text-align: center;
+    }
+    video { width: 100%; max-width: 600px; background: black; border-radius: 10px; }
+    button {
+      margin-top: 16px; padding: 14px 26px; font-size: 18px; border: none; border-radius: 8px;
+      background: #00c853; color: white; cursor: pointer;
+    }
+    button.stop { background: #d50000; }
+    button:disabled { opacity: 0.6; cursor: not-allowed; }
+    #status { margin-top: 10px; opacity: 0.9; max-width: 600px; }
+    .bad { color: #ff8a80; }
+    .muted { opacity: 0.85; }
+    #countdown { margin-top: 6px; font-variant-numeric: tabular-nums; }
+  </style>
+</head>
+<body>
+  <video id="preview" autoplay playsinline muted></video>
+  <button id="toggleBtn" disabled>Loading…</button>
+  <div id="status">Initializing…</div>
+  <div id="countdown" class="muted"></div>
+
+<script>
+  const API = "https://YOUR-WORKER-DOMAIN";
+
+  const preview = document.getElementById("preview");
+  const button = document.getElementById("toggleBtn");
+  const statusEl = document.getElementById("status");
+  const countdownEl = document.getElementById("countdown");
+
+  const parts = location.pathname.split("/").filter(Boolean);
+  const testId = parts[2]; // /test/broadcast/:testId
+  const key = new URLSearchParams(location.search).get("key");
+
+  let client;
+  let localStream;
+  let broadcasting = false;
+  let cfg = null;
+
+  function setStatus(msg, cls="") {
+    statusEl.className = cls;
+    statusEl.textContent = msg;
+  }
+
+  function startCountdown(expiresAtIso) {
+    function tick() {
+      const ms = new Date(expiresAtIso).getTime() - Date.now();
+      const s = Math.max(0, Math.floor(ms / 1000));
+      const m = String(Math.floor(s/60)).padStart(2,"0");
+      const r = String(s%60).padStart(2,"0");
+      countdownEl.textContent = `Ends in ${m}:${r}`;
+      if (s <= 0) {
+        countdownEl.textContent = "Test ended.";
+        button.disabled = true;
+      }
+    }
+    tick();
+    setInterval(tick, 1000);
+  }
+
+  async function init() {
+    if (!testId || !key) {
+      setStatus("Missing testId or key.", "bad");
+      return;
+    }
+    try {
+      const res = await fetch(`${API}/api/test/${testId}/config?key=${encodeURIComponent(key)}`);
+      const json = await res.json().catch(()=> ({}));
+      if (!res.ok) throw new Error(json.error || "Config failed");
+      cfg = json;
+
+      setStatus("Ready. Press Start Test.");
+      button.textContent = "Start Test";
+      button.disabled = false;
+
+      if (cfg.expires_at) startCountdown(cfg.expires_at);
+    } catch (e) {
+      console.error(e);
+      setStatus(e.message || "Init failed", "bad");
+      button.textContent = "Error";
+      button.disabled = true;
+    }
+  }
+
+  async function startBroadcast() {
+    try {
+      button.disabled = true;
+      setStatus("Requesting camera & mic…");
+
+      localStream = await navigator.mediaDevices.getUserMedia({
+        video: { width: 1280, height: 720 },
+        audio: true
+      });
+
+      preview.srcObject = localStream;
+
+      setStatus("Starting test broadcast…");
+
+      client = IVSBroadcastClient.create({
+        streamConfig: IVSBroadcastClient.STANDARD_LANDSCAPE,
+        ingestEndpoint: cfg.ingestEndpoint
+      });
+
+      client.addVideoInputDevice(localStream, "camera1");
+      client.addAudioInputDevice(localStream, "mic1");
+
+      await client.startBroadcast(cfg.streamKey);
+
+      broadcasting = true;
+      button.textContent = "Stop Test";
+      button.classList.add("stop");
+      button.disabled = false;
+
+      setStatus("Test live ✅");
+
+    } catch (err) {
+      console.error("Error starting broadcast:", err);
+      setStatus("Failed to start test. Check permissions and try again.", "bad");
+      button.disabled = false;
+    }
+  }
+
+  async function stopBroadcast() {
+    try {
+      if (client && broadcasting) {
+        setStatus("Stopping…");
+        await client.stopBroadcast();
+      }
+      broadcasting = false;
+      button.textContent = "Start Test";
+      button.classList.remove("stop");
+
+      if (localStream) {
+        for (const track of localStream.getTracks()) track.stop();
+        localStream = null;
+      }
+      preview.srcObject = null;
+
+      setStatus("Stopped.");
+    } catch (err) {
+      console.error("Error stopping broadcast:", err);
+      setStatus("Stopped (with warnings).", "bad");
+    }
+  }
+
+  button.addEventListener("click", () => {
+    if (!broadcasting) startBroadcast();
+    else stopBroadcast();
+  });
+
+  init();
+</script>
+
+<div style="margin-top:18px; font-size:12px; opacity:.75; text-align:center">
+  By using this service you agree to the <a href="/terms" style="color:#9ad1ff">Terms</a> and <a href="/privacy" style="color:#9ad1ff">Privacy Policy</a>.
+</div>
+
+</body>
+</html>
