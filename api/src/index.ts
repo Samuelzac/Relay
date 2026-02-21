@@ -60,12 +60,10 @@ function pagesBase(env: Env) {
 }
 
 function watchUrl(env: Env, eventId: string, secretKey: string) {
-  // Option B routing (query-based)
   return `${pagesBase(env)}/watch/?id=${encodeURIComponent(eventId)}&key=${encodeURIComponent(secretKey)}`;
 }
 
 function broadcastUrl(env: Env, eventId: string, broadcastKey: string) {
-  // Option B routing (query-based)
   return `${pagesBase(env)}/broadcast/?id=${encodeURIComponent(eventId)}&key=${encodeURIComponent(broadcastKey)}`;
 }
 
@@ -94,6 +92,13 @@ function ingestHostFromDb(value: string) {
 
 function rtmpsUrlFromHost(host: string) {
   return `rtmps://${host}:443/app/`;
+}
+
+function isExpired(ev: any) {
+  if (!ev) return true;
+  if (ev.status === "expired") return true;
+  if (ev.expires_at && new Date(ev.expires_at).getTime() < Date.now()) return true;
+  return false;
 }
 
 async function getEvent(client: any, id: string) {
@@ -148,16 +153,22 @@ async function updateIvs(
 }
 
 async function updateRtc(client: any, id: string, stageArn: string, endpoints: any) {
-  // NOTE: do NOT set starts_at here (time starts when broadcast begins)
-  await client.query(
+  // Make endpoints explicitly jsonb so Postgres always stores it correctly
+  const endpointsJson = endpoints ? JSON.stringify(endpoints) : null;
+
+  const { rows } = await client.query(
     `
     update public.events
-    set rtc_stage_arn=$1,
-        rtc_stage_endpoints=$2
-    where id=$3
+    set rtc_stage_arn = $1,
+        rtc_stage_endpoints = $2::jsonb
+    where id = $3
+    returning rtc_stage_arn, rtc_stage_endpoints
   `,
-    [stageArn, endpoints ? JSON.stringify(endpoints) : null, id]
+    [stageArn, endpointsJson, id]
   );
+
+  // This is the “proof” that the row updated.
+  return rows?.[0] || null;
 }
 
 export default {
@@ -166,7 +177,8 @@ export default {
     const { pathname } = url;
     const method = request.method.toUpperCase();
 
-    if (method === "OPTIONS") return new Response("", { status: 204, headers: corsHeaders(env) });
+    // ✅ Fix CF warning: null body for 204
+    if (method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders(env) });
 
     try {
       // Root + health
@@ -289,7 +301,7 @@ export default {
 
               // Provision RTC stage immediately after payment (if enabled)
               const ev = await getEvent(client, eventId);
-              if (ev?.rtc_enabled && !ev.rtc_stage_arn) {
+              if (ev?.rtc_enabled && !ev.rtc_stage_arn && ev.status === "paid" && !isExpired(ev)) {
                 try {
                   const st = await createStage(env, `relay-${eventId}`);
                   await updateRtc(client, eventId, st.stageArn, st.endpoints || null);
@@ -322,6 +334,7 @@ export default {
             if (authRes) return authRes;
 
             if (ev.status !== "paid") return json(env, { error: "not_paid" }, 403);
+            if (isExpired(ev)) return json(env, { error: "expired" }, 410);
 
             if (ev.starts_at) {
               return json(env, {
@@ -411,7 +424,7 @@ export default {
             const authRes = requireExact(key, ev.secret_key, env);
             if (authRes) return authRes;
 
-            const expired = ev.status === "expired" || (ev.expires_at && new Date(ev.expires_at).getTime() < Date.now());
+            const expired = isExpired(ev);
 
             return json(env, {
               ok: true,
@@ -419,6 +432,8 @@ export default {
               title: ev.title,
               status: ev.status,
               expired,
+              starts_at: ev.starts_at || null,
+              expires_at: ev.expires_at || null,
               playback_url: ev.ivs_playback_url || null,
               rtc_stage_arn: ev.rtc_stage_arn || null,
               rtc_enabled: !!ev.rtc_enabled,
@@ -489,6 +504,7 @@ export default {
             const ev = await getEvent(client, eventId);
             if (!ev) return json(env, { error: "not_found" }, 404);
             if (ev.status !== "paid") return json(env, { error: "not_paid" }, 400);
+            if (isExpired(ev)) return json(env, { error: "expired" }, 410);
             if (!ev.hls_enabled) return json(env, { error: "hls_disabled" }, 400);
 
             const authRes = requireExact(key, ev.broadcast_key, env);
@@ -534,22 +550,31 @@ export default {
 
           const client = await getClient(env);
           try {
-            const ev = await getEvent(client, eventId);
+            let ev = await getEvent(client, eventId);
             if (!ev) return json(env, { error: "not_found" }, 404);
             if (ev.status !== "paid") return json(env, { error: "not_paid" }, 400);
+            if (isExpired(ev)) return json(env, { error: "expired" }, 410);
             if (!ev.rtc_enabled) return json(env, { error: "rtc_disabled" }, 400);
 
             const authRes = requireExact(key, ev.broadcast_key, env);
             if (authRes) return authRes;
 
-            let stageArn = ev.rtc_stage_arn as string | null;
+            let stageArn: string | null = ev.rtc_stage_arn as string | null;
             let endpoints: any = ev.rtc_stage_endpoints ?? null;
 
+            // Create stage if missing, then **persist + verify**
             if (!stageArn) {
               const st = await createStage(env, `relay-${eventId}`);
               stageArn = st.stageArn;
               endpoints = st.endpoints || null;
-              await updateRtc(client, eventId, stageArn, endpoints);
+
+              const saved = await updateRtc(client, eventId, stageArn, endpoints);
+              console.log("RTC stage saved to DB:", saved?.rtc_stage_arn ? "yes" : "no", saved?.rtc_stage_arn);
+
+              // Re-read so subsequent calls & /public reflect immediately
+              ev = await getEvent(client, eventId);
+              stageArn = (ev?.rtc_stage_arn as string) || stageArn;
+              endpoints = ev?.rtc_stage_endpoints ?? endpoints;
             }
 
             const token = await createParticipantToken(env, stageArn, `host-${eventId}`, ["PUBLISH", "SUBSCRIBE"], 3600);
@@ -573,6 +598,7 @@ export default {
             const ev = await getEvent(client, eventId);
             if (!ev) return json(env, { error: "not_found" }, 404);
             if (ev.status !== "paid") return json(env, { error: "not_paid" }, 400);
+            if (isExpired(ev)) return json(env, { error: "expired" }, 410);
             if (!ev.rtc_enabled) return json(env, { error: "rtc_disabled" }, 400);
 
             const authRes = requireExact(key, ev.secret_key, env);
@@ -600,7 +626,7 @@ export default {
             const ev = await getEvent(client, eventId);
             if (!ev) return json(env, { error: "not_found" }, 404);
 
-            const expired = ev.status === "expired" || (ev.expires_at && new Date(ev.expires_at).getTime() < Date.now());
+            const expired = isExpired(ev);
 
             return json(env, {
               id: ev.id,
