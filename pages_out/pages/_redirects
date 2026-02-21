@@ -1,8 +1,4 @@
-/watch/*     /watch     200
+/watch/* /watch 200
 /broadcast/* /broadcast 200
-/success/*   /success   200
-/ended/*     /ended     200
-/terms/*     /terms     200
-/privacy/*   /privacy   200
-/admin/*     /admin     200
-/create/*    /create    200
+/success/* /success 200
+/ended/* /ended 200
