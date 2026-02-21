@@ -1,44 +1,15 @@
 {
   "name": "stream-platform-api",
   "main": "src/index.ts",
-  "compatibility_date": "2026-02-12",
+  "compatibility_date": "2025-02-14",
   "compatibility_flags": ["nodejs_compat"],
 
-  // ✅ Must be a UUID like: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
-  "hyperdrive": [
-    {
-      "binding": "HYPERDRIVE",
-      "id": "98e25b838da84315bb551b3bed96032d"
-    }
-  ],
-
-
-  "durable_objects": {
-    "bindings": [
-      { "name": "SEATS", "class_name": "SeatsDO" },
-      { "name": "BROADCAST_LOCK", "class_name": "BroadcastLockDO" }
-    ]
-  },
-
-  // ✅ Durable Objects migrations must be TOP-LEVEL (not inside vars)
-  "migrations": [
-    {
-      "tag": "v2",
-      "new_sqlite_classes": ["SeatsDO", "BroadcastLockDO"]
-    }
-  ],
-
-
-  "triggers": {
-    "crons": ["*/5 * * * *"]
-  },
-
   "vars": {
-    // ✅ Your Cloudflare Pages domain (dev) goes here
     "APP_ORIGIN": "https://relay-cp1.pages.dev",
 
-    "AWS_REGION": "ap-southeast-2",
-    "IVS_API_ENDPOINT": "https://ivs.ap-southeast-2.amazonaws.com",
+    "AWS_REGION": "ap-northeast-1",
+    "IVS_API_ENDPOINT": "https://ivs.ap-northeast-1.api.aws",
+    "IVS_REALTIME_API_ENDPOINT": "https://ivsrealtime.ap-northeast-1.api.aws",
 
     "DEFAULT_VIEWER_LIMIT": "150",
     "STANDARD_PRICE_NZD": "9900",
@@ -46,11 +17,25 @@
     "STANDARD_HOURS": "3",
     "EXTENDED_HOURS": "8",
     "GRACE_MINUTES": "30",
-
     "DELETE_IVS_ON_EXPIRE": "false",
-    "IVS_REALTIME_API_ENDPOINT": "https://ivsrealtime.ap-southeast-2.amazonaws.com",
     "HLS_ADDON_NZD": "0",
     "WEBRTC_ADDON_NZD": "4000",
-    "BOTH_ADDON_NZD": "6500"
+    "BOTH_ADDON_NZD": "6500",
+
+    "IVS_PROXY_BASE": "https://ivs-proxy.fly.dev",
+    "IVS_PROXY_SECRET": "kbfkksaljdf773bhjwid9oanfjje9365ehjf"
+  },
+  "hyperdrive": [
+    {
+      "binding": "HYPERDRIVE",
+      "id": "98e25b838da84315bb551b3bed96032d"
+    }
+  ],
+
+  "durable_objects": {
+    "bindings": [
+      { "name": "SEATS", "class_name": "SeatsDO" },
+      { "name": "BROADCAST_LOCK", "class_name": "BroadcastLockDO" }
+    ]
   }
 }
