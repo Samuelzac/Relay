@@ -248,7 +248,12 @@ export default {
 
           await client.query(`update public.events set stripe_session_id=$1 where id=$2`, [session.id, eventId]);
 
-          return json(env, { ok: true, event_id: eventId, checkout_url: session.url }, 200);
+          return json(env, {
+            ok: true,
+            event_id: eventId,
+            checkout_url: session.url,
+            build: "query-success-v1"
+        }, 200);
         } finally {
           await client.end();
         }
