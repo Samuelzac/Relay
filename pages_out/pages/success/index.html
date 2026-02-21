@@ -59,9 +59,9 @@
   }
 
   (async () => {
-    const parts = location.pathname.split("/");
-    const eventId = parts[parts.length-1] || "";
-    const st = new URLSearchParams(location.search).get("st") || "";
+    const params = new URLSearchParams(location.search);
+    const eventId = params.get("id") || "";
+    const st = params.get("st") || "";
     if (!eventId || !st) {
       setErr("Missing event id or token.");
       return;
