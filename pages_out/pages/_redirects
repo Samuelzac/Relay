@@ -1,8 +1,8 @@
-# Rewrite dynamic routes to their static pages (URL stays the same)
 /watch/*     /watch     200
 /broadcast/* /broadcast 200
 /success/*   /success   200
 /ended/*     /ended     200
-
-# Optional: if you ever do /admin/<anything>
+/terms/*     /terms     200
+/privacy/*   /privacy   200
 /admin/*     /admin     200
+/create/*    /create    200
