@@ -1,10 +1,8 @@
-/watch/*     /watch/index.html     200
-/broadcast/* /broadcast/index.html 200
-/success/*   /success/index.html   200
-/ended/*     /ended/index.html     200
-/test/watch/*     /test/watch/index.html     200
-/test/broadcast/* /test/broadcast/index.html 200
-/terms/*   /terms/index.html   200
-/privacy/* /privacy/index.html 200
-/admin/*   /admin/index.html   200
-/create/*   /create/index.html   200
+# Rewrite dynamic routes to their static pages (URL stays the same)
+/watch/*     /watch     200
+/broadcast/* /broadcast 200
+/success/*   /success   200
+/ended/*     /ended     200
+
+# Optional: if you ever do /admin/<anything>
+/admin/*     /admin     200
