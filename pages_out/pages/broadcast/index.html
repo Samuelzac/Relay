@@ -36,9 +36,8 @@
     const API_BASE = "https://stream-platform-api.kiwismurph.workers.dev";
 
     function parseEventId() {
-      const parts = location.pathname.split("/").filter(Boolean);
-      const idx = parts.indexOf("broadcast");
-      return idx >= 0 ? (parts[idx + 1] || "") : "";
+      // Option B routing: /broadcast/?id=<eventId>&key=<secret>
+      return new URLSearchParams(location.search).get("id") || "";
     }
 
     let stage = null;
