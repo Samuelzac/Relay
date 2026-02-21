@@ -1,119 +1,96 @@
-<!DOCTYPE html>
+<!doctype html>
 <html>
 <head>
-  <meta charset="UTF-8" />
-  <title>Success</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Relay — Success</title>
   <style>
-    html, body { margin:0; padding:0; background:#000; color:#fff; font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif; }
-    .wrap { max-width:900px; margin:0 auto; padding:16px; }
-    .card { margin-top:12px; padding:14px; border-radius:12px; background:rgba(255,255,255,0.08); line-height:1.35; }
-    button { padding:12px 16px; border-radius:10px; border:0; background:rgba(255,255,255,0.14); color:#fff; font-size:16px; cursor:pointer; }
-    button.primary { background:#1976d2; }
-    .row { display:flex; gap:10px; flex-wrap:wrap; margin-top:10px; }
-    a { color:#90caf9; text-decoration:none; }
-    .muted { opacity:.82; }
-    .bad { color:#ff8a80; }
+    html,body{margin:0;padding:0;background:#000;color:#fff;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+    .wrap{max-width:760px;margin:0 auto;padding:16px}
+    .card{margin-top:12px;padding:14px;border-radius:12px;background:rgba(255,255,255,.08)}
+    .row{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+    a.btn,button{display:inline-block;padding:12px 14px;border-radius:10px;border:0;background:#1976d2;color:#fff;text-decoration:none;cursor:pointer}
+    a.secondary,button.secondary{background:rgba(255,255,255,.14)}
+    .muted{opacity:.82;font-size:13px}
+    .bad{color:#ff8a80}
+    code{word-break:break-all;display:block;background:rgba(255,255,255,.06);padding:10px;border-radius:10px}
   </style>
 </head>
 <body>
   <div class="wrap">
-    <h2>You're live-ready</h2>
-    <div id="out" class="card">Loading…</div>
+    <h2>Payment successful</h2>
+    <div class="card">
+      <div id="msg" class="muted">Loading your event…</div>
+
+      <div id="out" style="margin-top:12px; display:none;">
+        <div class="row">
+          <a id="watchBtn" class="btn" href="#" target="_blank" rel="noopener">Watch link</a>
+          <a id="broadcastBtn" class="btn secondary" href="#" target="_blank" rel="noopener">Broadcast link (phone)</a>
+        </div>
+
+        <div style="margin-top:12px;">
+          <div class="muted">Watch link (share this):</div>
+          <code id="watchUrl"></code>
+        </div>
+
+        <div style="margin-top:12px;">
+          <div class="muted">Broadcast link (keep private):</div>
+          <code id="broadcastUrl"></code>
+        </div>
+
+        <div style="margin-top:12px;" class="muted">
+          Tip: open the Broadcast link on your phone → tap “Go Live”.
+        </div>
+      </div>
+    </div>
   </div>
 
 <script>
-  const API = "https://YOUR-WORKER-DOMAIN";
-
+  const API_BASE = "https://stream-platform-api.kiwismurph.workers.dev";
+  const msg = document.getElementById("msg");
   const out = document.getElementById("out");
+  const watchBtn = document.getElementById("watchBtn");
+  const broadcastBtn = document.getElementById("broadcastBtn");
+  const watchUrlEl = document.getElementById("watchUrl");
+  const broadcastUrlEl = document.getElementById("broadcastUrl");
 
-  function esc(s){ return (s||"").replace(/[&<>"']/g, m=>({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[m])); }
-  async function copy(text){ await navigator.clipboard.writeText(text); alert("Copied"); }
+  function setErr(e) {
+    msg.innerHTML = `<span class="bad">${e}</span>`;
+  }
 
   (async () => {
-    const parts = location.pathname.split("/").filter(Boolean);
-    const eventId = parts[1]; // /success/:eventId
-    const st = new URLSearchParams(location.search).get("st");
-
+    const parts = location.pathname.split("/");
+    const eventId = parts[parts.length-1] || "";
+    const st = new URLSearchParams(location.search).get("st") || "";
     if (!eventId || !st) {
-      out.innerHTML = "<div class='bad'>Missing event info.</div>";
+      setErr("Missing event id or token.");
       return;
     }
 
-    const linksRes = await fetch(`${API}/api/events/${eventId}/links?st=${encodeURIComponent(st)}`);
-    const links = await linksRes.json();
-    if (!linksRes.ok) {
-      out.innerHTML = `<div class='bad'>Could not load links: ${esc(links.error || "unknown error")}</div>`;
-      return;
-    }
+    try {
+      const r = await fetch(`${API_BASE}/api/events/${eventId}/links?st=${encodeURIComponent(st)}`);
+      const text = await r.text();
+      let j; try { j = JSON.parse(text); } catch { j = null; }
+      if (!r.ok) {
+        const err = (j && (j.error||j.message)) ? (j.error||j.message) : (text || "Request failed");
+        setErr(err);
+        return;
+      }
 
-    const metaRes = await fetch(`${API}/api/events/${eventId}`);
-    const meta = await metaRes.json();
+      const watchUrl = j.watch_url;
+      const broadcastUrl = j.broadcast_url;
 
-    const watchUrl = links.watch_url;
-    const broadcastUrl = links.broadcast_url;
+      watchBtn.href = watchUrl;
+      broadcastBtn.href = broadcastUrl;
+      watchUrlEl.textContent = watchUrl;
+      broadcastUrlEl.textContent = broadcastUrl;
 
-    out.innerHTML = `
-      <p><b>Watch link (public)</b><br><a href="${esc(watchUrl)}" target="_blank" rel="noreferrer">${esc(watchUrl)}</a></p>
-      <div class="row">
-        <button onclick="copyWatch()">Copy watch link</button>
-        <button onclick="copyBroadcast()">Copy broadcast link</button>
-        <span id="testSlot"></span>
-        <span id="upgradeSlot"></span>
-      </div>
-      <p class="muted">Keep the broadcast link private. Anyone with it can take over the stream.</p>
-      <hr style="border:0; border-top:1px solid rgba(255,255,255,0.12); margin:14px 0;">
-      <p class="muted"><b>Status:</b> ${esc(meta.status || "")} ${meta.expired ? "(expired)" : ""}</p>
-      <p class="muted"><b>Starts:</b> ${esc(meta.starts_at || "Not started")}</p>
-      <p class="muted"><b>Expires:</b> ${esc(meta.expires_at || "Not set yet")}</p>
-    `;
-
-    window.copyWatch = () => copy(watchUrl);
-    window.copyBroadcast = () => copy(broadcastUrl);
-
-    const upgradeSlot = document.getElementById("upgradeSlot");
-    const testSlot = document.getElementById("testSlot");
-    
-    // 2-minute test stream (creates a separate temporary channel)
-    if (meta && !meta.expired) {
-      const tb = document.createElement("button");
-      tb.textContent = "Start 2-minute test";
-      tb.onclick = async () => {
-        const r = await fetch(`${API}/api/events/${eventId}/test/start`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ st })
-        });
-        const j = await r.json();
-        if (!r.ok) return alert(j.error || "Test start failed");
-        window.open(j.broadcast_url, "_blank", "noopener,noreferrer");
-        window.open(j.watch_url, "_blank", "noopener,noreferrer");
-      };
-      testSlot.appendChild(tb);
-    }
-
-    if (meta && meta.tier === 3 && !meta.expired) {
-      const b = document.createElement("button");
-      b.className = "primary";
-      b.textContent = "Upgrade to 8 hours";
-      b.onclick = async () => {
-        const r = await fetch(`${API}/api/events/${eventId}/upgrade`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ st, to_tier: 8 })
-        });
-        const j = await r.json();
-        if (!r.ok) return alert(j.error || "Upgrade failed");
-        location.href = j.checkout_url;
-      };
-      upgradeSlot.appendChild(b);
+      msg.textContent = "Your links are ready.";
+      out.style.display = "block";
+    } catch (e) {
+      setErr("Network error.");
     }
   })();
 </script>
-
-<div style="margin-top:18px; font-size:12px; opacity:.75; text-align:center">
-  By using this service you agree to the <a href="/terms" style="color:#9ad1ff">Terms</a> and <a href="/privacy" style="color:#9ad1ff">Privacy Policy</a>.
-</div>
-
 </body>
 </html>
