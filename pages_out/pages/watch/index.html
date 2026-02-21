@@ -27,10 +27,8 @@
     const API_BASE = "https://stream-platform-api.kiwismurph.workers.dev";
 
     function parseEventId() {
-      // supports /watch/<eventId>
-      const parts = location.pathname.split("/").filter(Boolean);
-      const idx = parts.indexOf("watch");
-      return idx >= 0 ? (parts[idx + 1] || "") : "";
+      // Option B routing: /watch/?id=<eventId>&key=<secret>
+      return new URLSearchParams(location.search).get("id") || "";
     }
 
     async function main() {
