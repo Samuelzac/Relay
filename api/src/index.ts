@@ -1,884 +1,596 @@
-import { withDb } from "./db";
-import { randomSecretUrlSafe, encryptString, decryptString, sha256Hex } from "./crypto";
-import { stripeClient, priceForTier, hoursForTier } from "./stripe";
-import { createIvsChannel, deleteIvsChannel } from "./ivs";
+// src/index.ts
+import { getClient } from "./db";
+import { randomSecretUrlSafe, sha256Hex, encryptString, decryptString } from "./crypto";
 import { SeatsDO } from "./seats_do";
 import { BroadcastLockDO } from "./broadcast_lock_do";
+import { stripeClient, priceForTierAndMode, hoursForTier, StreamMode } from "./stripe";
+import { createChannel, createStreamKey } from "./awsIvs";
+import { deleteIvsChannel } from "./ivs";
+import { createStage, createParticipantToken, deleteStage } from "./awsIvsRealtime";
 
 export { SeatsDO, BroadcastLockDO };
 
 type Env = any;
 
-function json(data: any, status = 200) {
+const JSON_HEADERS = {
+  "content-type": "application/json; charset=utf-8",
+  "cache-control": "no-store",
+};
+
+function corsHeaders(env: Env) {
+  const origin = env.APP_ORIGIN || "*";
+  return {
+    "access-control-allow-origin": origin,
+    "access-control-allow-methods": "GET,POST,OPTIONS",
+    "access-control-allow-headers": "content-type,x-relay-admin-key",
+    "access-control-allow-credentials": "true",
+    vary: "Origin",
+  };
+}
+
+function json(env: Env, data: any, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
-    headers: { "Content-Type": "application/json", "Cache-Control": "no-store" }
+    headers: { ...JSON_HEADERS, ...corsHeaders(env) },
   });
 }
 
-function bad(msg: string, status = 400) {
-  return json({ error: msg }, status);
-}
-
-function isExpiredRow(row: any) {
-  if (!row) return true;
-  if (row.expires_at && new Date(row.expires_at).getTime() <= Date.now()) return true;
-  if (row.status === "expired") return true;
-  return false;
-}
-
-function isDisabledRow(row: any): boolean {
-  return Boolean(row?.disabled);
-}
-
-async function maybeMarkExpired(env: Env, eventId: string) {
-  await withDb(env, async (c) => {
-    await c.query(
-      `update events
-       set status='expired'
-       where id=$1 and status <> 'expired'
-         and (
-           (expires_at is not null and expires_at <= now())
-           or (starts_at is null and created_at <= now() - interval '24 hours')
-         )`,
-      [eventId]
-    );
+function text(env: Env, body: string, status = 200) {
+  return new Response(body, {
+    status,
+    headers: {
+      "content-type": "text/plain; charset=utf-8",
+      "cache-control": "no-store",
+      ...corsHeaders(env),
+    },
   });
 }
 
-async function broadcastStillOwner(env: any, req: Request, eventId: string, sid: string) {
-  const id = env.BROADCAST_LOCK.idFromName(eventId);
-  const stub = env.BROADCAST_LOCK.get(id);
+async function readJson(req: Request) {
+  return await req.json<any>().catch(() => ({}));
+}
 
-  const doUrl = new URL(req.url);
-  doUrl.pathname = "/do/heartbeat";
+function match(pathname: string, re: RegExp) {
+  const m = pathname.match(re);
+  return m?.slice(1) ?? null;
+}
 
-  return await stub.fetch(doUrl.toString(), {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ broadcast_session_id: sid })
-  });
+function pagesBase(env: Env) {
+  return env.APP_ORIGIN || "https://relay-cp1.pages.dev";
+}
+
+function watchUrl(env: Env, eventId: string, secretKey: string) {
+  return `${pagesBase(env)}/watch/${eventId}?key=${encodeURIComponent(secretKey)}`;
+}
+
+function broadcastUrl(env: Env, eventId: string, broadcastKey: string) {
+  return `${pagesBase(env)}/broadcast/${eventId}?key=${encodeURIComponent(broadcastKey)}`;
+}
+
+function requireExact(key: string | null, expected: string, env: Env) {
+  if (!key || key !== expected) return json(env, { error: "unauthorized" }, 401);
+  return null;
+}
+
+function toMode(v: any): StreamMode {
+  if (v === "webrtc" || v === "hls" || v === "both") return v;
+  // backwards compat: infer from flags
+  return "webrtc";
+}
+
+function ingestHostFromDb(value: string) {
+  if (!value) return value;
+  if (value.startsWith("rtmp")) {
+    try {
+      const u = new URL(value);
+      return u.hostname;
+    } catch {
+      return value.replace(/^rtmps?:\/\//, "").split(":")[0].split("/")[0];
+    }
+  }
+  return value;
+}
+
+function rtmpsUrlFromHost(host: string) {
+  return `rtmps://${host}:443/app/`;
+}
+
+async function getEvent(client: any, id: string) {
+  const { rows } = await client.query(
+    `
+    select
+      id, email, title, tier, viewer_limit, white_label,
+      status, starts_at, expires_at, created_at,
+      ivs_channel_arn, ivs_ingest_endpoint, ivs_playback_url, ivs_stream_key_encrypted,
+      secret_key, broadcast_key, success_token_hash, stripe_session_id,
+      rtc_stage_arn, rtc_stage_endpoints, rtc_enabled, hls_enabled
+    from public.events
+    where id = $1
+  `,
+    [id]
+  );
+  return rows[0] || null;
+}
+
+async function markPaid(client: any, id: string) {
+  await client.query(`update public.events set status='paid' where id=$1 and status!='expired'`, [id]);
+}
+
+async function ensureBroadcastKey(client: any, eventId: string) {
+  const { rows } = await client.query(`select broadcast_key from public.events where id=$1`, [eventId]);
+  if (rows[0]?.broadcast_key) return rows[0].broadcast_key as string;
+  const bk = randomSecretUrlSafe(24);
+  await client.query(`update public.events set broadcast_key=$1 where id=$2`, [bk, eventId]);
+  return bk;
+}
+
+async function updateIvs(client: any, id: string, channelArn: string, ingestHost: string, playbackUrl: string, streamKeyEnc: string) {
+  await client.query(
+    `
+    update public.events
+    set ivs_channel_arn=$1,
+        ivs_ingest_endpoint=$2,
+        ivs_playback_url=$3,
+        ivs_stream_key_encrypted=$4,
+        starts_at=coalesce(starts_at, now())
+    where id=$5
+  `,
+    [channelArn, ingestHost, playbackUrl, streamKeyEnc, id]
+  );
+}
+
+async function updateRtc(client: any, id: string, stageArn: string, endpoints: any) {
+  await client.query(
+    `
+    update public.events
+    set rtc_stage_arn=$1,
+        rtc_stage_endpoints=$2,
+        starts_at=coalesce(starts_at, now())
+    where id=$3
+  `,
+    [stageArn, endpoints ? JSON.stringify(endpoints) : null, id]
+  );
 }
 
 export default {
-  async fetch(req: Request, env: Env, ctx: ExecutionContext) {
-    const url = new URL(req.url);
-
-    // CORS for your Pages frontend
-    if (req.method === "OPTIONS") {
-      return new Response(null, {
-        status: 204,
-        headers: {
-          "Access-Control-Allow-Origin": env.APP_ORIGIN,
-          "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
-          "Access-Control-Allow-Headers": "Content-Type,Stripe-Signature",
-          "Access-Control-Max-Age": "86400"
-        }
-      });
-    }
-
-    const addCors = (res: Response) => {
-      const h = new Headers(res.headers);
-      h.set("Access-Control-Allow-Origin", env.APP_ORIGIN);
-      h.set("Vary", "Origin");
-      return new Response(res.body, { status: res.status, headers: h });
-    };
-
-    // ---- ROUTES ----
-
-    // Public watch metadata
-    const mEvent = url.pathname.match(/^\/api\/events\/([0-9a-f-]+)$/i);
-    if (req.method === "GET" && mEvent) {
-      const eventId = mEvent[1];
-      await maybeMarkExpired(env, eventId);
-
-      const row = await withDb(env, async (c) => {
-        const r = await c.query(
-          `select id,title,tier,viewer_limit,white_label,status,starts_at,expires_at,ivs_playback_url
-           from events where id=$1`,
-          [eventId]
-        );
-        return r.rows[0];
-      });
-
-      if (!row) return addCors(bad("not_found", 404));
-
-      return addCors(
-        json({
-          id: row.id,
-          title: row.title,
-          tier: row.tier,
-          viewer_limit: row.viewer_limit,
-          white_label: row.white_label,
-          status: row.status,
-          starts_at: row.starts_at,
-          expires_at: row.expires_at,
-          playback_url: row.ivs_playback_url,
-          expired: isExpiredRow(row)
-        })
-      );
-    }
-
-    // Create event + Stripe Checkout
-    if (req.method === "POST" && url.pathname === "/api/events") {
-      const body = await req.json<any>().catch(() => null);
-      if (!body) return addCors(bad("invalid_json"));
-      const email = String(body.email ?? "").trim();
-      const title = String(body.title ?? "").trim();
-      const tier = Number(body.tier);
-      const whiteLabel = Boolean(body.white_label);
-
-      if (!email || !email.includes("@")) return addCors(bad("invalid_email"));
-      if (!title) return addCors(bad("missing_title"));
-      if (![3, 8].includes(tier)) return addCors(bad("invalid_tier"));
-
-      const secretKey = randomSecretUrlSafe(48);
-      const successToken = randomSecretUrlSafe(32);
-      const successTokenHash = await sha256Hex(successToken);
-
-      const viewerLimit = Number(env.DEFAULT_VIEWER_LIMIT ?? 150);
-
-      const eventRow = await withDb(env, async (c) => {
-        const r = await c.query(
-          `insert into events (email,title,tier,viewer_limit,white_label,status,secret_key,success_token_hash)
-           values ($1,$2,$3,$4,$5,'pending',$6,$7)
-           returning id`,
-          [email, title, tier, viewerLimit, whiteLabel, secretKey, successTokenHash]
-        );
-        return { id: r.rows[0].id as string };
-      });
-
-      const stripe = stripeClient(env);
-      const amount = priceForTier(env, tier);
-
-      const session = await stripe.checkout.sessions.create({
-        mode: "payment",
-        customer_email: email,
-        line_items: [
-          {
-            price_data: {
-              currency: "nzd",
-              unit_amount: amount,
-              product_data: {
-                name: tier === 3 ? "Standard Live Event (3 hours)" : "Extended Live Event (8 hours)",
-                description: whiteLabel ? "Includes white-label add-on" : undefined
-              }
-            },
-            quantity: 1
-          }
-        ],
-        metadata: {
-          action: "create",
-          event_id: eventRow.id,
-          tier: String(tier),
-          white_label: String(whiteLabel)
-        },
-        success_url: `${env.APP_ORIGIN}/success/${eventRow.id}?st=${encodeURIComponent(successToken)}`,
-        cancel_url: `${env.APP_ORIGIN}/cancel/${eventRow.id}`
-      });
-
-      await withDb(env, async (c) => {
-        await c.query(`update events set stripe_session_id=$1 where id=$2`, [session.id, eventRow.id]);
-      });
-
-      return addCors(
-        json({
-          event_id: eventRow.id,
-          checkout_url: session.url
-        })
-      );
-    }
-
-    // Success links (requires st)
-    const mLinks = url.pathname.match(/^\/api\/events\/([0-9a-f-]+)\/links$/i);
-    if (req.method === "GET" && mLinks) {
-      const eventId = mLinks[1];
-      const st = url.searchParams.get("st") ?? "";
-      if (!st) return addCors(bad("missing_st"));
-
-      await maybeMarkExpired(env, eventId);
-
-      const row = await withDb(env, async (c) => {
-        const r = await c.query(
-          `select id,status,expires_at,secret_key,success_token_hash,title
-           from events where id=$1`,
-          [eventId]
-        );
-        return r.rows[0];
-      });
-
-      if (!row) return addCors(bad("not_found", 404));
-      if (isExpiredRow(row) || isDisabledRow(row)) return addCors(bad("expired", 410));
-      if (row.status === "pending") return addCors(bad("not_paid", 402));
-
-      const stHash = await sha256Hex(st);
-      if (!row.success_token_hash || row.success_token_hash !== stHash) {
-        return addCors(bad("forbidden", 403));
-      }
-
-      const watchUrl = `${env.APP_ORIGIN}/watch/${eventId}`;
-      const broadcastUrl = `${env.APP_ORIGIN}/broadcast/${eventId}?key=${encodeURIComponent(row.secret_key)}`;
-
-      return addCors(json({ watch_url: watchUrl, broadcast_url: broadcastUrl }));
-    }
-
-    // Start upgrade checkout (difference)
-    const mUp = url.pathname.match(/^\/api\/events\/([0-9a-f-]+)\/upgrade$/i);
-    if (req.method === "POST" && mUp) {
-      const eventId = mUp[1];
-      const body = await req.json<any>().catch(() => null);
-      if (!body) return addCors(bad("invalid_json"));
-
-      const st = String(body.st ?? "");
-      const toTier = Number(body.to_tier ?? 8);
-      if (!st) return addCors(bad("missing_st"));
-      if (toTier !== 8) return addCors(bad("invalid_to_tier"));
-
-      await maybeMarkExpired(env, eventId);
-
-      const row = await withDb(env, async (c) => {
-        const r = await c.query(
-          `select id, tier, status, expires_at, starts_at, success_token_hash
-           from events where id=$1`,
-          [eventId]
-        );
-        return r.rows[0];
-      });
-
-      if (!row) return addCors(bad("not_found", 404));
-      if (isExpiredRow(row) || isDisabledRow(row)) return addCors(bad("expired", 410));
-      if (row.status === "pending") return addCors(bad("not_paid", 402));
-      if (Number(row.tier) >= 8) return addCors(bad("already_extended", 409));
-
-      const stHash = await sha256Hex(st);
-      if (!row.success_token_hash || row.success_token_hash !== stHash) {
-        return addCors(bad("forbidden", 403));
-      }
-
-      const stripe = stripeClient(env);
-      const diff = Number(env.EXTENDED_PRICE_NZD) - Number(env.STANDARD_PRICE_NZD);
-      if (diff <= 0) return addCors(bad("invalid_pricing_config", 500));
-
-      const session = await stripe.checkout.sessions.create({
-        mode: "payment",
-        line_items: [
-          {
-            price_data: {
-              currency: "nzd",
-              unit_amount: diff,
-              product_data: { name: "Upgrade to Extended Event (8 hours)" }
-            },
-            quantity: 1
-          }
-        ],
-        metadata: {
-          action: "upgrade",
-          event_id: eventId,
-          to_tier: "8"
-        },
-        success_url: `${env.APP_ORIGIN}/success/${eventId}?st=${encodeURIComponent(st)}`,
-        cancel_url: `${env.APP_ORIGIN}/success/${eventId}?st=${encodeURIComponent(st)}`
-      });
-
-      await withDb(env, async (c) => {
-        await c.query(
-          `update events
-           set stripe_upgrade_session_id=$2,
-               pending_upgrade_to=$3
-           where id=$1`,
-          [eventId, session.id, 8]
-        );
-      });
-
-      return addCors(json({ checkout_url: session.url }));
-    }
-
-    // Stripe webhook
-    if (req.method === "POST" && url.pathname === "/api/stripe/webhook") {
-      const sig = req.headers.get("Stripe-Signature");
-      if (!sig) return bad("missing_stripe_signature", 400);
-
-      const raw = await req.arrayBuffer();
-      const stripe = stripeClient(env);
-
-      let evt: any;
-      try {
-        // Stripe library expects Buffer; nodejs_compat provides it
-        // @ts-ignore
-        evt = stripe.webhooks.constructEvent(Buffer.from(raw), sig, env.STRIPE_WEBHOOK_SECRET);
-      } catch {
-        return bad(`webhook_signature_failed`, 400);
-      }
-
-      if (evt.type === "checkout.session.completed") {
-        const session = evt.data.object;
-        const action = session.metadata?.action;
-
-        if (action === "create") {
-          const eventId = session.metadata?.event_id;
-          if (eventId) {
-            await withDb(env, async (c) => {
-              await c.query(`update events set status='paid' where id=$1 and status='pending'`, [eventId]);
-            });
-
-            const ivs = await createIvsChannel(env, eventId);
-            const encrypted = await encryptString(ivs.streamKey, env.STREAMKEY_ENC_KEY_B64);
-
-            await withDb(env, async (c) => {
-              await c.query(
-                `update events
-                 set ivs_channel_arn=$2,
-                     ivs_ingest_endpoint=$3,
-                     ivs_stream_key_encrypted=$4,
-                     ivs_playback_url=$5
-                 where id=$1`,
-                [eventId, ivs.channelArn, ivs.ingestEndpoint, encrypted, ivs.playbackUrl]
-              );
-            });
-          }
-        }
-
-        if (action === "upgrade") {
-          const eventId = session.metadata?.event_id;
-          const toTier = Number(session.metadata?.to_tier ?? 8);
-
-          if (eventId && toTier === 8) {
-            const grace = Number(env.GRACE_MINUTES ?? 30);
-
-            await withDb(env, async (c) => {
-              const r = await c.query(
-                `select id, tier, starts_at
-                 from events
-                 where id=$1 and stripe_upgrade_session_id=$2 and pending_upgrade_to=8`,
-                [eventId, session.id]
-              );
-              const row = r.rows[0];
-              if (!row) return;
-
-              if (row.starts_at) {
-                await c.query(
-                  `update events
-                   set tier=8,
-                       pending_upgrade_to=null,
-                       stripe_upgrade_session_id=null,
-                       expires_at = starts_at + interval '8 hours' + ($2::text || ' minutes')::interval
-                   where id=$1`,
-                  [eventId, grace]
-                );
-              } else {
-                await c.query(
-                  `update events
-                   set tier=8,
-                       pending_upgrade_to=null,
-                       stripe_upgrade_session_id=null
-                   where id=$1`,
-                  [eventId]
-                );
-              }
-            });
-          }
-        }
-      }
-
-      return json({ ok: true });
-    }
-
-    // Broadcaster lock claim
-    if (req.method === "POST" && url.pathname === "/api/broadcast/claim") {
-      const body = await req.json<any>().catch(() => null);
-      if (!body) return addCors(bad("invalid_json"));
-
-      const eventId = String(body.eventId ?? "");
-      const key = String(body.key ?? "");
-      if (!eventId || !key) return addCors(bad("missing_params"));
-
-      await maybeMarkExpired(env, eventId);
-
-      const row = await withDb(env, async (c) => {
-        const r = await c.query(
-          `select id,status,secret_key,expires_at from events where id=$1`,
-          [eventId]
-        );
-        return r.rows[0];
-      });
-
-      if (!row) return addCors(bad("not_found", 404));
-      if (row.secret_key !== key) return addCors(bad("forbidden", 403));
-      if (row.status === "pending") return addCors(bad("not_paid", 402));
-      if (isExpiredRow(row) || isDisabledRow(row)) return addCors(bad("expired", 410));
-
-      const id = env.BROADCAST_LOCK.idFromName(eventId);
-      const stub = env.BROADCAST_LOCK.get(id);
-
-      const doRes = await stub.fetch(new URL("/do/claim", req.url).toString(), { method: "POST" });
-      return addCors(doRes);
-    }
-
-    // Broadcaster lock heartbeat
-    if (req.method === "POST" && url.pathname === "/api/broadcast/heartbeat") {
-      const body = await req.json<any>().catch(() => null);
-      if (!body) return addCors(bad("invalid_json"));
-
-      const eventId = String(body.eventId ?? "");
-      const key = String(body.key ?? "");
-      const sid = String(body.broadcast_session_id ?? "");
-      if (!eventId || !key || !sid) return addCors(bad("missing_params"));
-
-      await maybeMarkExpired(env, eventId);
-
-      const row = await withDb(env, async (c) => {
-        const r = await c.query(`select id,status,secret_key,expires_at from events where id=$1`, [eventId]);
-        return r.rows[0];
-      });
-
-      if (!row) return addCors(bad("not_found", 404));
-      if (row.secret_key !== key) return addCors(bad("forbidden", 403));
-      if (row.status === "pending") return addCors(bad("not_paid", 402));
-      if (isExpiredRow(row) || isDisabledRow(row)) return addCors(bad("expired", 410));
-
-      const doRes = await broadcastStillOwner(env, req, eventId, sid);
-      return addCors(doRes);
-    }
-
-    // Broadcaster lock release
-    if (req.method === "POST" && url.pathname === "/api/broadcast/release") {
-      const body = await req.json<any>().catch(() => null);
-      if (!body) return addCors(bad("invalid_json"));
-
-      const eventId = String(body.eventId ?? "");
-      const key = String(body.key ?? "");
-      const sid = String(body.broadcast_session_id ?? "");
-      if (!eventId || !key || !sid) return addCors(bad("missing_params"));
-
-      await maybeMarkExpired(env, eventId);
-
-      const row = await withDb(env, async (c) => {
-        const r = await c.query(`select id,status,secret_key,expires_at from events where id=$1`, [eventId]);
-        return r.rows[0];
-      });
-
-      if (!row) return addCors(bad("not_found", 404));
-      if (row.secret_key !== key) return addCors(bad("forbidden", 403));
-      if (row.status === "pending") return addCors(bad("not_paid", 402));
-      if (isExpiredRow(row) || isDisabledRow(row)) return addCors(bad("expired", 410));
-
-      const id = env.BROADCAST_LOCK.idFromName(eventId);
-      const stub = env.BROADCAST_LOCK.get(id);
-
-      const doUrl = new URL(req.url);
-      doUrl.pathname = "/do/release";
-
-      const doRes = await stub.fetch(doUrl.toString(), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ broadcast_session_id: sid })
-      });
-
-      return addCors(doRes);
-    }
-
-    // Private broadcast config (requires sid ownership)
-    if (req.method === "GET" && url.pathname === "/api/broadcast/config") {
-      const eventId = url.searchParams.get("eventId") ?? "";
-      const key = url.searchParams.get("key") ?? "";
-      const sid = url.searchParams.get("sid") ?? "";
-      if (!eventId || !key) return addCors(bad("missing_params"));
-      if (!sid) return addCors(bad("missing_sid", 400));
-
-      await maybeMarkExpired(env, eventId);
-
-      const row = await withDb(env, async (c) => {
-        const r = await c.query(
-          `select id,status,secret_key,starts_at,expires_at,ivs_ingest_endpoint,ivs_stream_key_encrypted,ivs_playback_url
-           from events where id=$1`,
-          [eventId]
-        );
-        return r.rows[0];
-      });
-
-      if (!row) return addCors(bad("not_found", 404));
-      if (row.secret_key !== key) return addCors(bad("forbidden", 403));
-      if (row.status !== "paid" && row.status !== "live") return addCors(bad("not_paid", 402));
-      if (isExpiredRow(row) || isDisabledRow(row)) return addCors(bad("expired", 410));
-      if (!row.ivs_stream_key_encrypted) return addCors(bad("ivs_not_ready", 503));
-
-      // verify lock ownership
-      const lockRes = await broadcastStillOwner(env, req, eventId, sid);
-      if (!lockRes.ok) return addCors(lockRes);
-      const lockJson = await lockRes.json<any>();
-      if (!lockJson.still_owner) return addCors(bad("not_owner", 409));
-
-      const streamKey = await decryptString(row.ivs_stream_key_encrypted, env.STREAMKEY_ENC_KEY_B64);
-
-      return addCors(
-        json({
-          ingestEndpoint: row.ivs_ingest_endpoint,
-          streamKey,
-          playbackUrl: row.ivs_playback_url
-        })
-      );
-    }
-
-    // Broadcast started (sets starts_at/expires_at on first start)
-    if (req.method === "POST" && url.pathname === "/api/broadcast/started") {
-      const body = await req.json<any>().catch(() => null);
-      if (!body) return addCors(bad("invalid_json"));
-
-      const eventId = String(body.eventId ?? "");
-      const key = String(body.key ?? "");
-      if (!eventId || !key) return addCors(bad("missing_params"));
-
-      const row = await withDb(env, async (c) => {
-        const r = await c.query(`select id,tier,status,secret_key,starts_at,expires_at from events where id=$1`, [eventId]);
-        return r.rows[0];
-      });
-      if (!row) return addCors(bad("not_found", 404));
-      if (row.secret_key !== key) return addCors(bad("forbidden", 403));
-      if (row.status !== "paid" && row.status !== "live") return addCors(bad("not_paid", 402));
-      if (isExpiredRow(row) || isDisabledRow(row)) return addCors(bad("expired", 410));
-
-      if (!row.starts_at) {
-        const hours = hoursForTier(env, Number(row.tier));
-        const grace = Number(env.GRACE_MINUTES ?? 30);
-
-        await withDb(env, async (c) => {
-          await c.query(
-            `update events
-             set status='live',
-                 starts_at=now(),
-                 expires_at=now() + ($2::text || ' hours')::interval + ($3::text || ' minutes')::interval
-             where id=$1 and starts_at is null`,
-            [eventId, hours, grace]
-          );
-        });
-      } else {
-        await withDb(env, async (c) => {
-          await c.query(`update events set status='live' where id=$1 and status='paid'`, [eventId]);
-        });
-      }
-
-      return addCors(json({ ok: true }));
-    }
-
-    // Seat endpoints -> Durable Object
-    const mSeat = url.pathname.match(/^\/api\/events\/([0-9a-f-]+)\/(view-session|heartbeat|leave)$/i);
-    if (req.method === "POST" && mSeat) {
-      const eventId = mSeat[1];
-      const action = mSeat[2];
-
-      await maybeMarkExpired(env, eventId);
-
-      const row = await withDb(env, async (c) => {
-        const r = await c.query(`select id,status,viewer_limit,expires_at,starts_at,created_at from events where id=$1`, [eventId]);
-        return r.rows[0];
-      });
-      if (!row) return addCors(bad("not_found", 404));
-      if (isExpiredRow(row) || isDisabledRow(row)) return addCors(bad("expired", 410));
-      if (row.status === "pending") return addCors(bad("not_paid", 402));
-
-      const id = env.SEATS.idFromName(eventId);
-      const stub = env.SEATS.get(id);
-      const doUrl = new URL(req.url);
-      doUrl.pathname = `/do/${action}`;
-      doUrl.searchParams.set("limit", String(row.viewer_limit));
-
-      const bodyText = await req.text();
-      const doRes = await stub.fetch(doUrl.toString(), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: bodyText && bodyText.length ? bodyText : "{}"
-      });
-
-      return addCors(doRes);
-    }
-
-    // Seat stats
-    const mSeatStats = url.pathname.match(/^\/api\/events\/([0-9a-f-]+)\/seat-stats$/i);
-    if (req.method === "GET" && mSeatStats) {
-      const eventId = mSeatStats[1];
-
-      await maybeMarkExpired(env, eventId);
-
-      const row = await withDb(env, async (c) => {
-        const r = await c.query(`select id,status,viewer_limit,expires_at from events where id=$1`, [eventId]);
-        return r.rows[0];
-      });
-
-      if (!row) return addCors(bad("not_found", 404));
-      if (isExpiredRow(row) || isDisabledRow(row)) return addCors(bad("expired", 410));
-      if (row.status === "pending") return addCors(bad("not_paid", 402));
-
-      const id = env.SEATS.idFromName(eventId);
-      const stub = env.SEATS.get(id);
-
-      const doUrl = new URL(req.url);
-      doUrl.pathname = "/do/stats";
-      doUrl.searchParams.set("limit", String(row.viewer_limit));
-
-      const doRes = await stub.fetch(doUrl.toString(), { method: "GET" });
-      return addCors(doRes);
-    }
-
-
-    // ---- TEST STREAMS (2-minute) ----
-
-    // Start a test stream (requires st)
-    const mTestStart = url.pathname.match(/^\/api\/events\/([0-9a-f-]+)\/test\/start$/i);
-    if (req.method === "POST" && mTestStart) {
-      const eventId = mTestStart[1];
-      const body = await req.json<any>().catch(() => null);
-      if (!body) return addCors(bad("invalid_json"));
-
-      const st = String(body.st ?? "");
-      if (!st) return addCors(bad("missing_st"));
-
-      await maybeMarkExpired(env, eventId);
-
-      const eventRow = await withDb(env, async (c) => {
-        const r = await c.query(
-          `select id,status,expires_at,disabled,success_token_hash
-           from events where id=$1`,
-          [eventId]
-        );
-        return r.rows[0];
-      });
-
-      if (!eventRow) return addCors(bad("not_found", 404));
-      if (isExpiredRow(eventRow) || isDisabledRow(eventRow)) return addCors(bad("expired", 410));
-      if (eventRow.status === "pending") return addCors(bad("not_paid", 402));
-
-      const stHash = await sha256Hex(st);
-      if (eventRow.success_token_hash !== stHash) return addCors(bad("forbidden", 403));
-
-      // Only one active test at a time per event (prevents spam)
-      const activeTest = await withDb(env, async (c) => {
-        const r = await c.query(
-          `select id, secret_key
-           from test_streams
-           where event_id=$1 and status='active' and expires_at > now()
-           order by created_at desc
-           limit 1`,
-          [eventId]
-        );
-        return r.rows[0];
-      });
-
-      if (activeTest) {
-        const watchUrl = `${env.APP_ORIGIN}/test/watch/${activeTest.id}`;
-        const broadcastUrl = `${env.APP_ORIGIN}/test/broadcast/${activeTest.id}?key=${encodeURIComponent(activeTest.secret_key)}`;
-        return addCors(json({
+  async fetch(request: Request, env: Env) {
+    const url = new URL(request.url);
+    const { pathname } = url;
+    const method = request.method.toUpperCase();
+
+    if (method === "OPTIONS") return new Response("", { status: 204, headers: corsHeaders(env) });
+
+    try {
+      // Root + health
+      if (method === "GET" && pathname === "/") return text(env, "Relay API OK", 200);
+      if (method === "GET" && pathname === "/healthz") return text(env, "ok", 200);
+
+      // Pricing config (for Pages UI)
+      if (method === "GET" && pathname === "/api/pricing") {
+        return json(env, {
           ok: true,
-          reused: true,
-          test_id: activeTest.id,
-          watch_url: watchUrl,
-          broadcast_url: broadcastUrl,
-          expires_in_seconds: 120
-        }));
+          tiers: {
+            "3": { hours: Number(env.STANDARD_HOURS), base_nzd: Number(env.STANDARD_PRICE_NZD) },
+            "8": { hours: Number(env.EXTENDED_HOURS), base_nzd: Number(env.EXTENDED_PRICE_NZD) },
+          },
+          addons: {
+            hls_nzd: Number(env.HLS_ADDON_NZD ?? 0),
+            webrtc_nzd: Number(env.WEBRTC_ADDON_NZD ?? 0),
+            both_nzd: Number(env.BOTH_ADDON_NZD ?? 0),
+          },
+        });
       }
 
-      const testSecret = randomSecretUrlSafe(40);
+      // Create event -> Stripe Checkout
+      if (method === "POST" && pathname === "/api/events") {
+        const body = await readJson(request);
 
-      const ivs = await createIvsChannel(env, `test-${eventId}-${crypto.randomUUID().slice(0, 8)}`);
-      const encrypted = await encryptString(ivs.streamKey, env.STREAMKEY_ENC_KEY_B64);
+        const email = String(body.email ?? "").trim();
+        const title = String(body.title ?? "").trim();
+        const tier = Number(body.tier);
+        const whiteLabel = !!body.white_label;
+        const viewerLimit = Number(body.viewer_limit ?? env.DEFAULT_VIEWER_LIMIT ?? 150);
 
-      const testRow = await withDb(env, async (c) => {
-        const r = await c.query(
-          `insert into test_streams
-            (event_id,status,expires_at,ivs_channel_arn,ivs_ingest_endpoint,ivs_stream_key_encrypted,ivs_playback_url,secret_key)
-           values ($1,'active', now() + interval '2 minutes', $2,$3,$4,$5,$6)
-           returning id`,
-          [eventId, ivs.channelArn, ivs.ingestEndpoint, encrypted, ivs.playbackUrl, testSecret]
-        );
-        return r.rows[0];
-      });
+        const mode = toMode(body.mode);
+        const rtcEnabled = mode === "webrtc" || mode === "both";
+        const hlsEnabled = mode === "hls" || mode === "both";
 
-      const watchUrl = `${env.APP_ORIGIN}/test/watch/${testRow.id}`;
-      const broadcastUrl = `${env.APP_ORIGIN}/test/broadcast/${testRow.id}?key=${encodeURIComponent(testSecret)}`;
+        if (!email || !title) return json(env, { error: "email_and_title_required" }, 400);
+        if (![3, 8].includes(tier)) return json(env, { error: "invalid_tier" }, 400);
 
-      return addCors(json({
-        ok: true,
-        test_id: testRow.id,
-        watch_url: watchUrl,
-        broadcast_url: broadcastUrl,
-        expires_in_seconds: 120
-      }));
+        const secretKey = randomSecretUrlSafe(24);
+        const broadcastKey = randomSecretUrlSafe(24);
+        const successToken = randomSecretUrlSafe(24);
+        const successHash = await sha256Hex(successToken);
+
+        const amountNzd = priceForTierAndMode(env, tier, mode);
+
+        const client = await getClient(env);
+        try {
+          const { rows } = await client.query(
+            `
+            insert into public.events
+              (email, title, tier, viewer_limit, white_label, status,
+               secret_key, broadcast_key, success_token_hash,
+               rtc_enabled, hls_enabled)
+            values
+              ($1,$2,$3,$4,$5,'pending',
+               $6,$7,$8,
+               $9,$10)
+            returning id
+          `,
+            [email, title, tier, viewerLimit, whiteLabel, secretKey, broadcastKey, successHash, rtcEnabled, hlsEnabled]
+          );
+
+          const eventId = rows[0].id as string;
+
+          const stripe = stripeClient(env);
+          const successUrl = `${pagesBase(env)}/success/${eventId}?st=${encodeURIComponent(successToken)}`;
+          const cancelUrl = `${pagesBase(env)}/create?canceled=1`;
+
+          const session = await stripe.checkout.sessions.create({
+            mode: "payment",
+            customer_email: email,
+            line_items: [
+              {
+                price_data: {
+                  currency: "nzd",
+                  unit_amount: amountNzd,
+                  product_data: { name: `Relay Live Event (${tier}h • ${mode.toUpperCase()})` },
+                },
+                quantity: 1,
+              },
+            ],
+            metadata: { relay_event_id: eventId },
+            success_url: successUrl,
+            cancel_url: cancelUrl,
+          });
+
+          await client.query(`update public.events set stripe_session_id=$1 where id=$2`, [session.id, eventId]);
+
+          return json(env, { ok: true, event_id: eventId, checkout_url: session.url }, 200);
+        } finally {
+          await client.end();
+        }
+      }
+
+      // Stripe webhook -> mark paid
+      if (method === "POST" && pathname === "/api/stripe/webhook") {
+        const sig = request.headers.get("stripe-signature");
+        if (!sig) return json(env, { error: "missing_signature" }, 400);
+        if (!env.STRIPE_WEBHOOK_SECRET) return json(env, { error: "missing_STRIPE_WEBHOOK_SECRET" }, 500);
+
+        const stripe = stripeClient(env);
+        const raw = await request.arrayBuffer();
+        let evt: any;
+
+        try {
+          evt = stripe.webhooks.constructEvent(raw, sig, env.STRIPE_WEBHOOK_SECRET);
+        } catch (e: any) {
+          return json(env, { error: "invalid_signature", message: e?.message }, 400);
+        }
+
+        if (evt.type === "checkout.session.completed") {
+          const session = evt.data.object;
+          const eventId = session?.metadata?.relay_event_id;
+          if (eventId) {
+            const client = await getClient(env);
+            try {
+              await markPaid(client, eventId);
+            } finally {
+              await client.end();
+            }
+          }
+        }
+
+        return json(env, { ok: true }, 200);
+      }
+
+      // Success -> return watch + broadcast links
+      {
+        const m = match(pathname, /^\/api\/events\/([^\/]+)\/links$/);
+        if (method === "GET" && m) {
+          const eventId = m[0];
+          const st = url.searchParams.get("st");
+
+          const client = await getClient(env);
+          try {
+            const ev = await getEvent(client, eventId);
+            if (!ev) return json(env, { error: "not_found" }, 404);
+
+            const stHash = st ? await sha256Hex(st) : "";
+            if (!st || stHash !== ev.success_token_hash) return json(env, { error: "unauthorized" }, 401);
+
+            // If webhook lagged, try verify payment status via Stripe
+            if (ev.status === "pending" && ev.stripe_session_id) {
+              try {
+                const stripe = stripeClient(env);
+                const s = await stripe.checkout.sessions.retrieve(ev.stripe_session_id);
+                if (s?.payment_status === "paid") await markPaid(client, eventId);
+              } catch {}
+            }
+
+            const bk = ev.broadcast_key || (await ensureBroadcastKey(client, eventId));
+
+            return json(env, {
+              ok: true,
+              event_id: eventId,
+              watch_url: watchUrl(env, eventId, ev.secret_key),
+              broadcast_url: broadcastUrl(env, eventId, bk),
+              rtc_enabled: !!ev.rtc_enabled,
+              hls_enabled: !!ev.hls_enabled,
+            });
+          } finally {
+            await client.end();
+          }
+        }
+      }
+
+      // Public event info (watch page uses this)
+      {
+        const m = match(pathname, /^\/api\/events\/([^\/]+)\/public$/);
+        if (method === "GET" && m) {
+          const eventId = m[0];
+          const key = url.searchParams.get("key");
+
+          const client = await getClient(env);
+          try {
+            const ev = await getEvent(client, eventId);
+            if (!ev) return json(env, { error: "not_found" }, 404);
+
+            const authRes = requireExact(key, ev.secret_key, env);
+            if (authRes) return authRes;
+
+            const expired = ev.status === "expired" || (ev.expires_at && new Date(ev.expires_at).getTime() < Date.now());
+
+            return json(env, {
+              ok: true,
+              id: ev.id,
+              title: ev.title,
+              status: ev.status,
+              expired,
+              playback_url: ev.ivs_playback_url || null,
+              rtc_stage_arn: ev.rtc_stage_arn || null,
+              rtc_enabled: !!ev.rtc_enabled,
+              hls_enabled: !!ev.hls_enabled,
+              white_label: !!ev.white_label,
+            });
+          } finally {
+            await client.end();
+          }
+        }
+      }
+
+      // SeatsDO proxy (optional viewer limit)
+      {
+        const m = match(pathname, /^\/api\/events\/([^\/]+)\/(view-session|heartbeat|leave|stats)$/);
+        if (m) {
+          const eventId = m[0];
+          const action = m[1];
+
+          const id = env.SEATS.idFromName(`seats:${eventId}`);
+          const stub = env.SEATS.get(id);
+
+          const doUrl = new URL(request.url);
+          doUrl.pathname = `/seats/${action}`;
+
+          return await stub.fetch(new Request(doUrl.toString(), request));
+        }
+      }
+
+      // BroadcastLockDO proxy (gated by broadcast key)
+      if (pathname.startsWith("/api/broadcast/")) {
+        const action = pathname.split("/").pop() || "";
+        const body = method === "POST" ? await readJson(request) : {};
+        const eventId = String(body.eventId ?? url.searchParams.get("eventId") ?? "");
+        const key = String(body.key ?? url.searchParams.get("key") ?? "");
+
+        if (!eventId) return json(env, { error: "missing_eventId" }, 400);
+
+        const client = await getClient(env);
+        try {
+          const ev = await getEvent(client, eventId);
+          if (!ev) return json(env, { error: "not_found" }, 404);
+
+          const authRes = requireExact(key, ev.broadcast_key, env);
+          if (authRes) return authRes;
+
+          const id = env.BROADCAST_LOCK.idFromName(`lock:${eventId}`);
+          const stub = env.BROADCAST_LOCK.get(id);
+
+          const doUrl = new URL(request.url);
+          doUrl.pathname = `/lock/${action}`;
+
+          return await stub.fetch(new Request(doUrl.toString(), request));
+        } finally {
+          await client.end();
+        }
+      }
+
+      // HLS provisioning (IVS Channel)
+      {
+        const m = match(pathname, /^\/api\/events\/([^\/]+)\/hls\/provision$/);
+        if (method === "POST" && m) {
+          const eventId = m[0];
+          const key = url.searchParams.get("key");
+
+          const client = await getClient(env);
+          try {
+            const ev = await getEvent(client, eventId);
+            if (!ev) return json(env, { error: "not_found" }, 404);
+            if (ev.status !== "paid") return json(env, { error: "not_paid" }, 400);
+            if (!ev.hls_enabled) return json(env, { error: "hls_disabled" }, 400);
+
+            const authRes = requireExact(key, ev.broadcast_key, env);
+            if (authRes) return authRes;
+
+            // Return existing
+            if (ev.ivs_channel_arn && ev.ivs_ingest_endpoint && ev.ivs_playback_url && ev.ivs_stream_key_encrypted) {
+              const host = ingestHostFromDb(ev.ivs_ingest_endpoint);
+              const streamKey = await decryptString(ev.ivs_stream_key_encrypted, env.STREAMKEY_ENC_KEY_B64);
+              return json(env, {
+                ok: true,
+                alreadyProvisioned: true,
+                ingest: { rtmpsUrl: rtmpsUrlFromHost(host), streamKey },
+                playback: { url: ev.ivs_playback_url },
+              });
+            }
+
+            const ch = await createChannel(env, `relay-${eventId}`);
+            const sk = await createStreamKey(env, ch.channelArn);
+            const enc = await encryptString(sk.streamKeyValue, env.STREAMKEY_ENC_KEY_B64);
+
+            await updateIvs(client, eventId, ch.channelArn, ch.ingestEndpoint, ch.playbackUrl, enc);
+
+            const host = ingestHostFromDb(ch.ingestEndpoint);
+
+            return json(env, {
+              ok: true,
+              ingest: { rtmpsUrl: rtmpsUrlFromHost(host), streamKey: sk.streamKeyValue },
+              playback: { url: ch.playbackUrl },
+            });
+          } finally {
+            await client.end();
+          }
+        }
+      }
+
+      // WebRTC provisioning (Stage) -> returns host token
+      {
+        const m = match(pathname, /^\/api\/events\/([^\/]+)\/rtc\/provision$/);
+        if (method === "POST" && m) {
+          const eventId = m[0];
+          const key = url.searchParams.get("key");
+
+          const client = await getClient(env);
+          try {
+            const ev = await getEvent(client, eventId);
+            if (!ev) return json(env, { error: "not_found" }, 404);
+            if (ev.status !== "paid") return json(env, { error: "not_paid" }, 400);
+            if (!ev.rtc_enabled) return json(env, { error: "rtc_disabled" }, 400);
+
+            const authRes = requireExact(key, ev.broadcast_key, env);
+            if (authRes) return authRes;
+
+            let stageArn = ev.rtc_stage_arn as string | null;
+            let endpoints: any = ev.rtc_stage_endpoints ?? null;
+
+            if (!stageArn) {
+              const st = await createStage(env, `relay-${eventId}`);
+              stageArn = st.stageArn;
+              endpoints = st.endpoints || null;
+              await updateRtc(client, eventId, stageArn, endpoints);
+            }
+
+            const token = await createParticipantToken(env, stageArn, `host-${eventId}`, ["PUBLISH", "SUBSCRIBE"], 3600);
+
+            return json(env, { ok: true, stageArn, participantToken: token.token, endpoints });
+          } finally {
+            await client.end();
+          }
+        }
+      }
+
+      // WebRTC viewer token mint (anyone with watch key)
+      {
+        const m = match(pathname, /^\/api\/events\/([^\/]+)\/rtc\/token$/);
+        if (method === "POST" && m) {
+          const eventId = m[0];
+          const key = url.searchParams.get("key");
+
+          const client = await getClient(env);
+          try {
+            const ev = await getEvent(client, eventId);
+            if (!ev) return json(env, { error: "not_found" }, 404);
+            if (ev.status !== "paid") return json(env, { error: "not_paid" }, 400);
+            if (!ev.rtc_enabled) return json(env, { error: "rtc_disabled" }, 400);
+
+            const authRes = requireExact(key, ev.secret_key, env);
+            if (authRes) return authRes;
+
+            const stageArn = ev.rtc_stage_arn as string | null;
+            if (!stageArn) return json(env, { error: "not_live_yet" }, 409);
+
+            const token = await createParticipantToken(env, stageArn, `viewer-${randomSecretUrlSafe(10)}`, ["SUBSCRIBE"], 1800);
+
+            return json(env, { ok: true, stageArn, participantToken: token.token });
+          } finally {
+            await client.end();
+          }
+        }
+      }
+
+      // GET /api/events/:id (legacy/simple)
+      {
+        const m = match(pathname, /^\/api\/events\/([^\/]+)$/);
+        if (method === "GET" && m) {
+          const eventId = m[0];
+          const client = await getClient(env);
+          try {
+            const ev = await getEvent(client, eventId);
+            if (!ev) return json(env, { error: "not_found" }, 404);
+
+            const expired = ev.status === "expired" || (ev.expires_at && new Date(ev.expires_at).getTime() < Date.now());
+
+            return json(env, {
+              id: ev.id,
+              title: ev.title,
+              tier: ev.tier,
+              viewer_limit: ev.viewer_limit,
+              white_label: ev.white_label,
+              status: ev.status,
+              expired,
+              playback_url: ev.ivs_playback_url || null,
+              rtc_stage_arn: ev.rtc_stage_arn || null,
+              rtc_enabled: !!ev.rtc_enabled,
+              hls_enabled: !!ev.hls_enabled,
+            });
+          } finally {
+            await client.end();
+          }
+        }
+      }
+
+      return text(env, "Not Found", 404);
+    } catch (err) {
+      console.error("Worker error:", err);
+      return text(env, "Internal Server Error", 500);
     }
-
-    // Test metadata (watch page)
-    const mTestMeta = url.pathname.match(/^\/api\/test\/([0-9a-f-]+)$/i);
-    if (req.method === "GET" && mTestMeta) {
-      const testId = mTestMeta[1];
-
-      const row = await withDb(env, async (c) => {
-        const r = await c.query(
-          `select id,status,expires_at,ivs_playback_url
-           from test_streams where id=$1`,
-          [testId]
-        );
-        return r.rows[0];
-      });
-
-      if (!row) return addCors(bad("not_found", 404));
-
-      const expired = new Date(row.expires_at).getTime() <= Date.now() || row.status === "expired";
-
-      return addCors(json({
-        id: row.id,
-        status: row.status,
-        expires_at: row.expires_at,
-        playback_url: row.ivs_playback_url,
-        expired
-      }));
-    }
-
-    // Test broadcast config (requires key)
-    const mTestCfg = url.pathname.match(/^\/api\/test\/([0-9a-f-]+)\/config$/i);
-    if (req.method === "GET" && mTestCfg) {
-      const testId = mTestCfg[1];
-      const key = url.searchParams.get("key") ?? "";
-      if (!key) return addCors(bad("missing_key"));
-
-      const row = await withDb(env, async (c) => {
-        const r = await c.query(
-          `select id,status,expires_at,secret_key,ivs_ingest_endpoint,ivs_stream_key_encrypted,ivs_playback_url
-           from test_streams where id=$1`,
-          [testId]
-        );
-        return r.rows[0];
-      });
-
-      if (!row) return addCors(bad("not_found", 404));
-
-      const expired = new Date(row.expires_at).getTime() <= Date.now() || row.status === "expired";
-      if (expired) return addCors(bad("expired", 410));
-      if (row.secret_key !== key) return addCors(bad("forbidden", 403));
-
-      const streamKey = await decryptString(row.ivs_stream_key_encrypted, env.STREAMKEY_ENC_KEY_B64);
-
-      return addCors(json({
-        ingestEndpoint: row.ivs_ingest_endpoint,
-        streamKey,
-        playbackUrl: row.ivs_playback_url,
-        expires_at: row.expires_at
-      }));
-    }
-
-
-    // ---- REPORTS (viewer abuse/copyright) ----
-
-    // Submit a report (public)
-    if (req.method === "POST" && url.pathname === "/api/report") {
-      const body = await req.json<any>().catch(() => null);
-      if (!body) return addCors(bad("invalid_json"));
-
-      const eventId = String(body.event_id ?? "");
-      const reason = String(body.reason ?? "").slice(0, 80);
-      const description = String(body.description ?? "").slice(0, 2000);
-      const page = String(body.page ?? "watch").slice(0, 40);
-
-      if (!reason) return addCors(bad("missing_reason"));
-      // event_id optional (allows reporting even if event lookup fails), but validate UUID-ish if provided
-      if (eventId && !/^[0-9a-f-]{10,}$/i.test(eventId)) return addCors(bad("bad_event_id"));
-
-      const ip = req.headers.get("CF-Connecting-IP") || req.headers.get("X-Forwarded-For") || "";
-      const ua = req.headers.get("User-Agent") || "";
-
-      await withDb(env, async (c) => {
-        await c.query(
-          `insert into reports (event_id, page, reason, description, ip_address, user_agent)
-           values ($1,$2,$3,$4,$5,$6)`,
-          [eventId || null, page || "watch", reason, description || null, ip || null, ua || null]
-        );
-      });
-
-      return addCors(json({ ok: true }));
-    }
-
-    // Admin: list recent reports (requires ADMIN_KEY)
-    const mAdminReports = url.pathname === "/api/admin/reports";
-    if (req.method === "GET" && mAdminReports) {
-      const key = url.searchParams.get("key") ?? "";
-      if (!env.ADMIN_KEY || key !== env.ADMIN_KEY) return addCors(bad("forbidden", 403));
-
-      const rows = await withDb(env, async (c) => {
-        const r = await c.query(
-          `select r.id, r.event_id, r.page, r.reason, r.description, r.ip_address, r.created_at,
-                  e.title as event_title, e.status as event_status, e.disabled as event_disabled
-           from reports r
-           left join events e on e.id = r.event_id
-           order by r.created_at desc
-           limit 200`
-        );
-        return r.rows;
-      });
-
-      return addCors(json({ ok: true, reports: rows }));
-    }
-
-    // Admin: disable an event (requires ADMIN_KEY)
-    const mAdminDisable = url.pathname.match(/^\/api\/admin\/events\/([0-9a-f-]+)\/disable$/i);
-    if (req.method === "POST" && mAdminDisable) {
-      const eventId = mAdminDisable[1];
-      const key = url.searchParams.get("key") ?? "";
-      if (!env.ADMIN_KEY || key !== env.ADMIN_KEY) return addCors(bad("forbidden", 403));
-
-      await withDb(env, async (c) => {
-        await c.query(`update events set disabled=true where id=$1`, [eventId]);
-      });
-
-      return addCors(json({ ok: true }));
-    }
-
-    return addCors(bad("not_found", 404));
   },
 
-  async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
-    const expired = await withDb(env, async (c) => {
-      const r = await c.query(
-        `update events
-         set status='expired'
-         where status <> 'expired'
-           and (
-             (expires_at is not null and expires_at <= now())
-             or (starts_at is null and created_at <= now() - interval '24 hours')
-           )
-         returning id, ivs_channel_arn`
+  async scheduled(_event: any, env: Env) {
+    const client = await getClient(env);
+    try {
+      const { rows } = await client.query(
+        `
+        update public.events
+        set status='expired'
+        where expires_at is not null
+          and expires_at < now()
+          and status != 'expired'
+        returning id, ivs_channel_arn, rtc_stage_arn
+      `
       );
-      return r.rows as Array<{ id: string; ivs_channel_arn: string | null }>;
-    });
 
-
-    // expire tests
-    const expiredTests = await withDb(env, async (c) => {
-      const r = await c.query(
-        `update test_streams
-         set status='expired'
-         where status <> 'expired' and expires_at <= now()
-         returning id, ivs_channel_arn`
-      );
-      return r.rows as Array<{ id: string; ivs_channel_arn: string | null }>;
-    });
-
-    if (String(env.DELETE_IVS_ON_EXPIRE) === "true" && expiredTests.length) {
-      for (const t of expiredTests) {
-        if (!t.ivs_channel_arn) continue;
-        ctx.waitUntil(deleteIvsChannel(env, t.ivs_channel_arn).catch(() => {}));
+      const doDelete = String(env.DELETE_IVS_ON_EXPIRE ?? "false").toLowerCase() === "true";
+      if (doDelete && rows?.length) {
+        for (const r of rows) {
+          try {
+            if (r.ivs_channel_arn) await deleteIvsChannel(env, r.ivs_channel_arn);
+          } catch (e) {
+            console.error("DeleteChannel failed", r.id, e);
+          }
+          try {
+            if (r.rtc_stage_arn) await deleteStage(env, r.rtc_stage_arn);
+          } catch (e) {
+            console.error("DeleteStage failed", r.id, e);
+          }
+        }
       }
+    } catch (err) {
+      console.error("Cron error:", err);
+    } finally {
+      await client.end();
     }
-
-    if (String(env.DELETE_IVS_ON_EXPIRE) === "true" && expired.length) {
-      for (const e of expired) {
-        if (!e.ivs_channel_arn) continue;
-        ctx.waitUntil(
-          (async () => {
-            try {
-              await deleteIvsChannel(env, e.ivs_channel_arn!);
-            } catch {
-              // ignore
-            }
-          })()
-        );
-      }
-    }
-  }
+  },
 };

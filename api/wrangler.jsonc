@@ -47,6 +47,10 @@
     "EXTENDED_HOURS": "8",
     "GRACE_MINUTES": "30",
 
-    "DELETE_IVS_ON_EXPIRE": "false"
+    "DELETE_IVS_ON_EXPIRE": "false",
+    "IVS_REALTIME_API_ENDPOINT": "https://ivsrealtime.ap-southeast-2.amazonaws.com",
+    "HLS_ADDON_NZD": "0",
+    "WEBRTC_ADDON_NZD": "4000",
+    "BOTH_ADDON_NZD": "6500"
   }
 }
