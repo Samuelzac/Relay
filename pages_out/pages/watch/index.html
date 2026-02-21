@@ -4,6 +4,10 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Relay Watch</title>
+
+  <!-- IVS Realtime SDK -->
+  <script src="https://player.live-video.net/1.21.0/amazon-ivs-realtime.min.js"></script>
+
   <style>
     body { font-family: system-ui, sans-serif; margin: 20px; }
     video { width: 100%; max-width: 900px; background: #000; border-radius: 12px; }
@@ -13,57 +17,124 @@
   </style>
 </head>
 <body>
-  <h1>Relay Watch</h1>
-  <div class="box">
-    <div><b>Event:</b> <code id="eventId"></code></div>
-    <div><b>Key:</b> <code id="key"></code></div>
-    <div><b>Status:</b> <span id="status">Loading…</span></div>
-    <div class="err" id="err"></div>
-  </div>
 
-  <video id="video" playsinline autoplay controls muted></video>
+<h1>Relay Watch</h1>
 
-  <script>
-    const API_BASE = "https://stream-platform-api.kiwismurph.workers.dev";
+<div class="box">
+  <div><b>Event:</b> <code id="eventId"></code></div>
+  <div><b>Status:</b> <span id="status">Loading…</span></div>
+  <div class="err" id="err"></div>
+</div>
 
-    function parseEventId() {
-      // Option B routing: /watch/?id=<eventId>&key=<secret>
-      return new URLSearchParams(location.search).get("id") || "";
+<video id="video" playsinline autoplay controls></video>
+
+<script>
+const API_BASE = "https://stream-platform-api.kiwismurph.workers.dev";
+
+const statusEl = document.getElementById("status");
+const errEl = document.getElementById("err");
+const videoEl = document.getElementById("video");
+
+function getParam(name) {
+  return new URLSearchParams(location.search).get(name) || "";
+}
+
+async function fetchPublic(eventId, key) {
+  const res = await fetch(`${API_BASE}/api/events/${eventId}/public?key=${encodeURIComponent(key)}`);
+  const data = await res.json();
+  if (!res.ok) throw new Error(`public failed: ${res.status} ${JSON.stringify(data)}`);
+  return data;
+}
+
+async function fetchViewerToken(eventId, key) {
+  const res = await fetch(`${API_BASE}/api/events/${eventId}/rtc/token?key=${encodeURIComponent(key)}`, {
+    method: "POST"
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(`rtc/token failed: ${res.status} ${JSON.stringify(data)}`);
+  return data;
+}
+
+async function joinStage(stageArn, participantToken) {
+  if (!window.IVSBroadcastClient && !window.IVSRealtime) {
+    throw new Error("IVS Realtime SDK not loaded");
+  }
+
+  const IVS = window.IVSRealtime;
+
+  const stage = new IVS.Stage({
+    token: participantToken,
+    strategy: {
+      stageStreamsToPublish: () => [],
+      shouldPublishParticipant: () => false,
+      shouldSubscribeToParticipant: () => true
     }
+  });
 
-    async function main() {
-      const eventId = parseEventId();
-      const key = new URLSearchParams(location.search).get("key") || "";
-      document.getElementById("eventId").textContent = eventId || "(missing)";
-      document.getElementById("key").textContent = key || "(missing)";
+  stage.on(IVS.StageEvents.STAGE_CONNECTION_STATE_CHANGED, (state) => {
+    statusEl.textContent = "Connection: " + state;
+  });
 
-      if (!eventId || !key) {
-        document.getElementById("status").textContent = "Missing eventId or key in URL";
-        return;
+  stage.on(IVS.StageEvents.STAGE_PARTICIPANT_STREAMS_ADDED, (participant, streams) => {
+    streams.forEach(stream => {
+      if (stream.mediaStreamTrack.kind === "video") {
+        const mediaStream = new MediaStream([stream.mediaStreamTrack]);
+        videoEl.srcObject = mediaStream;
       }
-
-      // 1) Public event info (validates watch key)
-      const pubRes = await fetch(`${API_BASE}/api/events/${eventId}/public?key=${encodeURIComponent(key)}`);
-      const pub = await pubRes.json().catch(() => ({}));
-      if (!pubRes.ok) throw new Error(`public failed: ${pubRes.status} ${JSON.stringify(pub)}`);
-
-      // 2) If RTC is live, get a viewer token and join via WebRTC (Phase 2).
-      // For now we show "RTC live/not live" and HLS if present.
-      if (pub.rtc_enabled && pub.rtc_stage_arn) {
-        document.getElementById("status").textContent = "RTC stage ready (viewer token flow not yet wired on this page).";
-      } else if (pub.playback_url) {
-        document.getElementById("status").textContent = "HLS mode (playback URL found).";
-        // NOTE: native m3u8 won't play in Chrome without a player. This is a placeholder.
-        document.getElementById("video").src = pub.playback_url;
-      } else {
-        document.getElementById("status").textContent = "Not live yet (no RTC stage and no HLS playback).";
-      }
-    }
-
-    main().catch(err => {
-      document.getElementById("status").textContent = "Error";
-      document.getElementById("err").textContent = String(err?.stack || err);
     });
-  </script>
+  });
+
+  stage.on(IVS.StageEvents.STAGE_PARTICIPANT_STREAMS_REMOVED, () => {
+    videoEl.srcObject = null;
+  });
+
+  await stage.join();
+}
+
+async function main() {
+  const eventId = getParam("id");
+  const key = getParam("key");
+
+  document.getElementById("eventId").textContent = eventId || "(missing)";
+
+  if (!eventId || !key) {
+    statusEl.textContent = "Missing eventId or key";
+    return;
+  }
+
+  const pub = await fetchPublic(eventId, key);
+
+  if (pub.expired) {
+    statusEl.textContent = "This event has ended.";
+    return;
+  }
+
+  if (!pub.rtc_enabled) {
+    statusEl.textContent = "RTC not enabled.";
+    return;
+  }
+
+  if (!pub.rtc_stage_arn) {
+    statusEl.textContent = "Not live yet… waiting for host.";
+    return;
+  }
+
+  statusEl.textContent = "Requesting viewer token…";
+
+  const tokenData = await fetchViewerToken(eventId, key);
+
+  statusEl.textContent = "Joining live stream…";
+
+  await joinStage(tokenData.stageArn, tokenData.participantToken);
+
+  statusEl.textContent = "Live";
+}
+
+main().catch(err => {
+  statusEl.textContent = "Error";
+  errEl.textContent = err?.stack || err;
+});
+</script>
+
 </body>
 </html>
