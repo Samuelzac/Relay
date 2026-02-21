@@ -8,10 +8,14 @@
     body { font-family: system-ui, sans-serif; margin: 20px; }
     video { width: 100%; max-width: 900px; background: #000; border-radius: 12px; }
     .box { padding: 12px; border: 1px solid #ddd; border-radius: 12px; margin: 12px 0; }
-    button { padding: 12px 16px; border-radius: 10px; border: 0; font-weight: 700; }
+    button { padding: 12px 16px; border-radius: 10px; border: 0; font-weight: 700; cursor: pointer; }
+    button[disabled] { opacity: 0.5; cursor: not-allowed; }
     .err { color: #b00020; white-space: pre-wrap; }
     code { word-break: break-all; }
+    .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+    .pill { display: inline-block; padding: 6px 10px; border-radius: 999px; background: #f3f3f3; }
   </style>
+
   <!-- IVS Web Broadcast SDK -->
   <script src="https://web-broadcast.live-video.net/1.32.0/amazon-ivs-web-broadcast.js"></script>
 </head>
@@ -21,12 +25,19 @@
   <div class="box">
     <div><b>Event:</b> <code id="eventId"></code></div>
     <div><b>Broadcast Key:</b> <code id="key"></code></div>
-    <div><b>Status:</b> <span id="status">Ready</span></div>
+
+    <div class="row" style="margin-top:10px;">
+      <div><b>Status:</b> <span id="status">Ready</span></div>
+      <div class="pill"><b>Time left:</b> <span id="timeLeft">—</span></div>
+    </div>
+
     <div class="err" id="err"></div>
   </div>
 
-  <button id="go">Go Live</button>
-  <button id="stop" disabled>Stop</button>
+  <div class="row">
+    <button id="go">Go Live</button>
+    <button id="stop" disabled>Stop</button>
+  </div>
 
   <div class="box">
     <video id="preview" playsinline autoplay muted></video>
@@ -35,56 +46,100 @@
   <script>
     const API_BASE = "https://stream-platform-api.kiwismurph.workers.dev";
 
-    function parseEventId() {
-      // Option B routing: /broadcast/?id=<eventId>&key=<secret>
-      return new URLSearchParams(location.search).get("id") || "";
+    function qs(name) {
+      return new URLSearchParams(location.search).get(name) || "";
+    }
+
+    function setStatus(s) {
+      document.getElementById("status").textContent = s;
+    }
+
+    function setError(e) {
+      document.getElementById("err").textContent = e ? String(e?.stack || e) : "";
+    }
+
+    function fmtTimeLeft(ms) {
+      if (!Number.isFinite(ms)) return "—";
+      if (ms <= 0) return "0:00";
+      const totalSec = Math.floor(ms / 1000);
+      const h = Math.floor(totalSec / 3600);
+      const m = Math.floor((totalSec % 3600) / 60);
+      const s = totalSec % 60;
+      if (h > 0) return `${h}:${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`;
+      return `${m}:${String(s).padStart(2,"0")}`;
     }
 
     let stage = null;
     let localStream = null;
+    let countdownTimer = null;
+    let startedOnce = false;
+    let expiresAtMs = null;
 
-    async function main() {
-      const eventId = parseEventId();
-      const key = new URLSearchParams(location.search).get("key") || "";
-      document.getElementById("eventId").textContent = eventId || "(missing)";
-      document.getElementById("key").textContent = key || "(missing)";
+    function setTimeLeftFromExpires(expiresAtIso) {
+      if (!expiresAtIso) return;
+      const t = Date.parse(expiresAtIso);
+      if (!Number.isFinite(t)) return;
+      expiresAtMs = t;
 
-      if (!eventId || !key) {
-        document.getElementById("status").textContent = "Missing eventId or key in URL";
-        return;
-      }
+      if (countdownTimer) clearInterval(countdownTimer);
+      const el = document.getElementById("timeLeft");
 
-      document.getElementById("go").onclick = () => goLive(eventId, key);
-      document.getElementById("stop").onclick = stopLive;
+      const tick = () => {
+        const left = expiresAtMs - Date.now();
+        el.textContent = fmtTimeLeft(left);
+        if (left <= 0) {
+          clearInterval(countdownTimer);
+          countdownTimer = null;
+          // Optional: auto-stop when expired
+          // stopLive();
+        }
+      };
+
+      tick();
+      countdownTimer = setInterval(tick, 500);
+    }
+
+    async function callStart(eventId, key) {
+      // Idempotent (backend returns existing times if already started)
+      const url = `${API_BASE}/api/events/${eventId}/start?key=${encodeURIComponent(key)}`;
+      const res = await fetch(url, { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(`start failed: ${res.status} ${JSON.stringify(data)}`);
+      // expects { ok, started, starts_at, expires_at }
+      if (data?.expires_at) setTimeLeftFromExpires(data.expires_at);
+      return data;
     }
 
     async function goLive(eventId, key) {
       try {
-        setStatus("Requesting camera/mic…");
-        document.getElementById("err").textContent = "";
-
-        // 1) Get host token + stageArn (this provisions stage if needed)
+        setError("");
         setStatus("Provisioning RTC…");
-        const res = await fetch(`${API_BASE}/api/events/${eventId}/rtc/provision?key=${encodeURIComponent(key)}`, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: "{}"
-        });
+
+        // Ensure SDK is present
+        if (!window.IVSBroadcastClient) {
+          throw new Error("IVS Web Broadcast SDK failed to load (IVSBroadcastClient missing).");
+        }
+
+        // 1) Get host token + stageArn (provisions stage if needed)
+        const res = await fetch(
+          `${API_BASE}/api/events/${eventId}/rtc/provision?key=${encodeURIComponent(key)}`,
+          { method: "POST", headers: { "content-type": "application/json" }, body: "{}" }
+        );
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(`rtc/provision failed: ${res.status} ${JSON.stringify(data)}`);
 
-        const stageArn = data.stageArn;
         const token = data.participantToken;
-        if (!stageArn || !token) throw new Error("Missing stageArn/token from rtc/provision");
+        if (!token) throw new Error("Missing participantToken from rtc/provision");
 
         // 2) Capture devices
+        setStatus("Requesting camera/mic…");
         localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
         document.getElementById("preview").srcObject = localStream;
 
+        // 3) Build stage strategy + join
         setStatus("Joining stage…");
 
-        // 3) Build stage strategy
-        const { Stage, LocalStageStream, SubscribeType } = IVSBroadcastClient;
+        const { Stage, LocalStageStream, SubscribeType, StageEvents } = IVSBroadcastClient;
 
         const localVideoTrack = localStream.getVideoTracks()[0];
         const localAudioTrack = localStream.getAudioTracks()[0];
@@ -97,29 +152,66 @@
         const strategy = {
           stageStreamsToPublish() { return streamsToPublish; },
           shouldPublishParticipant() { return true; },
-          shouldSubscribeToParticipant() { return SubscribeType.NONE; } // host doesn't need to subscribe
+          shouldSubscribeToParticipant() { return SubscribeType.NONE; }
         };
 
         stage = new Stage(token, strategy);
 
-        stage.on(Stage.Events.STAGE_CONNECTION_STATE_CHANGED, (state) => {
-          console.log("Stage state:", state);
+        // ✅ Correct event enum usage
+        stage.on(StageEvents.STAGE_CONNECTION_STATE_CHANGED, async (state) => {
+          console.log("Stage connection state:", state);
+
+          // When connected, start the event clock once
+          if (!startedOnce && state === "CONNECTED") {
+            startedOnce = true;
+            try {
+              setStatus("LIVE ✅ (starting clock…)");
+
+              const started = await callStart(eventId, key);
+              console.log("start result:", started);
+
+              setStatus("LIVE ✅");
+            } catch (e) {
+              // If start fails, still allow stage to run, but show error
+              console.error(e);
+              setError(e);
+              setStatus("LIVE (clock start failed)");
+            }
+          }
         });
 
         await stage.join();
 
-        setStatus("LIVE ✅");
+        // If the SDK doesn’t emit CONNECTED quickly for some reason, do a fallback start once after join.
+        if (!startedOnce) {
+          startedOnce = true;
+          try {
+            setStatus("LIVE ✅ (starting clock…)");
+
+            const started = await callStart(eventId, key);
+            console.log("start result:", started);
+
+            setStatus("LIVE ✅");
+          } catch (e) {
+            console.error(e);
+            setError(e);
+            setStatus("LIVE (clock start failed)");
+          }
+        }
+
         document.getElementById("go").disabled = true;
         document.getElementById("stop").disabled = false;
       } catch (err) {
         setStatus("Error");
-        document.getElementById("err").textContent = String(err?.stack || err);
+        setError(err);
       }
     }
 
     async function stopLive() {
       try {
         setStatus("Stopping…");
+        setError("");
+
         if (stage) await stage.leave();
         stage = null;
 
@@ -129,22 +221,40 @@
         }
         document.getElementById("preview").srcObject = null;
 
+        startedOnce = false;
+        expiresAtMs = null;
+        document.getElementById("timeLeft").textContent = "—";
+        if (countdownTimer) clearInterval(countdownTimer);
+        countdownTimer = null;
+
         setStatus("Stopped");
         document.getElementById("go").disabled = false;
         document.getElementById("stop").disabled = true;
       } catch (err) {
         setStatus("Error");
-        document.getElementById("err").textContent = String(err?.stack || err);
+        setError(err);
       }
     }
 
-    function setStatus(s) {
-      document.getElementById("status").textContent = s;
+    async function main() {
+      const eventId = qs("id");
+      const key = qs("key");
+
+      document.getElementById("eventId").textContent = eventId || "(missing)";
+      document.getElementById("key").textContent = key || "(missing)";
+
+      if (!eventId || !key) {
+        setStatus("Missing eventId or key in URL");
+        return;
+      }
+
+      document.getElementById("go").onclick = () => goLive(eventId, key);
+      document.getElementById("stop").onclick = stopLive;
     }
 
     main().catch(err => {
-      document.getElementById("status").textContent = "Error";
-      document.getElementById("err").textContent = String(err?.stack || err);
+      setStatus("Error");
+      setError(err);
     });
   </script>
 </body>

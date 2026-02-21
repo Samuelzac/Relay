@@ -1,0 +1,9 @@
+{
+  "name": "ivs-proxy",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@aws-sdk/client-ivs-realtime": "^3.0.0",
+    "express": "^4.19.2"
+  }
+}
