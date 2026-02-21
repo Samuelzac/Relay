@@ -1,4 +1,15 @@
-/watch/* /watch 200
-/broadcast/* /broadcast 200
-/success/* /success 200
-/ended/* /ended 200
+/watch            /watch/index.html        200
+/watch/           /watch/index.html        200
+/watch/*          /watch/index.html        200
+
+/broadcast        /broadcast/index.html     200
+/broadcast/       /broadcast/index.html     200
+/broadcast/*      /broadcast/index.html     200
+
+/create           /create/index.html        200
+/create/          /create/index.html        200
+/create/*         /create/index.html        200
+
+/success          /success/index.html       200
+/success/         /success/index.html       200
+/success/*        /success/index.html       200
