@@ -60,11 +60,13 @@ function pagesBase(env: Env) {
 }
 
 function watchUrl(env: Env, eventId: string, secretKey: string) {
-  return `${pagesBase(env)}/watch/${eventId}?key=${encodeURIComponent(secretKey)}`;
+  // Option B routing (query-based)
+  return `${pagesBase(env)}/watch/?id=${encodeURIComponent(eventId)}&key=${encodeURIComponent(secretKey)}`;
 }
 
 function broadcastUrl(env: Env, eventId: string, broadcastKey: string) {
-  return `${pagesBase(env)}/broadcast/${eventId}?key=${encodeURIComponent(broadcastKey)}`;
+  // Option B routing (query-based)
+  return `${pagesBase(env)}/broadcast/?id=${encodeURIComponent(eventId)}&key=${encodeURIComponent(broadcastKey)}`;
 }
 
 function requireExact(key: string | null, expected: string, env: Env) {
@@ -74,7 +76,6 @@ function requireExact(key: string | null, expected: string, env: Env) {
 
 function toMode(v: any): StreamMode {
   if (v === "webrtc" || v === "hls" || v === "both") return v;
-  // backwards compat: infer from flags
   return "webrtc";
 }
 
@@ -124,15 +125,22 @@ async function ensureBroadcastKey(client: any, eventId: string) {
   return bk;
 }
 
-async function updateIvs(client: any, id: string, channelArn: string, ingestHost: string, playbackUrl: string, streamKeyEnc: string) {
+async function updateIvs(
+  client: any,
+  id: string,
+  channelArn: string,
+  ingestHost: string,
+  playbackUrl: string,
+  streamKeyEnc: string
+) {
+  // NOTE: do NOT set starts_at here (time starts when broadcast begins)
   await client.query(
     `
     update public.events
     set ivs_channel_arn=$1,
         ivs_ingest_endpoint=$2,
         ivs_playback_url=$3,
-        ivs_stream_key_encrypted=$4,
-        starts_at=coalesce(starts_at, now())
+        ivs_stream_key_encrypted=$4
     where id=$5
   `,
     [channelArn, ingestHost, playbackUrl, streamKeyEnc, id]
@@ -140,12 +148,12 @@ async function updateIvs(client: any, id: string, channelArn: string, ingestHost
 }
 
 async function updateRtc(client: any, id: string, stageArn: string, endpoints: any) {
+  // NOTE: do NOT set starts_at here (time starts when broadcast begins)
   await client.query(
     `
     update public.events
     set rtc_stage_arn=$1,
-        rtc_stage_endpoints=$2,
-        starts_at=coalesce(starts_at, now())
+        rtc_stage_endpoints=$2
     where id=$3
   `,
     [stageArn, endpoints ? JSON.stringify(endpoints) : null, id]
@@ -248,18 +256,13 @@ export default {
 
           await client.query(`update public.events set stripe_session_id=$1 where id=$2`, [session.id, eventId]);
 
-          return json(env, {
-            ok: true,
-            event_id: eventId,
-            checkout_url: session.url,
-            build: "query-success-v1"
-        }, 200);
+          return json(env, { ok: true, event_id: eventId, checkout_url: session.url }, 200);
         } finally {
           await client.end();
         }
       }
 
-      // Stripe webhook -> mark paid
+      // Stripe webhook -> mark paid (+ provision RTC stage after payment)
       if (method === "POST" && pathname === "/api/stripe/webhook") {
         const sig = request.headers.get("stripe-signature");
         if (!sig) return json(env, { error: "missing_signature" }, 400);
@@ -278,10 +281,22 @@ export default {
         if (evt.type === "checkout.session.completed") {
           const session = evt.data.object;
           const eventId = session?.metadata?.relay_event_id;
+
           if (eventId) {
             const client = await getClient(env);
             try {
               await markPaid(client, eventId);
+
+              // Provision RTC stage immediately after payment (if enabled)
+              const ev = await getEvent(client, eventId);
+              if (ev?.rtc_enabled && !ev.rtc_stage_arn) {
+                try {
+                  const st = await createStage(env, `relay-${eventId}`);
+                  await updateRtc(client, eventId, st.stageArn, st.endpoints || null);
+                } catch (e) {
+                  console.error("RTC stage provision failed (webhook)", eventId, e);
+                }
+              }
             } finally {
               await client.end();
             }
@@ -289,6 +304,56 @@ export default {
         }
 
         return json(env, { ok: true }, 200);
+      }
+
+      // POST /api/events/:id/start  (broadcast start trigger -> starts clock)
+      {
+        const m = match(pathname, /^\/api\/events\/([^\/]+)\/start$/);
+        if (method === "POST" && m) {
+          const eventId = m[0];
+          const key = url.searchParams.get("key") || "";
+
+          const client = await getClient(env);
+          try {
+            const ev = await getEvent(client, eventId);
+            if (!ev) return json(env, { error: "not_found" }, 404);
+
+            const authRes = requireExact(key, ev.broadcast_key, env);
+            if (authRes) return authRes;
+
+            if (ev.status !== "paid") return json(env, { error: "not_paid" }, 403);
+
+            if (ev.starts_at) {
+              return json(env, {
+                ok: true,
+                started: false,
+                starts_at: ev.starts_at,
+                expires_at: ev.expires_at,
+              });
+            }
+
+            const now = new Date();
+            const tierHours = hoursForTier(env, Number(ev.tier));
+            const graceMin = Number(env.GRACE_MINUTES || "0");
+            const expires = new Date(now.getTime() + (tierHours * 60 + graceMin) * 60 * 1000);
+
+            await client.query(
+              `update public.events
+               set starts_at=$1, expires_at=$2
+               where id=$3 and starts_at is null`,
+              [now.toISOString(), expires.toISOString(), eventId]
+            );
+
+            return json(env, {
+              ok: true,
+              started: true,
+              starts_at: now.toISOString(),
+              expires_at: expires.toISOString(),
+            });
+          } finally {
+            await client.end();
+          }
+        }
       }
 
       // Success -> return watch + broadcast links
@@ -366,7 +431,7 @@ export default {
         }
       }
 
-      // SeatsDO proxy (optional viewer limit)
+      // SeatsDO proxy
       {
         const m = match(pathname, /^\/api\/events\/([^\/]+)\/(view-session|heartbeat|leave|stats)$/);
         if (m) {
@@ -525,7 +590,7 @@ export default {
         }
       }
 
-      // GET /api/events/:id (legacy/simple)
+      // GET /api/events/:id (simple)
       {
         const m = match(pathname, /^\/api\/events\/([^\/]+)$/);
         if (method === "GET" && m) {
@@ -549,6 +614,8 @@ export default {
               rtc_stage_arn: ev.rtc_stage_arn || null,
               rtc_enabled: !!ev.rtc_enabled,
               hls_enabled: !!ev.hls_enabled,
+              starts_at: ev.starts_at || null,
+              expires_at: ev.expires_at || null,
             });
           } finally {
             await client.end();
