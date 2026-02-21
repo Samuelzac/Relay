@@ -1,15 +1,14 @@
-/watch            /watch/index.html        200
-/watch/           /watch/index.html        200
-/watch/*          /watch/index.html        200
+# SUCCESS FIRST (most specific)
+/success/*         /success/index.html   200
 
-/broadcast        /broadcast/index.html     200
-/broadcast/       /broadcast/index.html     200
-/broadcast/*      /broadcast/index.html     200
+# WATCH
+/watch/*           /watch/index.html     200
 
-/create           /create/index.html        200
-/create/          /create/index.html        200
-/create/*         /create/index.html        200
+# BROADCAST
+/broadcast/*       /broadcast/index.html 200
 
-/success          /success/index.html       200
-/success/         /success/index.html       200
-/success/*        /success/index.html       200
+# CREATE
+/create/*          /create/index.html    200
+
+# ROOT FALLBACK
+/*                 /index.html           200
