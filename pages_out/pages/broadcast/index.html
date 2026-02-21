@@ -1,249 +1,152 @@
-<!DOCTYPE html>
+<!doctype html>
 <html>
 <head>
-  <meta charset="UTF-8" />
-  <title>Broadcast</title>
-  <script src="https://web-broadcast.live-video.net/1.10.0/amazon-ivs-web-broadcast.js"></script>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Relay Broadcast</title>
   <style>
-    html, body {
-      margin: 0; padding: 0; background: #000; height: 100%;
-      display: flex; flex-direction: column; align-items: center; justify-content: center;
-      color: white; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-      text-align: center;
-    }
-    video { width: 100%; max-width: 600px; background: black; border-radius: 10px; }
-    button {
-      margin-top: 16px; padding: 14px 26px; font-size: 18px;
-      border: none; border-radius: 8px; background: #00c853; color: white;
-      cursor: pointer;
-    }
-    button.stop { background: #d50000; }
-    button:disabled { opacity: 0.6; cursor: not-allowed; }
-    #status { margin-top: 12px; opacity: 0.9; max-width: 600px; }
-    .warn { color: #ffcc80; }
-    .bad { color: #ff8a80; }
+    body { font-family: system-ui, sans-serif; margin: 20px; }
+    video { width: 100%; max-width: 900px; background: #000; border-radius: 12px; }
+    .box { padding: 12px; border: 1px solid #ddd; border-radius: 12px; margin: 12px 0; }
+    button { padding: 12px 16px; border-radius: 10px; border: 0; font-weight: 700; }
+    .err { color: #b00020; white-space: pre-wrap; }
+    code { word-break: break-all; }
   </style>
+  <!-- IVS Web Broadcast SDK -->
+  <script src="https://web-broadcast.live-video.net/1.32.0/amazon-ivs-web-broadcast.js"></script>
 </head>
 <body>
+  <h1>Relay Broadcast</h1>
 
-  <video id="preview" autoplay playsinline muted></video>
-  <button id="toggleBtn" disabled>Loading…</button>
-  <div id="status">Initializing…</div>
+  <div class="box">
+    <div><b>Event:</b> <code id="eventId"></code></div>
+    <div><b>Broadcast Key:</b> <code id="key"></code></div>
+    <div><b>Status:</b> <span id="status">Ready</span></div>
+    <div class="err" id="err"></div>
+  </div>
 
-<script>
-  // Worker API origin
-  const API_BASE = "https://stream-platform-api.kiwismurph.workers.dev";
+  <button id="go">Go Live</button>
+  <button id="stop" disabled>Stop</button>
 
-  const preview = document.getElementById("preview");
-  const button = document.getElementById("toggleBtn");
-  const statusEl = document.getElementById("status");
+  <div class="box">
+    <video id="preview" playsinline autoplay muted></video>
+  </div>
 
-  // expected route: /broadcast/:eventId?key=...
-  const parts = location.pathname.split("/").filter(Boolean);
-  const eventId = parts[1] || null;
-  const key = new URLSearchParams(location.search).get("key");
+  <script>
+    const API_BASE = "https://stream-platform-api.kiwismurph.workers.dev";
 
-  let client;
-  let localStream;
-  let broadcasting = false;
-
-  let sid = null;
-  let cfg = null;
-  let hbTimer = null;
-
-  function setStatus(msg, cls="") {
-    statusEl.className = cls;
-    statusEl.textContent = msg;
-  }
-
-  async function safeReadJson(res) {
-    const text = await res.text();
-    try { return { text, json: JSON.parse(text) }; }
-    catch { return { text, json: null }; }
-  }
-
-  async function postJSON(url, body) {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body ?? {})
-    });
-    const { json } = await safeReadJson(res);
-    return { res, json: json || {} };
-  }
-
-  async function claimLock() {
-    const { res, json } = await postJSON(`${API_BASE}/api/broadcast/claim`, { eventId, key });
-    if (!res.ok) throw new Error(json.error || "Claim failed");
-    sid = json.broadcast_session_id;
-  }
-
-  async function fetchConfig() {
-    const url = `${API_BASE}/api/broadcast/config?eventId=${encodeURIComponent(eventId)}&key=${encodeURIComponent(key)}&sid=${encodeURIComponent(sid)}`;
-    const res = await fetch(url);
-    const { text, json } = await safeReadJson(res);
-    if (!res.ok) throw new Error((json && json.error) || text || "Config failed");
-    cfg = json;
-  }
-
-  async function broadcastStarted() {
-    const { res, json } = await postJSON(`${API_BASE}/api/broadcast/started`, { eventId, key });
-    if (!res.ok) throw new Error(json.error || "Failed to mark started");
-  }
-
-  async function heartbeatOnce() {
-    const { res, json } = await postJSON(`${API_BASE}/api/broadcast/heartbeat`, {
-      eventId, key, broadcast_session_id: sid
-    });
-    if (!res.ok || json.still_owner === false) stopBecauseKicked();
-  }
-
-  function startHeartbeat() {
-    stopHeartbeat();
-    hbTimer = setInterval(heartbeatOnce, 12000);
-  }
-
-  function stopHeartbeat() {
-    if (hbTimer) clearInterval(hbTimer);
-    hbTimer = null;
-  }
-
-  async function releaseLock() {
-    if (!sid) return;
-    try {
-      await postJSON(`${API_BASE}/api/broadcast/release`, { eventId, key, broadcast_session_id: sid });
-    } catch {}
-  }
-
-  function stopBecauseKicked() {
-    setStatus("This broadcast was opened elsewhere. You’ve been disconnected.", "bad");
-    stopBroadcast().catch(()=>{});
-    button.disabled = true;
-  }
-
-  async function init() {
-    if (!eventId || !key) {
-      setStatus("Missing eventId or key.", "bad");
-      return;
+    function parseEventId() {
+      const parts = location.pathname.split("/").filter(Boolean);
+      const idx = parts.indexOf("broadcast");
+      return idx >= 0 ? (parts[idx + 1] || "") : "";
     }
-    try {
-      setStatus("Claiming broadcast session…");
-      await claimLock();
 
-      setStatus("Fetching broadcast config…");
-      await fetchConfig();
+    let stage = null;
+    let localStream = null;
 
-      setStatus("Ready. Press Start Broadcast.");
-      button.textContent = "Start Broadcast";
-      button.disabled = false;
+    async function main() {
+      const eventId = parseEventId();
+      const key = new URLSearchParams(location.search).get("key") || "";
+      document.getElementById("eventId").textContent = eventId || "(missing)";
+      document.getElementById("key").textContent = key || "(missing)";
 
-      startHeartbeat();
-    } catch (e) {
-      console.error(e);
-      setStatus(e.message || "Init failed", "bad");
-      button.textContent = "Error";
-      button.disabled = true;
-    }
-  }
-
-  async function startBroadcast() {
-    try {
-      button.disabled = true;
-      setStatus("Requesting camera & mic…");
-
-      await heartbeatOnce();
-
-      localStream = await navigator.mediaDevices.getUserMedia({
-        video: { width: 1280, height: 720 },
-        audio: true
-      });
-
-      preview.srcObject = localStream;
-
-      setStatus("Starting IVS broadcast…");
-
-      client = IVSBroadcastClient.create({
-        streamConfig: IVSBroadcastClient.STANDARD_LANDSCAPE,
-        ingestEndpoint: cfg.ingestEndpoint
-      });
-
-      client.addVideoInputDevice(localStream, "camera1");
-      client.addAudioInputDevice(localStream, "mic1");
-
-      await client.startBroadcast(cfg.streamKey);
-
-      broadcasting = true;
-      button.textContent = "Stop Broadcast";
-      button.classList.add("stop");
-      button.disabled = false;
-
-      setStatus("Live ✅");
-      await broadcastStarted();
-
-    } catch (err) {
-      console.error("Error starting broadcast:", err);
-      setStatus(err && err.message ? err.message : "Failed to start broadcast.", "bad");
-      button.disabled = false;
-    }
-  }
-
-  async function stopBroadcast() {
-    try {
-      stopHeartbeat();
-
-      if (client && broadcasting) {
-        setStatus("Stopping broadcast…");
-        await client.stopBroadcast();
+      if (!eventId || !key) {
+        document.getElementById("status").textContent = "Missing eventId or key in URL";
+        return;
       }
 
-      broadcasting = false;
-      button.textContent = "Start Broadcast";
-      button.classList.remove("stop");
-
-      if (localStream) {
-        for (const track of localStream.getTracks()) track.stop();
-        localStream = null;
-      }
-      preview.srcObject = null;
-
-      setStatus("Stopped.");
-      await releaseLock();
-
-      // Re-claim so you can start again easily
-      setStatus("Re-claiming session…");
-      await claimLock();
-      await fetchConfig();
-      setStatus("Ready. Press Start Broadcast.");
-      startHeartbeat();
-      button.disabled = false;
-
-    } catch (err) {
-      console.error("Error stopping broadcast:", err);
-      setStatus("Stopped (with warnings).", "warn");
-      try { await releaseLock(); } catch {}
+      document.getElementById("go").onclick = () => goLive(eventId, key);
+      document.getElementById("stop").onclick = stopLive;
     }
-  }
 
-  button.addEventListener("click", () => {
-    if (!broadcasting) startBroadcast();
-    else stopBroadcast();
-  });
+    async function goLive(eventId, key) {
+      try {
+        setStatus("Requesting camera/mic…");
+        document.getElementById("err").textContent = "";
 
-  window.addEventListener("beforeunload", () => {
-    try {
-      navigator.sendBeacon?.(`${API_BASE}/api/broadcast/release`, JSON.stringify({
-        eventId, key, broadcast_session_id: sid
-      }));
-    } catch {}
-  });
+        // 1) Get host token + stageArn (this provisions stage if needed)
+        setStatus("Provisioning RTC…");
+        const res = await fetch(`${API_BASE}/api/events/${eventId}/rtc/provision?key=${encodeURIComponent(key)}`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: "{}"
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(`rtc/provision failed: ${res.status} ${JSON.stringify(data)}`);
 
-  init();
-</script>
+        const stageArn = data.stageArn;
+        const token = data.participantToken;
+        if (!stageArn || !token) throw new Error("Missing stageArn/token from rtc/provision");
 
-<div style="margin-top:18px; font-size:12px; opacity:.75; text-align:center">
-  By using this service you agree to the <a href="/terms" style="color:#9ad1ff">Terms</a> and <a href="/privacy" style="color:#9ad1ff">Privacy Policy</a>.
-</div>
+        // 2) Capture devices
+        localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        document.getElementById("preview").srcObject = localStream;
 
+        setStatus("Joining stage…");
+
+        // 3) Build stage strategy
+        const { Stage, LocalStageStream, SubscribeType } = IVSBroadcastClient;
+
+        const localVideoTrack = localStream.getVideoTracks()[0];
+        const localAudioTrack = localStream.getAudioTracks()[0];
+
+        const streamsToPublish = [
+          new LocalStageStream(localVideoTrack),
+          new LocalStageStream(localAudioTrack),
+        ];
+
+        const strategy = {
+          stageStreamsToPublish() { return streamsToPublish; },
+          shouldPublishParticipant() { return true; },
+          shouldSubscribeToParticipant() { return SubscribeType.NONE; } // host doesn't need to subscribe
+        };
+
+        stage = new Stage(token, strategy);
+
+        stage.on(Stage.Events.STAGE_CONNECTION_STATE_CHANGED, (state) => {
+          console.log("Stage state:", state);
+        });
+
+        await stage.join();
+
+        setStatus("LIVE ✅");
+        document.getElementById("go").disabled = true;
+        document.getElementById("stop").disabled = false;
+      } catch (err) {
+        setStatus("Error");
+        document.getElementById("err").textContent = String(err?.stack || err);
+      }
+    }
+
+    async function stopLive() {
+      try {
+        setStatus("Stopping…");
+        if (stage) await stage.leave();
+        stage = null;
+
+        if (localStream) {
+          for (const t of localStream.getTracks()) t.stop();
+          localStream = null;
+        }
+        document.getElementById("preview").srcObject = null;
+
+        setStatus("Stopped");
+        document.getElementById("go").disabled = false;
+        document.getElementById("stop").disabled = true;
+      } catch (err) {
+        setStatus("Error");
+        document.getElementById("err").textContent = String(err?.stack || err);
+      }
+    }
+
+    function setStatus(s) {
+      document.getElementById("status").textContent = s;
+    }
+
+    main().catch(err => {
+      document.getElementById("status").textContent = "Error";
+      document.getElementById("err").textContent = String(err?.stack || err);
+    });
+  </script>
 </body>
 </html>

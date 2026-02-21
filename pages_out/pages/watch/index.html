@@ -1,375 +1,71 @@
-<!DOCTYPE html>
+<!doctype html>
 <html>
 <head>
-  <meta charset="UTF-8" />
-  <title>Watch</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <script src="https://cdn.jsdelivr.net/npm/hls.js@1"></script>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Relay Watch</title>
   <style>
-    html, body { margin:0; padding:0; background:#000; color:#fff; font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif; height:100%; }
-    .wrap { max-width:920px; margin:0 auto; padding:14px; }
-    h1 { font-size:18px; margin:10px 0 8px; font-weight:650; }
-    video { width:100%; background:#000; border-radius:10px; display:none; }
-    .card { margin-top:10px; padding:14px; border-radius:12px; background:rgba(255,255,255,0.08); line-height:1.35; }
-    .muted { opacity:0.85; }
-    .bad { color:#ff8a80; }
-    .warn { color:#ffcc80; }
-    .ok { color:#b9f6ca; }
-    .row { display:flex; gap:10px; flex-wrap:wrap; margin-top:12px; }
-    button { padding:12px 16px; border-radius:10px; border:0; background:rgba(255,255,255,0.14); color:#fff; font-size:16px; cursor:pointer; }
-    button.primary { background:#1976d2; }
-    button:disabled { opacity:.6; cursor:not-allowed; }
-    .brand { margin-top:14px; font-size:12px; opacity:0.65; text-align:center; }
-    .wait { display:flex; gap:12px; align-items:center; }
-    .spinner { width:18px; height:18px; border-radius:50%; border:3px solid rgba(255,255,255,0.25); border-top-color:rgba(255,255,255,0.9); animation:spin 0.9s linear infinite; flex:0 0 auto; }
-    @keyframes spin { to { transform: rotate(360deg); } }
-    .cta { margin-top:12px; padding-top:12px; border-top:1px solid rgba(255,255,255,0.12); display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+    body { font-family: system-ui, sans-serif; margin: 20px; }
+    video { width: 100%; max-width: 900px; background: #000; border-radius: 12px; }
+    .box { padding: 12px; border: 1px solid #ddd; border-radius: 12px; margin: 12px 0; }
+    .err { color: #b00020; white-space: pre-wrap; }
+    code { word-break: break-all; }
   </style>
 </head>
-
 <body>
-  <div class="wrap">
-    <h1 id="title">Loading…</h1>
-    <video id="player" controls playsinline autoplay></video>
-    <div id="panel" class="card">Initializing…</div>
-
-    <div class="row" id="controls" style="display:none;">
-      <button id="retryBtn">Retry</button>
-      <button id="unmuteBtn" class="primary">Unmute</button>
-    </div>
-
-    <div id="brand" class="brand"></div>
+  <h1>Relay Watch</h1>
+  <div class="box">
+    <div><b>Event:</b> <code id="eventId"></code></div>
+    <div><b>Key:</b> <code id="key"></code></div>
+    <div><b>Status:</b> <span id="status">Loading…</span></div>
+    <div class="err" id="err"></div>
   </div>
 
-<script>
-  const API_BASE = "https://stream-platform-api.kiwismurph.workers.dev";
-  const BRAND_NAME = "Relay";
+  <video id="video" playsinline autoplay controls muted></video>
 
-  // expected route: /watch/:eventId
-  const parts = location.pathname.split("/").filter(Boolean);
-  const eventId = parts[1] || null;
-
-  const titleEl = document.getElementById("title");
-  const panel = document.getElementById("panel");
-  const player = document.getElementById("player");
-  const controls = document.getElementById("controls");
-  const retryBtn = document.getElementById("retryBtn");
-  const unmuteBtn = document.getElementById("unmuteBtn");
-  const brandEl = document.getElementById("brand");
-
-  let hls = null;
-  let sessionId = null;
-  let hbTimer = null;
-  let pollTimer = null;
-
-  function html(s){ panel.innerHTML = s; }
-  function showControls(on){ controls.style.display = on ? "flex" : "none"; }
-
-  async function safeReadJson(res) {
-    const text = await res.text();
-    try { return { text, json: JSON.parse(text) }; }
-    catch { return { text, json: null }; }
-  }
-
-  async function getJSON(url) {
-    const res = await fetch(url);
-    const { text, json } = await safeReadJson(res);
-    return { res, json: json || {}, text };
-  }
-
-  async function postJSON(url, body) {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body ?? {})
-    });
-    const { text, json } = await safeReadJson(res);
-    return { res, json: json || {}, text };
-  }
-
-  function stopTimers() {
-    if (hbTimer) clearInterval(hbTimer);
-    hbTimer = null;
-    if (pollTimer) clearInterval(pollTimer);
-    pollTimer = null;
-  }
-
-  async function leaveSeat() {
-    if (!sessionId) return;
-    try {
-      navigator.sendBeacon?.(`${API_BASE}/api/events/${eventId}/leave`, JSON.stringify({ session_id: sessionId }));
-    } catch {}
-    sessionId = null;
-  }
-
-  function stopPlayback() {
-    try { player.pause(); } catch {}
-    player.removeAttribute("src");
-    try { player.load(); } catch {}
-    if (hls) { try { hls.destroy(); } catch {} hls = null; }
-    player.style.display = "none";
-  }
-
-  function startHls(playbackUrl) {
-    player.style.display = "block";
-
-    if (player.canPlayType("application/vnd.apple.mpegurl")) {
-      player.src = playbackUrl;
-      return;
-    }
-    if (window.Hls && Hls.isSupported()) {
-      hls = new Hls();
-      hls.loadSource(playbackUrl);
-      hls.attachMedia(player);
-      return;
-    }
-    html(`<div class="bad">This browser can’t play the stream.</div>
-          <div class="muted">Try Safari or a modern Chrome.</div>`);
-  }
-
-  async function allocateSeat() {
-    const { res, json, text } = await postJSON(`${API_BASE}/api/events/${eventId}/view-session`, {});
-    if (!res.ok) throw new Error(json.error || text || "Seat allocation failed");
-    if (!json.granted) throw new Error("Viewer limit reached. Try again shortly.");
-    sessionId = json.session_id;
-  }
-
-  function startHeartbeat() {
-    hbTimer = setInterval(async () => {
-      if (!sessionId) return;
-      const { res, json } = await postJSON(`${API_BASE}/api/events/${eventId}/heartbeat`, { session_id: sessionId });
-      if (!res.ok || json.ok === false) {
-        stopPlayback();
-        stopTimers();
-        sessionId = null;
-        showControls(true);
-        html(`<div class="warn">Your viewing session ended.</div>
-              <div class="muted">Tap Retry to rejoin.</div>`);
-      }
-    }, 20000);
-  }
-
-  function renderWaiting() {
-    stopPlayback();
-    showControls(true);
-
-    html(`
-      <div class="wait">
-        <div class="spinner"></div>
-        <div>
-          <div><b>Waiting for host to go live…</b></div>
-          <div class="muted">This page will update automatically.</div>
-        </div>
-      </div>
-      <div class="cta">
-        <span class="muted">If it doesn’t start:</span>
-        <button id="retryInline">Retry</button>
-      </div>
-    `);
-
-    document.getElementById("retryInline").onclick = loadAndPlay;
-
-    pollTimer = setInterval(async () => {
-      const { res, json } = await getJSON(`${API_BASE}/api/events/${eventId}`);
-      if (!res.ok) return;
-
-      if (json.expired) {
-        clearInterval(pollTimer);
-        location.href = `/ended/${eventId}`;
-        return;
-      }
-
-      if (json.playback_url) {
-        clearInterval(pollTimer);
-        await startViewing(json.playback_url);
-        return;
-      }
-    }, 5000);
-  }
-
-  async function startViewing(playbackUrl) {
-    try {
-      stopTimers();
-      await leaveSeat();
-
-      showControls(true);
-      html(`<div class="muted">Joining…</div>`);
-
-      await allocateSeat();
-
-      html(`<div class="ok"><b>Live</b></div>
-            <div class="muted">If playback doesn’t start, tap play.</div>`);
-
-      startHls(playbackUrl);
-      startHeartbeat();
-
-    } catch (e) {
-      stopPlayback();
-      showControls(true);
-      html(`<div class="bad"><b>${(e && e.message) ? e.message : "Couldn’t start viewing."}</b></div>
-            <div class="muted">Tap Retry to try again.</div>`);
-    }
-  }
-
-  async function loadAndPlay() {
-    stopTimers();
-    stopPlayback();
-    await leaveSeat();
-
-    if (!eventId) {
-      html(`<div class="bad">Invalid watch link.</div>`);
-      showControls(false);
-      return;
-    }
-
-    html(`<div class="muted">Loading event…</div>`);
-    showControls(false);
-
-    const { res: metaRes, json: meta, text } = await getJSON(`${API_BASE}/api/events/${eventId}`);
-
-    if (!metaRes.ok) {
-      html(`<div class="bad">${meta.error || text || "Event not found."}</div>`);
-      showControls(true);
-      return;
-    }
-
-    titleEl.textContent = meta.title || "Live stream";
-    brandEl.textContent = meta.white_label ? "" : `Powered by ${BRAND_NAME}`;
-
-    if (meta.expired) {
-      location.href = `/ended/${eventId}`;
-      return;
-    }
-
-    if (meta.status === "pending") {
-      html(`<div class="bad"><b>Not available yet</b></div>
-            <div class="muted">Payment has not completed.</div>`);
-      showControls(true);
-      return;
-    }
-
-    if (!meta.playback_url) {
-      renderWaiting();
-      return;
-    }
-
-    await startViewing(meta.playback_url);
-  }
-
-  retryBtn.onclick = loadAndPlay;
-  unmuteBtn.onclick = () => { player.muted = false; player.volume = 1; };
-
-  window.addEventListener("beforeunload", () => {
-    try { stopTimers(); } catch {}
-    try { leaveSeat(); } catch {}
-  });
-
-  loadAndPlay();
-</script>
-
-<div style="margin-top:18px; font-size:12px; opacity:.75; text-align:center">
-  By using this service you agree to the <a href="/terms" style="color:#9ad1ff">Terms</a> and <a href="/privacy" style="color:#9ad1ff">Privacy Policy</a>.
-</div>
-
-<!-- Report stream (minimal) -->
-<div id="reportLink" style="position:fixed;right:12px;bottom:12px;font-size:12px;opacity:.75">
-  <a href="#" style="color:#9ad1ff;text-decoration:none">Report this stream</a>
-</div>
-
-<div id="reportModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);align-items:center;justify-content:center;padding:16px;z-index:9999">
-  <div style="max-width:520px;width:100%;background:#111;border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:16px;color:#fff">
-    <div style="display:flex;justify-content:space-between;gap:10px;align-items:center">
-      <b>Report stream</b>
-      <button id="reportClose" style="border:0;background:rgba(255,255,255,.12);color:#fff;border-radius:10px;padding:8px 10px;cursor:pointer">Close</button>
-    </div>
-
-    <div style="margin-top:12px">
-      <label style="display:block;font-size:13px;opacity:.9;margin-bottom:6px">Reason</label>
-      <select id="reportReason" style="width:100%;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.15);background:rgba(255,255,255,.06);color:#fff">
-        <option value="">Select…</option>
-        <option>Copyright infringement</option>
-        <option>Illegal activity</option>
-        <option>Harassment / hate</option>
-        <option>Other</option>
-      </select>
-    </div>
-
-    <div style="margin-top:12px">
-      <label style="display:block;font-size:13px;opacity:.9;margin-bottom:6px">Details (optional)</label>
-      <textarea id="reportDesc" rows="4" style="width:100%;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.15);background:rgba(255,255,255,.06);color:#fff;resize:vertical" placeholder="What’s happening?"></textarea>
-    </div>
-
-    <div style="display:flex;gap:10px;align-items:center;margin-top:12px">
-      <button id="reportSend" style="border:0;background:#d50000;color:#fff;border-radius:10px;padding:10px 12px;cursor:pointer">Submit report</button>
-      <span id="reportStatus" style="font-size:12px;opacity:.8"></span>
-    </div>
-
-    <div style="margin-top:10px;font-size:12px;opacity:.7">
-      If you believe this content is illegal or an emergency, contact local authorities.
-    </div>
-  </div>
-</div>
-
-<script>
-  // report modal wiring
-  (function(){
+  <script>
     const API_BASE = "https://stream-platform-api.kiwismurph.workers.dev";
-    const parts = location.pathname.split("/").filter(Boolean);
-    const eventId = parts[1] || null;
 
-    const reportLink = document.getElementById("reportLink");
-    const reportModal = document.getElementById("reportModal");
-    const reportClose = document.getElementById("reportClose");
-    const reportSend = document.getElementById("reportSend");
-    const reportReason = document.getElementById("reportReason");
-    const reportDesc = document.getElementById("reportDesc");
-    const reportStatus = document.getElementById("reportStatus");
-
-    if (reportLink && reportModal) {
-      reportLink.addEventListener("click", (e) => {
-        e.preventDefault();
-        reportStatus.textContent = "";
-        reportReason.value = "";
-        reportDesc.value = "";
-        reportModal.style.display = "flex";
-      });
+    function parseEventId() {
+      // supports /watch/<eventId>
+      const parts = location.pathname.split("/").filter(Boolean);
+      const idx = parts.indexOf("watch");
+      return idx >= 0 ? (parts[idx + 1] || "") : "";
     }
 
-    if (reportClose) reportClose.addEventListener("click", () => reportModal.style.display = "none");
-    if (reportModal) reportModal.addEventListener("click", (e) => { if (e.target === reportModal) reportModal.style.display = "none"; });
+    async function main() {
+      const eventId = parseEventId();
+      const key = new URLSearchParams(location.search).get("key") || "";
+      document.getElementById("eventId").textContent = eventId || "(missing)";
+      document.getElementById("key").textContent = key || "(missing)";
 
-    if (reportSend) {
-      reportSend.addEventListener("click", async () => {
-        const reason = (reportReason.value || "").trim();
-        if (!reason) { reportStatus.textContent = "Select a reason."; return; }
-        reportSend.disabled = true;
-        reportStatus.textContent = "Sending…";
-        try {
-          const r = await fetch(`${API_BASE}/api/report`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              event_id: eventId || null,
-              page: "watch",
-              reason,
-              description: (reportDesc.value || "").trim()
-            })
-          });
-          const text = await r.text();
-          let j; try { j = JSON.parse(text); } catch { j = { error: text }; }
-          if (!r.ok) throw new Error(j.error || "Failed");
-          reportStatus.textContent = "Thanks. Report submitted.";
-          setTimeout(()=> { reportModal.style.display="none"; }, 900);
-        } catch (err) {
-          console.error(err);
-          reportStatus.textContent = "Couldn’t send report.";
-        } finally {
-          reportSend.disabled = false;
-        }
-      });
+      if (!eventId || !key) {
+        document.getElementById("status").textContent = "Missing eventId or key in URL";
+        return;
+      }
+
+      // 1) Public event info (validates watch key)
+      const pubRes = await fetch(`${API_BASE}/api/events/${eventId}/public?key=${encodeURIComponent(key)}`);
+      const pub = await pubRes.json().catch(() => ({}));
+      if (!pubRes.ok) throw new Error(`public failed: ${pubRes.status} ${JSON.stringify(pub)}`);
+
+      // 2) If RTC is live, get a viewer token and join via WebRTC (Phase 2).
+      // For now we show "RTC live/not live" and HLS if present.
+      if (pub.rtc_enabled && pub.rtc_stage_arn) {
+        document.getElementById("status").textContent = "RTC stage ready (viewer token flow not yet wired on this page).";
+      } else if (pub.playback_url) {
+        document.getElementById("status").textContent = "HLS mode (playback URL found).";
+        // NOTE: native m3u8 won't play in Chrome without a player. This is a placeholder.
+        document.getElementById("video").src = pub.playback_url;
+      } else {
+        document.getElementById("status").textContent = "Not live yet (no RTC stage and no HLS playback).";
+      }
     }
-  })();
-</script>
 
+    main().catch(err => {
+      document.getElementById("status").textContent = "Error";
+      document.getElementById("err").textContent = String(err?.stack || err);
+    });
+  </script>
 </body>
 </html>
