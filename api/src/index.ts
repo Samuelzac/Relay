@@ -225,7 +225,7 @@ export default {
           const eventId = rows[0].id as string;
 
           const stripe = stripeClient(env);
-          const successUrl = `${pagesBase(env)}/success/${eventId}?st=${encodeURIComponent(successToken)}`;
+          const successUrl = `${pagesBase(env)}/success/?id=${encodeURIComponent(eventId)}&st=${encodeURIComponent(successToken)}`;
           const cancelUrl = `${pagesBase(env)}/create?canceled=1`;
 
           const session = await stripe.checkout.sessions.create({
