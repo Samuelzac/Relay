@@ -14,9 +14,6 @@
     code { word-break: break-all; }
     .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
     .pill { display: inline-block; padding: 6px 10px; border-radius: 999px; background: #f3f3f3; }
-    .muted { color: #666; font-size: 14px; }
-    .grid { display: grid; grid-template-columns: 180px 1fr; gap: 8px 12px; }
-    @media (max-width: 520px) { .grid { grid-template-columns: 1fr; } }
   </style>
 
   <!-- IVS Web Broadcast SDK -->
@@ -26,22 +23,12 @@
   <h1>Relay Broadcast</h1>
 
   <div class="box">
-    <div class="grid">
-      <div><b>Mode</b></div><div><span id="mode" class="pill">—</span></div>
-      <div><b>Target</b></div><div><code id="target">—</code></div>
-      <div><b>Broadcast Key</b></div><div><code id="key">—</code></div>
-    </div>
+    <div><b>Event:</b> <code id="eventId"></code></div>
+    <div><b>Broadcast Key:</b> <code id="key"></code></div>
 
     <div class="row" style="margin-top:10px;">
       <div><b>Status:</b> <span id="status">Ready</span></div>
-      <div class="pill" id="timePill" style="display:none;"><b>Time left:</b> <span id="timeLeft">—</span></div>
-    </div>
-
-    <div class="muted" style="margin-top:8px;">
-      Use either:
-      <code>?stream=Sam1&amp;key=...</code> (fixed stream name mode)
-      or
-      <code>?id=&lt;eventId&gt;&amp;key=...</code> (existing event mode).
+      <div class="pill"><b>Time left:</b> <span id="timeLeft">—</span></div>
     </div>
 
     <div class="err" id="err"></div>
@@ -56,21 +43,7 @@
     <video id="preview" playsinline autoplay muted></video>
   </div>
 
-  <div class="box" id="obsBox" style="display:none;">
-    <h3 style="margin:0 0 10px 0;">OBS (WHIP) details</h3>
-    <div class="grid">
-      <div><b>WHIP Server</b></div>
-      <div><code>https://global.whip.live-video.net</code></div>
-      <div><b>Bearer Token</b></div>
-      <div><code id="obsToken">—</code></div>
-    </div>
-    <div class="muted" style="margin-top:10px;">
-      In OBS: Settings → Stream → Service: WHIP → paste Server + Bearer Token → Start Streaming.
-    </div>
-  </div>
-
   <script>
-    // Your Worker API base
     const API_BASE = "https://stream-platform-api.kiwismurph.workers.dev";
 
     function qs(name) {
@@ -108,9 +81,6 @@
       if (!Number.isFinite(t)) return;
       expiresAtMs = t;
 
-      const pill = document.getElementById("timePill");
-      pill.style.display = "inline-block";
-
       if (countdownTimer) clearInterval(countdownTimer);
       const el = document.getElementById("timeLeft");
 
@@ -120,6 +90,8 @@
         if (left <= 0) {
           clearInterval(countdownTimer);
           countdownTimer = null;
+          // Optional: auto-stop when expired
+          // stopLive();
         }
       };
 
@@ -127,59 +99,44 @@
       countdownTimer = setInterval(tick, 500);
     }
 
-    async function callStartEvent(eventId, key) {
-      // Only used in event-mode (your backend already supports this)
+    async function callStart(eventId, key) {
+      // Idempotent (backend returns existing times if already started)
       const url = `${API_BASE}/api/events/${eventId}/start?key=${encodeURIComponent(key)}`;
       const res = await fetch(url, { method: "POST" });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(`start failed: ${res.status} ${JSON.stringify(data)}`);
+      // expects { ok, started, starts_at, expires_at }
       if (data?.expires_at) setTimeLeftFromExpires(data.expires_at);
       return data;
     }
 
-    function showObsToken(token) {
-      document.getElementById("obsToken").textContent = token || "—";
-      document.getElementById("obsBox").style.display = token ? "block" : "none";
-    }
-
-    async function goLive({ mode, eventId, streamName, key }) {
+    async function goLive(eventId, key) {
       try {
         setError("");
         setStatus("Provisioning RTC…");
-        showObsToken("");
 
         // Ensure SDK is present
         if (!window.IVSBroadcastClient) {
           throw new Error("IVS Web Broadcast SDK failed to load (IVSBroadcastClient missing).");
         }
 
-        // 1) Get host token (and stage provisioned if needed)
-        const provisionUrl =
-          mode === "stream"
-            ? `${API_BASE}/api/streams/${encodeURIComponent(streamName)}/rtc/provision?key=${encodeURIComponent(key)}`
-            : `${API_BASE}/api/events/${encodeURIComponent(eventId)}/rtc/provision?key=${encodeURIComponent(key)}`;
-
-        const res = await fetch(provisionUrl, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: "{}"
-        });
-
+        // 1) Get host token + stageArn (provisions stage if needed)
+        const res = await fetch(
+          `${API_BASE}/api/events/${eventId}/rtc/provision?key=${encodeURIComponent(key)}`,
+          { method: "POST", headers: { "content-type": "application/json" }, body: "{}" }
+        );
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(`rtc/provision failed: ${res.status} ${JSON.stringify(data)}`);
 
         const token = data.participantToken;
         if (!token) throw new Error("Missing participantToken from rtc/provision");
 
-        // Show WHIP details for OBS (same token works as Bearer Token)
-        showObsToken(token);
-
         // 2) Capture devices
         setStatus("Requesting camera/mic…");
         localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
         document.getElementById("preview").srcObject = localStream;
 
-        // 3) Build stage strategy + join (publish local tracks, subscribe to none)
+        // 3) Build stage strategy + join
         setStatus("Joining stage…");
 
         const { Stage, LocalStageStream, SubscribeType, StageEvents } = IVSBroadcastClient;
@@ -200,59 +157,50 @@
 
         stage = new Stage(token, strategy);
 
+        // ✅ Correct event enum usage
         stage.on(StageEvents.STAGE_CONNECTION_STATE_CHANGED, async (state) => {
           console.log("Stage connection state:", state);
 
+          // When connected, start the event clock once
           if (!startedOnce && state === "CONNECTED") {
             startedOnce = true;
+            try {
+              setStatus("LIVE ✅ (starting clock…)");
 
-            if (mode === "event") {
-              // Start your event clock (existing behavior)
-              try {
-                setStatus("LIVE ✅ (starting clock…)");
+              const started = await callStart(eventId, key);
+              console.log("start result:", started);
 
-                const started = await callStartEvent(eventId, key);
-                console.log("start result:", started);
-
-                setStatus("LIVE ✅");
-              } catch (e) {
-                console.error(e);
-                setError(e);
-                setStatus("LIVE (clock start failed)");
-              }
-            } else {
-              // Stream-name mode: no clock endpoint (yet)
               setStatus("LIVE ✅");
+            } catch (e) {
+              // If start fails, still allow stage to run, but show error
+              console.error(e);
+              setError(e);
+              setStatus("LIVE (clock start failed)");
             }
           }
         });
 
         await stage.join();
 
-        // Fallback: if CONNECTED event doesn’t fire quickly, still mark live (and start clock for event-mode)
+        // If the SDK doesn’t emit CONNECTED quickly for some reason, do a fallback start once after join.
         if (!startedOnce) {
           startedOnce = true;
-          if (mode === "event") {
-            try {
-              setStatus("LIVE ✅ (starting clock…)");
+          try {
+            setStatus("LIVE ✅ (starting clock…)");
 
-              const started = await callStartEvent(eventId, key);
-              console.log("start result:", started);
+            const started = await callStart(eventId, key);
+            console.log("start result:", started);
 
-              setStatus("LIVE ✅");
-            } catch (e) {
-              console.error(e);
-              setError(e);
-              setStatus("LIVE (clock start failed)");
-            }
-          } else {
             setStatus("LIVE ✅");
+          } catch (e) {
+            console.error(e);
+            setError(e);
+            setStatus("LIVE (clock start failed)");
           }
         }
 
         document.getElementById("go").disabled = true;
         document.getElementById("stop").disabled = false;
-
       } catch (err) {
         setStatus("Error");
         setError(err);
@@ -276,11 +224,8 @@
         startedOnce = false;
         expiresAtMs = null;
         document.getElementById("timeLeft").textContent = "—";
-        document.getElementById("timePill").style.display = "none";
         if (countdownTimer) clearInterval(countdownTimer);
         countdownTimer = null;
-
-        showObsToken("");
 
         setStatus("Stopped");
         document.getElementById("go").disabled = false;
@@ -292,30 +237,18 @@
     }
 
     async function main() {
-      const streamName = qs("stream");
       const eventId = qs("id");
       const key = qs("key");
 
-      const mode = streamName ? "stream" : "event";
-
-      document.getElementById("mode").textContent = mode === "stream" ? "stream-name" : "event";
-      document.getElementById("target").textContent = streamName || eventId || "(missing)";
+      document.getElementById("eventId").textContent = eventId || "(missing)";
       document.getElementById("key").textContent = key || "(missing)";
 
-      if (!key) {
-        setStatus("Missing key in URL");
-        return;
-      }
-      if (mode === "stream" && !streamName) {
-        setStatus("Missing stream name (use ?stream=Sam1)");
-        return;
-      }
-      if (mode === "event" && !eventId) {
-        setStatus("Missing event id (use ?id=...)");
+      if (!eventId || !key) {
+        setStatus("Missing eventId or key in URL");
         return;
       }
 
-      document.getElementById("go").onclick = () => goLive({ mode, eventId, streamName, key });
+      document.getElementById("go").onclick = () => goLive(eventId, key);
       document.getElementById("stop").onclick = stopLive;
     }
 
