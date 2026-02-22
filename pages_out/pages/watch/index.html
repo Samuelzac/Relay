@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Relay Watch</title>
 
-  <!-- IVS Realtime SDK -->
-  <script src="https://player.live-video.net/1.21.0/amazon-ivs-realtime.min.js"></script>
+  <!-- ✅ Amazon IVS Real-Time Web (Broadcast) SDK -->
+  <script src="https://web-broadcast.live-video.net/1.17.0/amazon-ivs-web-broadcast.js"></script>
 
   <style>
     body { font-family: system-ui, sans-serif; margin: 20px; }
@@ -55,36 +55,49 @@ async function fetchViewerToken(eventId, key) {
   return data;
 }
 
-async function joinStage(stageArn, participantToken) {
-  if (!window.IVSBroadcastClient && !window.IVSRealtime) {
-    throw new Error("IVS Realtime SDK not loaded");
-  }
+function getIvsSdk() {
+  // ✅ the Web Broadcast SDK exposes IVSBroadcastClient
+  const sdk = window.IVSBroadcastClient;
+  if (!sdk) return null;
+  if (!sdk.Stage || !sdk.StageEvents) return null;
+  return sdk;
+}
 
-  const IVS = window.IVSRealtime;
+async function joinStage(participantToken) {
+  const sdk = getIvsSdk();
+  if (!sdk) throw new Error("IVS Realtime SDK not loaded (IVSBroadcastClient missing)");
 
-  const stage = new IVS.Stage({
-    token: participantToken,
-    strategy: {
-      stageStreamsToPublish: () => [],
-      shouldPublishParticipant: () => false,
-      shouldSubscribeToParticipant: () => true
-    }
-  });
+  // Viewer strategy: subscribe only, publish nothing
+  const strategy = {
+    stageStreamsToPublish: () => [],
+    shouldPublishParticipant: () => false,
+    shouldSubscribeToParticipant: () => true,
+  };
 
-  stage.on(IVS.StageEvents.STAGE_CONNECTION_STATE_CHANGED, (state) => {
+  const stage = new sdk.Stage(participantToken, strategy);
+
+  stage.on(sdk.StageEvents.STAGE_CONNECTION_STATE_CHANGED, (state) => {
     statusEl.textContent = "Connection: " + state;
   });
 
-  stage.on(IVS.StageEvents.STAGE_PARTICIPANT_STREAMS_ADDED, (participant, streams) => {
-    streams.forEach(stream => {
-      if (stream.mediaStreamTrack.kind === "video") {
-        const mediaStream = new MediaStream([stream.mediaStreamTrack]);
-        videoEl.srcObject = mediaStream;
+  stage.on(sdk.StageEvents.STAGE_PARTICIPANT_STREAMS_ADDED, (participant, streams) => {
+    for (const stream of streams) {
+      if (stream.mediaStreamTrack && stream.mediaStreamTrack.kind === "video") {
+        const ms = new MediaStream([stream.mediaStreamTrack]);
+        videoEl.srcObject = ms;
       }
-    });
+      // (optional) audio
+      if (stream.mediaStreamTrack && stream.mediaStreamTrack.kind === "audio") {
+        // If you want audio, merge tracks:
+        const current = videoEl.srcObject instanceof MediaStream ? videoEl.srcObject : new MediaStream();
+        current.addTrack(stream.mediaStreamTrack);
+        videoEl.srcObject = current;
+      }
+    }
   });
 
-  stage.on(IVS.StageEvents.STAGE_PARTICIPANT_STREAMS_REMOVED, () => {
+  stage.on(sdk.StageEvents.STAGE_PARTICIPANT_STREAMS_REMOVED, () => {
+    // If broadcaster stops, clear video
     videoEl.srcObject = null;
   });
 
@@ -120,19 +133,17 @@ async function main() {
   }
 
   statusEl.textContent = "Requesting viewer token…";
-
   const tokenData = await fetchViewerToken(eventId, key);
 
   statusEl.textContent = "Joining live stream…";
-
-  await joinStage(tokenData.stageArn, tokenData.participantToken);
+  await joinStage(tokenData.participantToken);
 
   statusEl.textContent = "Live";
 }
 
 main().catch(err => {
   statusEl.textContent = "Error";
-  errEl.textContent = err?.stack || err;
+  errEl.textContent = err?.stack || String(err);
 });
 </script>
 
