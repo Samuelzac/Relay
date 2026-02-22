@@ -171,6 +171,62 @@ async function updateRtc(client: any, id: string, stageArn: string, endpoints: a
   return rows?.[0] || null;
 }
 
+
+
+type StreamRow = {
+  stream_name: string;
+  rtc_stage_arn: string | null;
+  is_enabled: boolean;
+  notes?: string | null;
+  created_at?: string;
+  updated_at?: string;
+  last_broadcast_at?: string | null;
+};
+
+async function getStream(client: any, streamName: string): Promise<StreamRow | null> {
+  const { rows } = await client.query(
+    `
+    select stream_name, rtc_stage_arn, is_enabled, notes, created_at, updated_at, last_broadcast_at
+    from public.stream_names
+    where stream_name = $1
+  `,
+    [streamName]
+  );
+  return rows[0] || null;
+}
+
+async function updateStreamRtcStage(client: any, streamName: string, stageArn: string) {
+  const { rows } = await client.query(
+    `
+    update public.stream_names
+    set rtc_stage_arn = $1,
+        last_broadcast_at = now()
+    where stream_name = $2
+    returning stream_name, rtc_stage_arn, is_enabled
+  `,
+    [stageArn, streamName]
+  );
+  return rows?.[0] || null;
+}
+
+function normalizeStageName(streamName: string) {
+  // AWS stage name constraints are fairly forgiving, but keep it safe and short.
+  const cleaned = streamName
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9\-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^\-+|\-+$/g, "");
+  const base = cleaned || "stream";
+  return `relay-${base}`.slice(0, 64);
+}
+
+function requireStreamBroadcastKey(key: string | null, env: Env) {
+  const expected = env.STREAM_BROADCAST_KEY || env.RELAY_STREAM_BROADCAST_KEY || env.ADMIN_KEY || env.RELAY_ADMIN_KEY;
+  if (!expected) return json(env, { error: "stream_broadcast_key_not_configured" }, 500);
+  return requireExact(key, expected, env);
+}
+
 export default {
   async fetch(request: Request, env: Env) {
     const url = new URL(request.url);
@@ -541,7 +597,59 @@ export default {
         }
       }
 
-      // WebRTC provisioning (Stage) -> returns host token
+      
+      // WebRTC provisioning for fixed stream names (Stage) -> returns host token
+      // POST /api/streams/:stream_name/rtc/provision?key=...
+      {
+        const m = match(pathname, /^\/api\/streams\/([^\/]+)\/rtc\/provision$/);
+        if (method === "POST" && m) {
+          const streamName = decodeURIComponent(m[0]);
+          const key = url.searchParams.get("key");
+
+          const client = await getClient(env);
+          try {
+            const st = await getStream(client, streamName);
+            if (!st) return json(env, { error: "not_found" }, 404);
+            if (!st.is_enabled) return json(env, { error: "disabled" }, 403);
+
+            const authRes = requireStreamBroadcastKey(key, env);
+            if (authRes) return authRes;
+
+            let stageArn: string | null = (st.rtc_stage_arn as string | null) || null;
+
+            // Create stage if missing, then persist
+            if (!stageArn) {
+              const created = await createStage(env, normalizeStageName(streamName));
+              stageArn = created.stageArn;
+
+              const saved = await updateStreamRtcStage(client, streamName, stageArn);
+              console.log("Stream RTC stage saved:", saved?.rtc_stage_arn ? "yes" : "no", saved?.rtc_stage_arn);
+            } else {
+              // Touch last_broadcast_at so we have a “recently active” hint
+              await client.query(
+                `update public.stream_names set last_broadcast_at = now() where stream_name = $1`,
+                [streamName]
+              );
+            }
+
+            const token = await createParticipantToken(env, stageArn, `host-${streamName}`, ["PUBLISH", "SUBSCRIBE"], 3600);
+
+            // NOTE: same token can be used as OBS WHIP Bearer token
+            return json(env, {
+              ok: true,
+              stream_name: streamName,
+              stageArn,
+              participantToken: token.token,
+              expiresAt: token.expirationTime,
+              obs: { whipUrl: "https://global.whip.live-video.net", bearerToken: token.token },
+            });
+          } finally {
+            await client.end();
+          }
+        }
+      }
+
+// WebRTC provisioning (Stage) -> returns host token
       {
         const m = match(pathname, /^\/api\/events\/([^\/]+)\/rtc\/provision$/);
         if (method === "POST" && m) {
