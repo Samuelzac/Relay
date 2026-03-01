@@ -5,6 +5,8 @@ import {
   CreateStageCommand,
   CreateParticipantTokenCommand,
   DeleteStageCommand,
+  StartCompositionCommand,
+  StopCompositionCommand,
 } from "@aws-sdk/client-ivs-realtime";
 
 const app = express();
@@ -89,6 +91,59 @@ app.post("/deleteStage", async (req, res) => {
     return res.json(out);
   } catch (e) {
     return res.status(500).json({ error: "deleteStage_failed", detail: String(e?.message || e) });
+  }
+});
+
+/**
+ * NEW: Start composition (Stage -> Channel) for HLS playback.
+ * Body:
+ * {
+ *   stageArn: string,
+ *   destinations: [{ channel: { channelArn: string } }],
+ *   layout?: object
+ * }
+ */
+app.post("/startComposition", async (req, res) => {
+  try {
+    if (!verify(req)) return res.status(401).json({ error: "bad_sig" });
+
+    const stageArn = String(req.body?.stageArn || "");
+    const destinations = Array.isArray(req.body?.destinations) ? req.body.destinations : null;
+    const layout = req.body?.layout;
+
+    if (!stageArn) return res.status(400).json({ error: "missing_stageArn" });
+    if (!destinations || destinations.length < 1) return res.status(400).json({ error: "missing_destinations" });
+
+    // Very light validation of expected shape
+    const first = destinations[0];
+    const channelArn = first?.channel?.channelArn;
+    if (!channelArn) return res.status(400).json({ error: "missing_channelArn" });
+
+    const cmdInput = { stageArn, destinations };
+    if (layout) cmdInput.layout = layout;
+
+    const out = await client.send(new StartCompositionCommand(cmdInput));
+    return res.json(out);
+  } catch (e) {
+    return res.status(500).json({ error: "startComposition_failed", detail: String(e?.message || e) });
+  }
+});
+
+/**
+ * NEW: Stop composition by ARN.
+ * Body: { arn: string }
+ */
+app.post("/stopComposition", async (req, res) => {
+  try {
+    if (!verify(req)) return res.status(401).json({ error: "bad_sig" });
+
+    const arn = String(req.body?.arn || "");
+    if (!arn) return res.status(400).json({ error: "missing_arn" });
+
+    const out = await client.send(new StopCompositionCommand({ arn }));
+    return res.json(out);
+  } catch (e) {
+    return res.status(500).json({ error: "stopComposition_failed", detail: String(e?.message || e) });
   }
 });
 

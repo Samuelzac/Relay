@@ -20,6 +20,20 @@ export type ParticipantToken = {
 
 export type TokenCapability = "PUBLISH" | "SUBSCRIBE";
 
+// --- NEW: IVS Real-Time Server-Side Composition (Stage -> Channel -> HLS) ---
+
+export type CompositionDestination = {
+  channel: { channelArn: string };
+};
+
+export type Composition = {
+  arn: string;
+  state?: string;
+  stageArn?: string;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
 function hasProxy(env: any): boolean {
   return !!(env.IVS_PROXY_BASE && env.IVS_PROXY_SECRET);
 }
@@ -40,6 +54,7 @@ function rtAws(env: any) {
   const aws = new AwsClient({
     accessKeyId: env.AWS_ACCESS_KEY_ID,
     secretAccessKey: env.AWS_SECRET_ACCESS_KEY,
+    sessionToken: env.AWS_SESSION_TOKEN, // ✅ keep parity with other code paths
     region,
     service: "ivsrealtime",
   });
@@ -156,11 +171,29 @@ async function postJson<T>(env: any, actionPath: string, payload: any): Promise<
       return await proxyPost<T>(env, "/deleteStage", { stageArn: payload?.arn });
     }
 
+    // ✅ NEW: composition (only works if your proxy implements these routes)
+    if (actionPath === "/StartComposition") {
+      // AWS payload: { stageArn, destinations: [{ channel: { channelArn } }], layout? }
+      // Proxy route and payload shape are up to your proxy implementation.
+      // We pass through the AWS-like structure so your proxy can forward it cleanly.
+      return await proxyPost<T>(env, "/startComposition", {
+        stageArn: payload?.stageArn,
+        destinations: payload?.destinations,
+        layout: payload?.layout,
+      });
+    }
+    if (actionPath === "/StopComposition") {
+      // AWS payload: { arn }
+      return await proxyPost<T>(env, "/stopComposition", { arn: payload?.arn });
+    }
+
     throw new Error(`IVS proxy action not mapped: ${actionPath}`);
   }
 
   return await awsPostJson<T>(env, actionPath, payload);
 }
+
+// --- Existing exports (unchanged behaviour) ---
 
 export async function createStage(env: any, name: string): Promise<RealtimeStage> {
   const data = await postJson<any>(env, "/CreateStage", { name });
@@ -196,4 +229,49 @@ export async function createParticipantToken(
     userId: pt?.userId,
     expirationTime: pt?.expirationTime,
   };
+}
+
+// --- NEW exports: composition control ---
+
+/**
+ * Start server-side composition: Stage (WebRTC ingest) -> IVS Channel (HLS playback).
+ * Returns the composition object (includes arn).
+ */
+export async function startComposition(
+  env: any,
+  stageArn: string,
+  channelArn: string,
+  layout?: any
+): Promise<Composition> {
+  if (!stageArn) throw new Error("startComposition: missing stageArn");
+  if (!channelArn) throw new Error("startComposition: missing channelArn");
+
+  const payload: any = {
+    stageArn,
+    destinations: [{ channel: { channelArn } } as CompositionDestination],
+  };
+  if (layout) payload.layout = layout;
+
+  const data = await postJson<any>(env, "/StartComposition", payload);
+  const comp = data?.composition;
+
+  if (!comp?.arn) {
+    throw new Error("StartComposition returned no composition arn");
+  }
+
+  return {
+    arn: comp.arn,
+    state: comp.state,
+    stageArn: comp.stageArn,
+    createdAt: comp.createdAt,
+    updatedAt: comp.updatedAt,
+  };
+}
+
+/**
+ * Stop server-side composition by ARN.
+ */
+export async function stopComposition(env: any, compositionArn: string) {
+  if (!compositionArn) throw new Error("stopComposition: missing compositionArn");
+  await postJson<any>(env, "/StopComposition", { arn: compositionArn });
 }

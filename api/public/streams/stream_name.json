@@ -1,0 +1,9 @@
+{
+  "stream_name": "Sam1",
+  "is_enabled": true,
+  "is_expired": false,
+  "rtc_available": true,
+  "rtc_stage_arn_present": true,
+  "starts_at": "...optional...",
+  "now": "..."
+}

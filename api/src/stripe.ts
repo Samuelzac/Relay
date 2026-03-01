@@ -1,6 +1,11 @@
 import Stripe from "stripe";
 
-export type StreamMode = "webrtc" | "hls" | "both";
+/**
+ * Canonical modes used across the platform.
+ * We still ACCEPT "webrtc" as an alias for backwards compatibility.
+ */
+export type StreamMode = "rtc" | "hls" | "both";
+export type StreamModeInput = StreamMode | "webrtc";
 
 export function stripeClient(env: any) {
   return new Stripe(env.STRIPE_SECRET_KEY, {
@@ -9,22 +14,41 @@ export function stripeClient(env: any) {
   });
 }
 
+/**
+ * Normalize mode inputs from older front-ends / payloads.
+ * - "webrtc" -> "rtc"
+ */
+export function normalizeMode(mode: any): StreamMode {
+  const m = String(mode || "").toLowerCase();
+  if (m === "webrtc") return "rtc";
+  if (m === "rtc" || m === "hls" || m === "both") return m;
+  // Default safely to rtc (existing behavior is closer to rtc than hls)
+  return "rtc";
+}
+
 export function basePriceForTier(env: any, tier: number) {
   if (tier === 3) return Number(env.STANDARD_PRICE_NZD);
   if (tier === 8) return Number(env.EXTENDED_PRICE_NZD);
   throw new Error("Invalid tier");
 }
 
-export function addonPriceForMode(env: any, mode: StreamMode) {
-  // Keep existing pricing working: HLS-only adds $0 by default.
+export function addonPriceForMode(env: any, mode: StreamModeInput) {
+  const m = normalizeMode(mode);
+
+  // Keep existing pricing working:
+  // - HLS-only adds $0 by default.
   // Add-ons are configured via Worker vars.
-  if (mode === "hls") return Number(env.HLS_ADDON_NZD ?? 0);
-  if (mode === "webrtc") return Number(env.WEBRTC_ADDON_NZD ?? 0);
-  if (mode === "both") return Number(env.BOTH_ADDON_NZD ?? 0);
+  if (m === "hls") return Number(env.HLS_ADDON_NZD ?? 0);
+
+  // Prefer RTC_ADDON_NZD if you ever introduce it, otherwise fall back to WEBRTC_ADDON_NZD
+  if (m === "rtc") return Number(env.RTC_ADDON_NZD ?? env.WEBRTC_ADDON_NZD ?? 0);
+
+  if (m === "both") return Number(env.BOTH_ADDON_NZD ?? 0);
+
   throw new Error("Invalid mode");
 }
 
-export function priceForTierAndMode(env: any, tier: number, mode: StreamMode) {
+export function priceForTierAndMode(env: any, tier: number, mode: StreamModeInput) {
   return basePriceForTier(env, tier) + addonPriceForMode(env, mode);
 }
 
