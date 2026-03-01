@@ -42,6 +42,7 @@
       <code>?stream=Sam1&amp;key=...</code> (fixed stream name mode)
       or
       <code>?id=&lt;eventId&gt;&amp;key=...</code> (existing event mode).
+      (Also supports <code>?event=&lt;eventId&gt;</code>.)
     </div>
 
     <div class="err" id="err"></div>
@@ -102,6 +103,12 @@
     let startedOnce = false;
     let expiresAtMs = null;
 
+    // Track current URL params so stop can call event stop endpoint when needed
+    let currentMode = null;      // "event" | "stream"
+    let currentEventId = null;
+    let currentStreamName = null;
+    let currentKey = null;
+
     function setTimeLeftFromExpires(expiresAtIso) {
       if (!expiresAtIso) return;
       const t = Date.parse(expiresAtIso);
@@ -128,12 +135,21 @@
     }
 
     async function callStartEvent(eventId, key) {
-      // Only used in event-mode (your backend already supports this)
+      // Used in event-mode: starts clock AND (now) triggers composition if HLS enabled (server-side)
       const url = `${API_BASE}/api/events/${eventId}/start?key=${encodeURIComponent(key)}`;
       const res = await fetch(url, { method: "POST" });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(`start failed: ${res.status} ${JSON.stringify(data)}`);
       if (data?.expires_at) setTimeLeftFromExpires(data.expires_at);
+      return data;
+    }
+
+    async function callStopEvent(eventId, key) {
+      // NEW: stops composition (HLS) when enabled; safe to call even if no composition exists
+      const url = `${API_BASE}/api/events/${eventId}/stop?key=${encodeURIComponent(key)}`;
+      const res = await fetch(url, { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(`stop failed: ${res.status} ${JSON.stringify(data)}`);
       return data;
     }
 
@@ -207,13 +223,11 @@
             startedOnce = true;
 
             if (mode === "event") {
-              // Start your event clock (existing behavior)
+              // Start your event clock (existing behavior) - also triggers HLS composition server-side
               try {
                 setStatus("LIVE ✅ (starting clock…)");
-
                 const started = await callStartEvent(eventId, key);
                 console.log("start result:", started);
-
                 setStatus("LIVE ✅");
               } catch (e) {
                 console.error(e);
@@ -235,10 +249,8 @@
           if (mode === "event") {
             try {
               setStatus("LIVE ✅ (starting clock…)");
-
               const started = await callStartEvent(eventId, key);
               console.log("start result:", started);
-
               setStatus("LIVE ✅");
             } catch (e) {
               console.error(e);
@@ -263,6 +275,17 @@
       try {
         setStatus("Stopping…");
         setError("");
+
+        // Stop HLS composition for event-mode (NEW)
+        if (currentMode === "event" && currentEventId && currentKey) {
+          try {
+            // Call first so composition stops even if stage.leave hangs
+            await callStopEvent(currentEventId, currentKey);
+          } catch (e) {
+            // Non-fatal; keep stopping local stage & camera regardless
+            console.warn("event stop failed (non-fatal):", e);
+          }
+        }
 
         if (stage) await stage.leave();
         stage = null;
@@ -293,10 +316,19 @@
 
     async function main() {
       const streamName = qs("stream");
-      const eventId = qs("id");
+
+      // Compatibility: support both ?id=... and ?event=...
+      const eventId = qs("id") || qs("event");
+
       const key = qs("key");
 
       const mode = streamName ? "stream" : "event";
+
+      // Store for stopLive()
+      currentMode = mode;
+      currentEventId = eventId || null;
+      currentStreamName = streamName || null;
+      currentKey = key || null;
 
       document.getElementById("mode").textContent = mode === "stream" ? "stream-name" : "event";
       document.getElementById("target").textContent = streamName || eventId || "(missing)";
@@ -311,7 +343,7 @@
         return;
       }
       if (mode === "event" && !eventId) {
-        setStatus("Missing event id (use ?id=...)");
+        setStatus("Missing event id (use ?id=... or ?event=...)");
         return;
       }
 

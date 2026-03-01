@@ -11,9 +11,10 @@
     .row{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
     a.btn,button{display:inline-block;padding:12px 14px;border-radius:10px;border:0;background:#1976d2;color:#fff;text-decoration:none;cursor:pointer}
     a.secondary,button.secondary{background:rgba(255,255,255,.14)}
-    .muted{opacity:.82;font-size:13px}
+    .muted{opacity:.82;font-size:13px;line-height:1.35}
     .bad{color:#ff8a80}
     code{word-break:break-all;display:block;background:rgba(255,255,255,.06);padding:10px;border-radius:10px}
+    .tiny{font-size:12px;opacity:.75}
   </style>
 </head>
 <body>
@@ -42,43 +43,84 @@
           Tip: open the Broadcast link on your phone → tap “Go Live”.
         </div>
       </div>
+
+      <div id="debug" class="tiny" style="margin-top:12px; display:none;"></div>
     </div>
   </div>
 
 <script>
-  const API_BASE = "https://stream-platform-api.kiwismurph.workers.dev";
+  // Default API base (can be overridden by ?api=https://... if needed)
+  const DEFAULT_API_BASE = "https://stream-platform-api.kiwismurph.workers.dev";
+
   const msg = document.getElementById("msg");
   const out = document.getElementById("out");
   const watchBtn = document.getElementById("watchBtn");
   const broadcastBtn = document.getElementById("broadcastBtn");
   const watchUrlEl = document.getElementById("watchUrl");
   const broadcastUrlEl = document.getElementById("broadcastUrl");
+  const debugEl = document.getElementById("debug");
 
-  function setErr(e) {
+  function setErr(e, extra) {
     msg.innerHTML = `<span class="bad">${e}</span>`;
+    if (extra) {
+      debugEl.style.display = "block";
+      debugEl.textContent = extra;
+    }
+  }
+
+  function pickParam(params, names) {
+    for (const n of names) {
+      const v = params.get(n);
+      if (v && String(v).trim()) return String(v).trim();
+    }
+    return "";
   }
 
   (async () => {
     const params = new URLSearchParams(location.search);
-    const eventId = params.get("id") || "";
-    const st = params.get("st") || "";
-    if (!eventId || !st) {
-      setErr("Missing event id or token.");
+
+    // Support all common variants:
+    // Worker currently sends: ?event=<id>&st=<token>
+    // Older/other versions might send: ?id=<id>&st=<token> OR ?eventId=<id>&token=<token>
+    const eventId = pickParam(params, ["event", "eventId", "id"]);
+    const token  = pickParam(params, ["st", "token", "successToken"]);
+
+    const apiBase = pickParam(params, ["api"]) || DEFAULT_API_BASE;
+
+    if (!eventId || !token) {
+      setErr(
+        "Missing event id or token.",
+        `Got query: "${location.search}" (expected event/eventId/id + st/token)`
+      );
       return;
     }
 
     try {
-      const r = await fetch(`${API_BASE}/api/events/${eventId}/links?st=${encodeURIComponent(st)}`);
+      const safeEventId = encodeURIComponent(eventId);
+      const safeToken = encodeURIComponent(token);
+
+      const r = await fetch(`${apiBase}/api/events/${safeEventId}/links?st=${safeToken}`, {
+        method: "GET",
+        headers: { "accept": "application/json" },
+      });
+
       const text = await r.text();
-      let j; try { j = JSON.parse(text); } catch { j = null; }
+      let j = null;
+      try { j = JSON.parse(text); } catch { j = null; }
+
       if (!r.ok) {
-        const err = (j && (j.error||j.message)) ? (j.error||j.message) : (text || "Request failed");
-        setErr(err);
+        const err = (j && (j.error || j.message)) ? (j.error || j.message) : (text || "Request failed");
+        setErr(String(err), `API: ${apiBase}  Event: ${eventId}`);
         return;
       }
 
-      const watchUrl = j.watch_url;
-      const broadcastUrl = j.broadcast_url;
+      const watchUrl = j && j.watch_url;
+      const broadcastUrl = j && j.broadcast_url;
+
+      if (!watchUrl || !broadcastUrl) {
+        setErr("Unexpected response from server.", `Response: ${text}`);
+        return;
+      }
 
       watchBtn.href = watchUrl;
       broadcastBtn.href = broadcastUrl;
@@ -88,7 +130,7 @@
       msg.textContent = "Your links are ready.";
       out.style.display = "block";
     } catch (e) {
-      setErr("Network error.");
+      setErr("Network error.", String(e && e.message ? e.message : e));
     }
   })();
 </script>

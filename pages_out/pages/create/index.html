@@ -39,7 +39,8 @@
 
       <label>Delivery (choose one)</label>
       <div class="row" style="margin-top:8px;">
-        <label class="pill"><input type="radio" name="mode" value="webrtc" checked /> WebRTC (real-time)</label>
+        <!-- Keep UI labels, but values map cleanly to backend modes -->
+        <label class="pill"><input type="radio" name="mode" value="rtc" checked /> WebRTC (real-time)</label>
         <label class="pill"><input type="radio" name="mode" value="hls" /> HLS (few sec delay)</label>
         <label class="pill"><input type="radio" name="mode" value="both" /> Both</label>
       </div>
@@ -59,6 +60,7 @@
   const msg = document.getElementById("msg");
   const goBtn = document.getElementById("go");
   const priceEl = document.getElementById("price");
+  const priceNoteEl = document.getElementById("priceNote");
 
   function setMsg(html, cls="") {
     msg.className = `muted ${cls}`.trim();
@@ -67,14 +69,14 @@
 
   function getMode() {
     const el = document.querySelector('input[name="mode"]:checked');
-    return el ? el.value : "webrtc";
+    return el ? el.value : "rtc";
   }
 
   let pricing = null;
 
   async function loadPricing() {
     try {
-      const r = await fetch(`${API_BASE}/api/pricing`);
+      const r = await fetch(`${API_BASE}/api/pricing`, { cache: "no-store" });
       const j = await r.json();
       if (j && j.ok) pricing = j;
     } catch (e) {
@@ -88,22 +90,37 @@
     return (n/100).toFixed(2);
   }
 
-  function calcPrice() {
+  function calcPriceCentsIfAvailable() {
+    // Your current Worker /api/pricing returns only hours, not prices.
+    // If you later add price fields, this will start working automatically.
     if (!pricing) return null;
-    const tier = document.getElementById("tier").value;
+
+    const tier = String(document.getElementById("tier").value);
     const mode = getMode();
-    const base = pricing.tiers[tier].base_nzd;
-    const add = mode === "hls" ? pricing.addons.hls_nzd : (mode === "webrtc" ? pricing.addons.webrtc_nzd : pricing.addons.both_nzd);
+
+    const base = pricing?.tiers?.[tier]?.base_nzd;
+    const addons = pricing?.addons;
+    if (typeof base !== "number" || !addons) return null;
+
+    let add = 0;
+    if (mode === "hls") add = addons.hls_nzd;
+    else if (mode === "rtc") add = addons.webrtc_nzd ?? addons.rtc_nzd; // tolerate naming
+    else if (mode === "both") add = addons.both_nzd;
+
+    if (typeof add !== "number") return null;
+
     return base + add;
   }
 
   function updatePriceUI() {
-    const total = calcPrice();
-    if (total === null) {
-      priceEl.textContent = "$—";
+    const totalCents = calcPriceCentsIfAvailable();
+    if (totalCents === null) {
+      priceEl.textContent = "Calculated at checkout";
+      priceNoteEl.textContent = "Prices come from the Worker. If pricing isn't exposed, checkout will show the final amount.";
       return;
     }
-    priceEl.textContent = `$${nzdCentsToDollars(total)} NZD`;
+    priceEl.textContent = `$${nzdCentsToDollars(totalCents)} NZD`;
+    priceNoteEl.textContent = "Pricing loads from the API (so you can change prices without redeploying Pages).";
   }
 
   document.getElementById("tier").addEventListener("change", updatePriceUI);
@@ -111,12 +128,12 @@
 
   goBtn.addEventListener("click", async () => {
     goBtn.disabled = true;
-    setMsg("Creating event…");
+    setMsg("Creating checkout…");
 
     const email = document.getElementById("email").value.trim();
     const title = document.getElementById("title").value.trim();
     const tier = Number(document.getElementById("tier").value);
-    const mode = getMode();
+    const mode = getMode(); // "rtc" | "hls" | "both"
     const white_label = document.getElementById("wl").checked;
 
     if (!email || !title) {
@@ -127,15 +144,15 @@
 
     const body = { email, title, tier, white_label, mode };
 
-    let res, text, json;
+    let res, text, j;
     try {
-      res = await fetch(`${API_BASE}/api/events`, {
+      res = await fetch(`${API_BASE}/api/checkout`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body)
       });
       text = await res.text();
-      try { json = JSON.parse(text); } catch { json = null; }
+      try { j = JSON.parse(text); } catch { j = null; }
     } catch (e) {
       setMsg('<span class="bad">Network error.</span>');
       goBtn.disabled = false;
@@ -143,15 +160,15 @@
     }
 
     if (!res.ok) {
-      const err = (json && (json.error || json.message)) ? (json.error || json.message) : (text || "Request failed");
+      const err = (j && (j.error || j.message)) ? (j.error || j.message) : (text || "Request failed");
       setMsg(`<span class="bad">${err}</span>`);
       goBtn.disabled = false;
       return;
     }
 
-    const checkoutUrl = json && json.checkout_url;
+    const checkoutUrl = j && j.url;
     if (!checkoutUrl) {
-      setMsg('<span class="bad">Missing checkout URL.</span>');
+      setMsg('<span class="bad">Missing Stripe checkout URL.</span>');
       goBtn.disabled = false;
       return;
     }
