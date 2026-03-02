@@ -1,41 +1,49 @@
 {
-  "name": "stream-platform-api",
-  "main": "src/index.ts",
-  "compatibility_date": "2025-02-14",
-  "compatibility_flags": ["nodejs_compat"],
-
-  "vars": {
-    "APP_ORIGIN": "https://relay-cp1.pages.dev",
-
-    "AWS_REGION": "ap-northeast-1",
-    "IVS_API_ENDPOINT": "https://ivs.ap-northeast-1.api.aws",
-    "IVS_REALTIME_API_ENDPOINT": "https://ivsrealtime.ap-northeast-1.api.aws",
-
-    "DEFAULT_VIEWER_LIMIT": "150",
-    "STANDARD_PRICE_NZD": "9900",
-    "EXTENDED_PRICE_NZD": "17900",
-    "STANDARD_HOURS": "3",
-    "EXTENDED_HOURS": "8",
-    "GRACE_MINUTES": "30",
-    "DELETE_IVS_ON_EXPIRE": "false",
-    "HLS_ADDON_NZD": "0",
-    "WEBRTC_ADDON_NZD": "4000",
-    "BOTH_ADDON_NZD": "6500",
-
-    "IVS_PROXY_BASE": "https://ivs-proxy.fly.dev",
-    "IVS_PROXY_SECRET": "kbfkksaljdf773bhjwid9oanfjje9365ehjf"
-  },
-  "hyperdrive": [
-    {
-      "binding": "HYPERDRIVE",
-      "id": "98e25b838da84315bb551b3bed96032d"
-    }
-  ],
-
-  "durable_objects": {
-    "bindings": [
-      { "name": "SEATS", "class_name": "SeatsDO" },
-      { "name": "BROADCAST_LOCK", "class_name": "BroadcastLockDO" }
-    ]
-  }
+	"name": "stream-platform-api",
+	"main": "src/index.ts",
+	"compatibility_date": "2025-02-14",
+	"compatibility_flags": [
+		"nodejs_compat"
+	],
+	"vars": {
+		"APP_ORIGIN": "https://relay-cp1.pages.dev",
+		"AWS_REGION": "ap-northeast-1",
+		"IVS_API_ENDPOINT": "https://ivs.ap-northeast-1.amazonaws.com",
+		"IVS_REALTIME_API_ENDPOINT": "https://ivsrealtime.ap-northeast-1.amazonaws.com",
+		"DEFAULT_VIEWER_LIMIT": "150",
+		"STANDARD_PRICE_NZD": "9900",
+		"EXTENDED_PRICE_NZD": "17900",
+		"STANDARD_HOURS": "3",
+		"EXTENDED_HOURS": "8",
+		"GRACE_MINUTES": "30",
+		"DELETE_IVS_ON_EXPIRE": "false",
+		"HLS_ADDON_NZD": "0",
+		"WEBRTC_ADDON_NZD": "4000",
+		"BOTH_ADDON_NZD": "6500",
+		"IVS_PROXY_BASE": "https://ivs-proxy.fly.dev",
+		"IVS_PROXY_SECRET": "kbfkksaljdf773bhjwid9oanfjje9365ehjf"
+	},
+	"hyperdrive": [
+		{
+			"binding": "HYPERDRIVE",
+			"id": "98e25b838da84315bb551b3bed96032d"
+		}
+	],
+	"durable_objects": {
+		"bindings": [
+			{
+				"name": "SEATS",
+				"class_name": "SeatsDO"
+			},
+			{
+				"name": "BROADCAST_LOCK",
+				"class_name": "BroadcastLockDO"
+			}
+		]
+	},
+	"triggers": {
+		"crons": [
+			"*/5 * * * *"
+		]
+	}
 }

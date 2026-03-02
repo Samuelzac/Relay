@@ -1,9 +1,5 @@
 // src/awsIvsRealtime.ts
-// Amazon IVS Real-Time (WebRTC) control-plane.
-// Primary path: call Fly proxy (avoids Cloudflare Worker DNS/1016 issues).
-// Fallback path: direct SigV4 to AWS via aws4fetch (kept for compatibility).
-
-import { AwsClient } from "aws4fetch";
+import { signAwsRestJsonRequest } from "./awsSigV4";
 
 export type RealtimeStage = {
   stageArn: string;
@@ -20,258 +16,232 @@ export type ParticipantToken = {
 
 export type TokenCapability = "PUBLISH" | "SUBSCRIBE";
 
-// --- NEW: IVS Real-Time Server-Side Composition (Stage -> Channel -> HLS) ---
-
-export type CompositionDestination = {
-  channel: { channelArn: string };
+export type EncoderConfiguration = {
+  arn: string;
+  name?: string;
 };
 
 export type Composition = {
   arn: string;
   state?: string;
   stageArn?: string;
-  createdAt?: string;
-  updatedAt?: string;
 };
 
-function hasProxy(env: any): boolean {
-  return !!(env.IVS_PROXY_BASE && env.IVS_PROXY_SECRET);
-}
+function baseUrl(env: any) {
+  const region = String(env.AWS_REGION || "ap-northeast-1");
+  const raw = env.IVS_REALTIME_API_ENDPOINT;
 
-function rtEndpoint(env: any): string {
-  const region = env.AWS_REGION || "ap-southeast-2";
-  return (
-    env.IVS_REALTIME_API_ENDPOINT ||
-    env.IVS_REALTIME_ENDPOINT ||
-    `https://ivsrealtime.${region}.api.aws`
-  );
-}
+  let base = String(raw || `https://ivsrealtime.${region}.amazonaws.com`);
 
-function rtAws(env: any) {
-  const region = env.AWS_REGION || "ap-southeast-2";
-  const endpoint = rtEndpoint(env);
-
-  const aws = new AwsClient({
-    accessKeyId: env.AWS_ACCESS_KEY_ID,
-    secretAccessKey: env.AWS_SECRET_ACCESS_KEY,
-    sessionToken: env.AWS_SESSION_TOKEN, // ✅ keep parity with other code paths
-    region,
-    service: "ivsrealtime",
-  });
-
-  return { aws, endpoint };
-}
-
-async function hmacHex(secret: string, body: string): Promise<string> {
-  const key = await crypto.subtle.importKey(
-    "raw",
-    new TextEncoder().encode(secret),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"]
-  );
-
-  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(body));
-  return [...new Uint8Array(sig)].map((b) => b.toString(16).padStart(2, "0")).join("");
-}
-
-async function proxyPost<T>(env: any, route: string, payload: any): Promise<T> {
-  const base = String(env.IVS_PROXY_BASE || "").replace(/\/$/, "");
-  const secret = String(env.IVS_PROXY_SECRET || "");
-
-  if (!base || !secret) {
-    throw new Error("Missing IVS proxy env vars: IVS_PROXY_BASE / IVS_PROXY_SECRET");
+  // HARDEN: never allow the old bad host
+  if (base.includes(".api.aws")) {
+    base = `https://ivsrealtime.${region}.amazonaws.com`;
   }
 
-  const body = JSON.stringify(payload ?? {});
-  const sig = await hmacHex(secret, body);
+  // no trailing slash here; we append /CreateStage etc
+  base = base.replace(/\/+$/, "");
 
-  const url = `${base}${route}`;
-  console.log("IVS REALTIME via proxy:", url);
+  console.log(
+    "IVS Realtime endpoint config:",
+    JSON.stringify({
+      aws_region: region,
+      env_IVS_REALTIME_API_ENDPOINT: raw ?? null,
+      using_endpoint_base: base,
+    })
+  );
+
+  return { region, base };
+}
+
+function normalizeOpPath(opPath: string) {
+  if (!opPath) return "/";
+  return opPath.startsWith("/") ? opPath : `/${opPath}`;
+}
+
+async function callRt<T>(env: any, opPath: string, payload: any): Promise<T> {
+  const { region, base } = baseUrl(env);
+
+  const safeOpPath = normalizeOpPath(opPath);
+  const url = `${base}${safeOpPath}`; // e.g. https://...amazonaws.com/CreateStage
+  const body = JSON.stringify(payload ?? {});
+
+  if (!env.AWS_ACCESS_KEY_ID || !env.AWS_SECRET_ACCESS_KEY) {
+    throw new Error("Missing AWS secrets: AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY");
+  }
+
+  // IMPORTANT: For IVS Realtime, AWS is requiring SigV4 service scope "ivs"
+  const signingService = "ivs";
+
+  console.log(
+    "IVS Realtime request:",
+    JSON.stringify({
+      url,
+      opPath: safeOpPath,
+      service: signingService,
+      region,
+      bodyBytes: body.length,
+    })
+  );
+
+  const headers = await signAwsRestJsonRequest({
+    method: "POST",
+    url,
+    body,
+    accessKeyId: String(env.AWS_ACCESS_KEY_ID).trim(),
+    secretAccessKey: String(env.AWS_SECRET_ACCESS_KEY).trim(),
+    region,
+    service: signingService,
+    headers: {
+      "content-type": "application/json",
+    },
+  });
 
   const res = await fetch(url, {
     method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-relay-sig": sig,
-    },
+    headers,
     body,
   });
 
-  const text = await res.text(); // always consume
+  const text = await res.text();
   let data: any = {};
   try {
     data = text ? JSON.parse(text) : {};
   } catch {
-    data = {};
+    // ignore non-json bodies
   }
 
   if (!res.ok) {
-    const msg =
-      (data?.error ? `${data.error}${data?.detail ? `: ${data.detail}` : ""}` : "") ||
-      data?.detail ||
-      text ||
-      "(no body)";
-    throw new Error(`IVS proxy ${route} failed: ${res.status} ${msg}`);
+    const requestId =
+      res.headers.get("x-amzn-requestid") ||
+      res.headers.get("x-amz-request-id") ||
+      res.headers.get("x-amz-id-2") ||
+      null;
+
+    console.log(
+      "IVS Realtime ERROR:",
+      JSON.stringify({
+        url,
+        opPath: safeOpPath,
+        service: signingService,
+        status: res.status,
+        requestId,
+        body: text || null,
+      })
+    );
+
+    const msg = data?.message || data?.Message || data?.__type || text || "(no body)";
+    throw new Error(
+      `IVS Realtime ${safeOpPath} failed: ${res.status} ${msg}${requestId ? ` (requestId=${requestId})` : ""}`
+    );
   }
 
   return data as T;
 }
-
-async function awsPostJson<T>(env: any, path: string, payload: any): Promise<T> {
-  console.log("IVS REALTIME direct path:", path);
-
-  const { aws, endpoint } = rtAws(env);
-  console.log("IVS REALTIME direct endpoint:", endpoint);
-
-  const url = `${endpoint.replace(/\/$/, "")}${path}`;
-  const res = await aws.fetch(url, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(payload ?? {}),
-  });
-
-  const text = await res.text(); // always consume
-  let data: any = {};
-  try {
-    data = text ? JSON.parse(text) : {};
-  } catch {
-    data = {};
-  }
-
-  if (!res.ok) {
-    const msg = data?.message || data?.__type || text || "(no body)";
-    throw new Error(`IVSRealTime ${path} failed: ${res.status} ${msg}`);
-  }
-
-  return data as T;
-}
-
-/**
- * Internal router: uses proxy when configured, otherwise falls back to direct AWS.
- * We keep the old AWS action paths so existing code stays intact.
- */
-async function postJson<T>(env: any, actionPath: string, payload: any): Promise<T> {
-  if (hasProxy(env)) {
-    // Map AWS REST paths to proxy routes
-    if (actionPath === "/CreateStage") {
-      return await proxyPost<T>(env, "/createStage", { name: payload?.name });
-    }
-    if (actionPath === "/CreateParticipantToken") {
-      // NOTE: proxy currently ignores "duration" if provided; safe to pass.
-      return await proxyPost<T>(env, "/createParticipantToken", {
-        stageArn: payload?.stageArn,
-        userId: payload?.userId,
-        capabilities: payload?.capabilities,
-        duration: payload?.duration,
-      });
-    }
-    if (actionPath === "/DeleteStage") {
-      // Original payload is { arn }, proxy expects { stageArn }
-      return await proxyPost<T>(env, "/deleteStage", { stageArn: payload?.arn });
-    }
-
-    // ✅ NEW: composition (only works if your proxy implements these routes)
-    if (actionPath === "/StartComposition") {
-      // AWS payload: { stageArn, destinations: [{ channel: { channelArn } }], layout? }
-      // Proxy route and payload shape are up to your proxy implementation.
-      // We pass through the AWS-like structure so your proxy can forward it cleanly.
-      return await proxyPost<T>(env, "/startComposition", {
-        stageArn: payload?.stageArn,
-        destinations: payload?.destinations,
-        layout: payload?.layout,
-      });
-    }
-    if (actionPath === "/StopComposition") {
-      // AWS payload: { arn }
-      return await proxyPost<T>(env, "/stopComposition", { arn: payload?.arn });
-    }
-
-    throw new Error(`IVS proxy action not mapped: ${actionPath}`);
-  }
-
-  return await awsPostJson<T>(env, actionPath, payload);
-}
-
-// --- Existing exports (unchanged behaviour) ---
 
 export async function createStage(env: any, name: string): Promise<RealtimeStage> {
-  const data = await postJson<any>(env, "/CreateStage", { name });
-  const stage = data?.stage;
+  const resp = await callRt<any>(env, "/CreateStage", {
+    name,
+    tags: { app: "relay" },
+  });
+
+  const st = resp?.stage;
+  if (!st?.arn) throw new Error(`Unexpected CreateStage response: ${JSON.stringify(resp)}`);
 
   return {
-    stageArn: stage?.arn,
-    stageName: stage?.name,
-    endpoints: stage?.endpoints,
+    stageArn: st.arn,
+    stageName: st.name,
+    endpoints: st.endpoints,
   };
 }
 
-export async function deleteStage(env: any, stageArn: string) {
-  await postJson<any>(env, "/DeleteStage", { arn: stageArn });
+export async function deleteStage(env: any, stageArn: string): Promise<void> {
+  if (!stageArn) return;
+  await callRt<any>(env, "/DeleteStage", { arn: stageArn });
 }
 
 export async function createParticipantToken(
   env: any,
   stageArn: string,
   userId: string,
-  capabilities: TokenCapability[],
-  durationSeconds?: number
+  capabilities: TokenCapability[]
 ): Promise<ParticipantToken> {
-  const payload: any = { stageArn, userId, capabilities };
-  if (durationSeconds) payload.duration = durationSeconds;
+  const resp = await callRt<any>(env, "/CreateParticipantToken", {
+    stageArn,
+    userId,
+    capabilities,
+  });
 
-  const data = await postJson<any>(env, "/CreateParticipantToken", payload);
-  const pt = data?.participantToken;
+  const tok = resp?.participantToken;
+  if (!tok?.token || !tok?.participantId) {
+    throw new Error(`Unexpected CreateParticipantToken response: ${JSON.stringify(resp)}`);
+  }
 
   return {
-    participantId: pt?.participantId,
-    token: pt?.token,
-    userId: pt?.userId,
-    expirationTime: pt?.expirationTime,
+    participantId: tok.participantId,
+    token: tok.token,
+    userId: tok.userId,
+    expirationTime: tok.expirationTime,
   };
 }
 
-// --- NEW exports: composition control ---
+export async function createEncoderConfiguration(env: any, name: string): Promise<EncoderConfiguration> {
+  const resp = await callRt<any>(env, "/CreateEncoderConfiguration", {
+    name,
+    video: {
+      width: 1280,
+      height: 720,
+      framerate: 30,
+      bitrate: 2500000,
+    },
+    audio: {
+      bitrate: 128000,
+      channels: 2,
+      sampleRate: 48000,
+    },
+  });
+
+  const enc = resp?.encoderConfiguration;
+  if (!enc?.arn) throw new Error(`Unexpected CreateEncoderConfiguration response: ${JSON.stringify(resp)}`);
+  return { arn: enc.arn, name: enc.name };
+}
 
 /**
- * Start server-side composition: Stage (WebRTC ingest) -> IVS Channel (HLS playback).
- * Returns the composition object (includes arn).
+ * Starts a server-side composition that pushes the Stage into the given IVS Channel.
+ * NOTE: StartComposition REQUIRES an idempotencyToken.
  */
-export async function startComposition(
+export async function createComposition(
   env: any,
   stageArn: string,
   channelArn: string,
-  layout?: any
+  encoderConfigurationArn: string,
+  idempotencyToken?: string
 ): Promise<Composition> {
-  if (!stageArn) throw new Error("startComposition: missing stageArn");
-  if (!channelArn) throw new Error("startComposition: missing channelArn");
+  const token = (idempotencyToken && String(idempotencyToken).trim()) || crypto.randomUUID();
 
-  const payload: any = {
+  const resp = await callRt<any>(env, "/StartComposition", {
     stageArn,
-    destinations: [{ channel: { channelArn } } as CompositionDestination],
-  };
-  if (layout) payload.layout = layout;
+    destinations: [
+      {
+        channel: {
+          channelArn,
+          encoderConfigurationArn,
+        },
+      },
+    ],
+    idempotencyToken: token,
+  });
 
-  const data = await postJson<any>(env, "/StartComposition", payload);
-  const comp = data?.composition;
-
-  if (!comp?.arn) {
-    throw new Error("StartComposition returned no composition arn");
-  }
+  const comp = resp?.composition;
+  if (!comp?.arn) throw new Error(`Unexpected StartComposition response: ${JSON.stringify(resp)}`);
 
   return {
     arn: comp.arn,
     state: comp.state,
     stageArn: comp.stageArn,
-    createdAt: comp.createdAt,
-    updatedAt: comp.updatedAt,
   };
 }
 
-/**
- * Stop server-side composition by ARN.
- */
-export async function stopComposition(env: any, compositionArn: string) {
-  if (!compositionArn) throw new Error("stopComposition: missing compositionArn");
-  await postJson<any>(env, "/StopComposition", { arn: compositionArn });
+export async function stopComposition(env: any, compositionArn: string): Promise<void> {
+  if (!compositionArn) return;
+  await callRt<any>(env, "/StopComposition", { arn: compositionArn });
 }
