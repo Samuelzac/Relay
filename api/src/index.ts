@@ -394,12 +394,11 @@ export default {
             let ev = await getEvent(client, eventId);
             if (!ev) return json(env, { error: "not_found" }, 404);
 
-            // Per-event auth: allow either the broadcast key (broadcaster/control panel)
-            // OR the secret watch key (watch page needs to be able to start HLS composition).
-            const authRes = requireExact(key, ev.broadcast_key, env) || requireExact(key, ev.secret_key, env);
-            if (authRes) return authRes;
-
-            if (ev.status !== "paid") return json(env, { error: "not_paid" }, 403);
+            // Allow either the per-event broadcast_key (broadcaster control) OR secret_key (watch link) to start the event.
+// This keeps /start idempotent and fixes 401s when watch pages call /start with the secret key.
+if ((!ev.broadcast_key && !ev.secret_key) || !key) return json(env, { error: "missing_key" }, 401);
+if (key !== ev.broadcast_key && key !== ev.secret_key) return json(env, { error: "unauthorized" }, 401);
+if (ev.status !== "paid") return json(env, { error: "not_paid" }, 403);
             if (isExpired(ev)) return json(env, { error: "expired" }, 410);
 
             console.log("START route", JSON.stringify({ eventId, hls_enabled: !!ev.hls_enabled, starts_at: ev.starts_at || null }));

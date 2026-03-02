@@ -200,7 +200,7 @@
 
     // IMPORTANT: broadcaster should use per-event broadcast_key
     const prov = await apiPost(`/api/events/${encodeURIComponent(eventId)}/rtc/provision?key=${encodeURIComponent(key)}`, {});
-    stageToken = prov?.publisher?.token;
+    stageToken = prov?.participantToken || prov?.publisher?.token;
     if(!stageToken) throw new Error("No publisher token returned from /rtc/provision");
     return prov;
   }
