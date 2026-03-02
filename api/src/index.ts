@@ -394,7 +394,9 @@ export default {
             let ev = await getEvent(client, eventId);
             if (!ev) return json(env, { error: "not_found" }, 404);
 
-            const authRes = requireExact(key, ev.broadcast_key, env);
+            // Per-event auth: allow either the broadcast key (broadcaster/control panel)
+            // OR the secret watch key (watch page needs to be able to start HLS composition).
+            const authRes = requireExact(key, ev.broadcast_key, env) || requireExact(key, ev.secret_key, env);
             if (authRes) return authRes;
 
             if (ev.status !== "paid") return json(env, { error: "not_paid" }, 403);
@@ -503,24 +505,19 @@ export default {
               if (!compositionArn && stageArn && channelArn && encoderConfigurationArn) {
                 console.log("START(HLS): creating composition...");
                 try {
-                  // StartComposition requires an idempotencyToken. Use a stable token per event+stage+channel
-                  // so retries don't create duplicates.
-                  const idempotencyToken = crypto.randomUUID();
+                  const comp = await createComposition(env, stageArn, channelArn, encoderConfigurationArn);
+                  compositionArn = comp?.arn || comp?.composition?.arn || null;
 
-                  const comp = await createComposition(env, stageArn, channelArn, encoderConfigurationArn, idempotencyToken);
-
-                  const compArn = (comp && (comp as any).arn) || (comp as any)?.composition?.arn || null;
-                  if (compArn) {
-                    compositionArn = compArn;
+                  if (compositionArn) {
                     endpoints = withCompositionArn(endpoints, compositionArn);
                     await updateRtcEndpoints(client, eventId, endpoints);
                     compositionStarted = true;
                     console.log("START(HLS): compositionArn", compositionArn);
                   } else {
-                    console.error("START(HLS): StartComposition response missing arn", JSON.stringify(comp));
+                    console.error("START(HLS): composition response missing arn", JSON.stringify(comp));
                   }
                 } catch (e) {
-                  console.error("START(HLS): StartComposition failed", eventId, e);
+                  console.error("START(HLS): CreateComposition failed", eventId, e);
                 }
               } else if (compositionArn) {
                 console.log("START(HLS): composition already stored", compositionArn);
