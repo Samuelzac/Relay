@@ -4,357 +4,310 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Relay Broadcast</title>
-  <style>
-    body { font-family: system-ui, sans-serif; margin: 20px; }
-    video { width: 100%; max-width: 900px; background: #000; border-radius: 12px; }
-    .box { padding: 12px; border: 1px solid #ddd; border-radius: 12px; margin: 12px 0; }
-    button { padding: 12px 16px; border-radius: 10px; border: 0; font-weight: 700; cursor: pointer; }
-    button[disabled] { opacity: 0.5; cursor: not-allowed; }
-    .err { color: #b00020; white-space: pre-wrap; }
-    code { word-break: break-all; }
-    .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
-    .pill { display: inline-block; padding: 6px 10px; border-radius: 999px; background: #f3f3f3; }
-    .muted { color: #666; font-size: 14px; }
-    .grid { display: grid; grid-template-columns: 180px 1fr; gap: 8px 12px; }
-    @media (max-width: 520px) { .grid { grid-template-columns: 1fr; } }
-  </style>
 
-  <!-- IVS Web Broadcast SDK -->
-  <script src="https://web-broadcast.live-video.net/1.32.0/amazon-ivs-web-broadcast.js"></script>
+  <!-- Amazon IVS Real-Time Web Broadcast SDK (Stages / WebRTC) -->
+  <script src="https://web-broadcast.live-video.net/1.17.0/amazon-ivs-web-broadcast.js"></script>
+
+  <style>
+    :root { color-scheme: dark; }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; background: #0b0c10; color: #e8e8e8; margin: 0; }
+    header { padding: 14px 16px; border-bottom: 1px solid #20232a; display:flex; gap:12px; align-items:center; justify-content:space-between; }
+    .title { font-weight:700; }
+    .pill { font-size:12px; padding:4px 8px; border:1px solid #2b2f3a; border-radius:999px; color:#cbd5e1; }
+    main { padding: 14px 16px; max-width: 1100px; margin: 0 auto; }
+    .row { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-bottom:10px; }
+    button { background:#1f2937; border:1px solid #334155; color:#e5e7eb; padding:10px 12px; border-radius:10px; cursor:pointer; }
+    button:disabled { opacity:0.5; cursor:not-allowed; }
+    select, input { background:#0f172a; border:1px solid #334155; color:#e5e7eb; padding:9px 10px; border-radius:10px; }
+    .card { border:1px solid #20232a; border-radius:14px; padding:12px; background:#0f1117; }
+    video { width:100%; background:#000; border-radius:12px; border:1px solid #20232a; }
+    .grid { display:grid; gap:12px; grid-template-columns: 1fr; }
+    @media (min-width: 900px){ .grid { grid-template-columns: 2fr 1fr; } }
+    .log { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:12px; white-space:pre-wrap; background:#0b1220; border:1px solid #202a3a; border-radius:12px; padding:10px; max-height: 240px; overflow:auto; }
+    .muted { color:#a3a3a3; }
+    .timer { font-variant-numeric: tabular-nums; font-weight:700; }
+  </style>
 </head>
 <body>
-  <h1>Relay Broadcast</h1>
+  <header>
+    <div class="title">Relay Broadcast</div>
+    <div class="row">
+      <span id="statusPill" class="pill">status: —</span>
+      <span id="timerPill" class="pill"><span class="muted">live:</span> <span class="timer" id="timer">00:00</span></span>
+    </div>
+  </header>
 
-  <div class="box">
+  <main>
     <div class="grid">
-      <div><b>Mode</b></div><div><span id="mode" class="pill">—</span></div>
-      <div><b>Target</b></div><div><code id="target">—</code></div>
-      <div><b>Broadcast Key</b></div><div><code id="key">—</code></div>
+      <div class="card">
+        <div class="row">
+          <label class="muted">Event</label>
+          <input id="eventId" style="min-width:320px" />
+          <label class="muted">Key</label>
+          <input id="eventKey" style="min-width:320px" />
+        </div>
+
+        <div class="row">
+          <label class="muted">Camera</label>
+          <select id="camera"></select>
+          <label class="muted">Mic</label>
+          <select id="mic"></select>
+
+          <button id="btnPreview">Preview</button>
+          <button id="btnGoLive">Go Live</button>
+          <button id="btnStop">Stop</button>
+        </div>
+
+        <video id="preview" playsinline autoplay muted></video>
+        <div class="muted" id="info" style="margin-top:6px;"></div>
+      </div>
+
+      <div class="card">
+        <div class="row" style="justify-content:space-between;">
+          <div class="muted">Logs</div>
+          <button id="btnClear" style="padding:8px 10px;">Clear</button>
+        </div>
+        <div id="log" class="log"></div>
+      </div>
     </div>
+  </main>
 
-    <div class="row" style="margin-top:10px;">
-      <div><b>Status:</b> <span id="status">Ready</span></div>
-      <div class="pill" id="timePill" style="display:none;"><b>Time left:</b> <span id="timeLeft">—</span></div>
-    </div>
+<script>
+(() => {
+  const API_BASE = (location.origin.includes("pages.dev") || location.origin.includes("localhost"))
+    ? "https://stream-platform-api.kiwismurph.workers.dev"
+    : location.origin;
 
-    <div class="muted" style="margin-top:8px;">
-      Use either:
-      <code>?stream=Sam1&amp;key=...</code> (fixed stream name mode)
-      or
-      <code>?id=&lt;eventId&gt;&amp;key=...</code> (existing event mode).
-      (Also supports <code>?event=&lt;eventId&gt;</code>.)
-    </div>
+  const qs = new URLSearchParams(location.search);
+  const $ = (id) => document.getElementById(id);
 
-    <div class="err" id="err"></div>
-  </div>
+  const elEventId = $("eventId");
+  const elEventKey = $("eventKey");
+  const elStatus = $("statusPill");
+  const elTimer = $("timer");
+  const elLog = $("log");
+  const elInfo = $("info");
 
-  <div class="row">
-    <button id="go">Go Live</button>
-    <button id="stop" disabled>Stop</button>
-  </div>
+  const elCam = $("camera");
+  const elMic = $("mic");
 
-  <div class="box">
-    <video id="preview" playsinline autoplay muted></video>
-  </div>
+  const btnPreview = $("btnPreview");
+  const btnGoLive = $("btnGoLive");
+  const btnStop = $("btnStop");
+  const btnClear = $("btnClear");
 
-  <div class="box" id="obsBox" style="display:none;">
-    <h3 style="margin:0 0 10px 0;">OBS (WHIP) details</h3>
-    <div class="grid">
-      <div><b>WHIP Server</b></div>
-      <div><code>https://global.whip.live-video.net</code></div>
-      <div><b>Bearer Token</b></div>
-      <div><code id="obsToken">—</code></div>
-    </div>
-    <div class="muted" style="margin-top:10px;">
-      In OBS: Settings → Stream → Service: WHIP → paste Server + Bearer Token → Start Streaming.
-    </div>
-  </div>
+  const videoEl = $("preview");
 
-  <script>
-    // Your Worker API base
-    const API_BASE = "https://stream-platform-api.kiwismurph.workers.dev";
+  // state
+  let localStream = null;
+  let stage = null;
+  let stageToken = null;
+  let startedAtMs = null;
+  let timerHandle = null;
 
-    function qs(name) {
-      return new URLSearchParams(location.search).get(name) || "";
-    }
+  elEventId.value = qs.get("event") || qs.get("id") || "";
+  elEventKey.value = qs.get("key") || "";
 
-    function setStatus(s) {
-      document.getElementById("status").textContent = s;
-    }
+  function log(...args){
+    const line = args.map(a => typeof a === "string" ? a : JSON.stringify(a)).join(" ");
+    elLog.textContent += line + "\n";
+    elLog.scrollTop = elLog.scrollHeight;
+    console.log(...args);
+  }
+  btnClear.onclick = () => { elLog.textContent = ""; };
 
-    function setError(e) {
-      document.getElementById("err").textContent = e ? String(e?.stack || e) : "";
-    }
+  function setStatus(t){ elStatus.textContent = "status: " + t; }
 
-    function fmtTimeLeft(ms) {
-      if (!Number.isFinite(ms)) return "—";
-      if (ms <= 0) return "0:00";
-      const totalSec = Math.floor(ms / 1000);
-      const h = Math.floor(totalSec / 3600);
-      const m = Math.floor((totalSec % 3600) / 60);
-      const s = totalSec % 60;
-      if (h > 0) return `${h}:${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`;
-      return `${m}:${String(s).padStart(2,"0")}`;
-    }
+  function apiUrl(path){ return API_BASE + path; }
 
-    let stage = null;
-    let localStream = null;
-    let countdownTimer = null;
-    let startedOnce = false;
-    let expiresAtMs = null;
-
-    // Track current URL params so stop can call event stop endpoint when needed
-    let currentMode = null;      // "event" | "stream"
-    let currentEventId = null;
-    let currentStreamName = null;
-    let currentKey = null;
-
-    function setTimeLeftFromExpires(expiresAtIso) {
-      if (!expiresAtIso) return;
-      const t = Date.parse(expiresAtIso);
-      if (!Number.isFinite(t)) return;
-      expiresAtMs = t;
-
-      const pill = document.getElementById("timePill");
-      pill.style.display = "inline-block";
-
-      if (countdownTimer) clearInterval(countdownTimer);
-      const el = document.getElementById("timeLeft");
-
-      const tick = () => {
-        const left = expiresAtMs - Date.now();
-        el.textContent = fmtTimeLeft(left);
-        if (left <= 0) {
-          clearInterval(countdownTimer);
-          countdownTimer = null;
-        }
-      };
-
-      tick();
-      countdownTimer = setInterval(tick, 500);
-    }
-
-    async function callStartEvent(eventId, key) {
-      // Used in event-mode: starts clock AND (now) triggers composition if HLS enabled (server-side)
-      const url = `${API_BASE}/api/events/${eventId}/start?key=${encodeURIComponent(key)}`;
-      const res = await fetch(url, { method: "POST" });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(`start failed: ${res.status} ${JSON.stringify(data)}`);
-      if (data?.expires_at) setTimeLeftFromExpires(data.expires_at);
-      return data;
-    }
-
-    async function callStopEvent(eventId, key) {
-      // NEW: stops composition (HLS) when enabled; safe to call even if no composition exists
-      const url = `${API_BASE}/api/events/${eventId}/stop?key=${encodeURIComponent(key)}`;
-      const res = await fetch(url, { method: "POST" });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(`stop failed: ${res.status} ${JSON.stringify(data)}`);
-      return data;
-    }
-
-    function showObsToken(token) {
-      document.getElementById("obsToken").textContent = token || "—";
-      document.getElementById("obsBox").style.display = token ? "block" : "none";
-    }
-
-    async function goLive({ mode, eventId, streamName, key }) {
-      try {
-        setError("");
-        setStatus("Provisioning RTC…");
-        showObsToken("");
-
-        // Ensure SDK is present
-        if (!window.IVSBroadcastClient) {
-          throw new Error("IVS Web Broadcast SDK failed to load (IVSBroadcastClient missing).");
-        }
-
-        // 1) Get host token (and stage provisioned if needed)
-        const provisionUrl =
-          mode === "stream"
-            ? `${API_BASE}/api/streams/${encodeURIComponent(streamName)}/rtc/provision?key=${encodeURIComponent(key)}`
-            : `${API_BASE}/api/events/${encodeURIComponent(eventId)}/rtc/provision?key=${encodeURIComponent(key)}`;
-
-        const res = await fetch(provisionUrl, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: "{}"
-        });
-
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(`rtc/provision failed: ${res.status} ${JSON.stringify(data)}`);
-
-        const token = data.participantToken;
-        if (!token) throw new Error("Missing participantToken from rtc/provision");
-
-        // Show WHIP details for OBS (same token works as Bearer Token)
-        showObsToken(token);
-
-        // 2) Capture devices
-        setStatus("Requesting camera/mic…");
-        localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-        document.getElementById("preview").srcObject = localStream;
-
-        // 3) Build stage strategy + join (publish local tracks, subscribe to none)
-        setStatus("Joining stage…");
-
-        const { Stage, LocalStageStream, SubscribeType, StageEvents } = IVSBroadcastClient;
-
-        const localVideoTrack = localStream.getVideoTracks()[0];
-        const localAudioTrack = localStream.getAudioTracks()[0];
-
-        const streamsToPublish = [
-          new LocalStageStream(localVideoTrack),
-          new LocalStageStream(localAudioTrack),
-        ];
-
-        const strategy = {
-          stageStreamsToPublish() { return streamsToPublish; },
-          shouldPublishParticipant() { return true; },
-          shouldSubscribeToParticipant() { return SubscribeType.NONE; }
-        };
-
-        stage = new Stage(token, strategy);
-
-        stage.on(StageEvents.STAGE_CONNECTION_STATE_CHANGED, async (state) => {
-          console.log("Stage connection state:", state);
-
-          if (!startedOnce && state === "CONNECTED") {
-            startedOnce = true;
-
-            if (mode === "event") {
-              // Start your event clock (existing behavior) - also triggers HLS composition server-side
-              try {
-                setStatus("LIVE ✅ (starting clock…)");
-                const started = await callStartEvent(eventId, key);
-                console.log("start result:", started);
-                setStatus("LIVE ✅");
-              } catch (e) {
-                console.error(e);
-                setError(e);
-                setStatus("LIVE (clock start failed)");
-              }
-            } else {
-              // Stream-name mode: no clock endpoint (yet)
-              setStatus("LIVE ✅");
-            }
-          }
-        });
-
-        await stage.join();
-
-        // Fallback: if CONNECTED event doesn’t fire quickly, still mark live (and start clock for event-mode)
-        if (!startedOnce) {
-          startedOnce = true;
-          if (mode === "event") {
-            try {
-              setStatus("LIVE ✅ (starting clock…)");
-              const started = await callStartEvent(eventId, key);
-              console.log("start result:", started);
-              setStatus("LIVE ✅");
-            } catch (e) {
-              console.error(e);
-              setError(e);
-              setStatus("LIVE (clock start failed)");
-            }
-          } else {
-            setStatus("LIVE ✅");
-          }
-        }
-
-        document.getElementById("go").disabled = true;
-        document.getElementById("stop").disabled = false;
-
-      } catch (err) {
-        setStatus("Error");
-        setError(err);
-      }
-    }
-
-    async function stopLive() {
-      try {
-        setStatus("Stopping…");
-        setError("");
-
-        // Stop HLS composition for event-mode (NEW)
-        if (currentMode === "event" && currentEventId && currentKey) {
-          try {
-            // Call first so composition stops even if stage.leave hangs
-            await callStopEvent(currentEventId, currentKey);
-          } catch (e) {
-            // Non-fatal; keep stopping local stage & camera regardless
-            console.warn("event stop failed (non-fatal):", e);
-          }
-        }
-
-        if (stage) await stage.leave();
-        stage = null;
-
-        if (localStream) {
-          for (const t of localStream.getTracks()) t.stop();
-          localStream = null;
-        }
-        document.getElementById("preview").srcObject = null;
-
-        startedOnce = false;
-        expiresAtMs = null;
-        document.getElementById("timeLeft").textContent = "—";
-        document.getElementById("timePill").style.display = "none";
-        if (countdownTimer) clearInterval(countdownTimer);
-        countdownTimer = null;
-
-        showObsToken("");
-
-        setStatus("Stopped");
-        document.getElementById("go").disabled = false;
-        document.getElementById("stop").disabled = true;
-      } catch (err) {
-        setStatus("Error");
-        setError(err);
-      }
-    }
-
-    async function main() {
-      const streamName = qs("stream");
-
-      // Compatibility: support both ?id=... and ?event=...
-      const eventId = qs("id") || qs("event");
-
-      const key = qs("key");
-
-      const mode = streamName ? "stream" : "event";
-
-      // Store for stopLive()
-      currentMode = mode;
-      currentEventId = eventId || null;
-      currentStreamName = streamName || null;
-      currentKey = key || null;
-
-      document.getElementById("mode").textContent = mode === "stream" ? "stream-name" : "event";
-      document.getElementById("target").textContent = streamName || eventId || "(missing)";
-      document.getElementById("key").textContent = key || "(missing)";
-
-      if (!key) {
-        setStatus("Missing key in URL");
-        return;
-      }
-      if (mode === "stream" && !streamName) {
-        setStatus("Missing stream name (use ?stream=Sam1)");
-        return;
-      }
-      if (mode === "event" && !eventId) {
-        setStatus("Missing event id (use ?id=... or ?event=...)");
-        return;
-      }
-
-      document.getElementById("go").onclick = () => goLive({ mode, eventId, streamName, key });
-      document.getElementById("stop").onclick = stopLive;
-    }
-
-    main().catch(err => {
-      setStatus("Error");
-      setError(err);
+  async function apiGet(path){
+    const r = await fetch(apiUrl(path), { method:"GET", credentials:"include" });
+    const t = await r.text();
+    let j=null; try{ j = t ? JSON.parse(t) : null; }catch{}
+    if(!r.ok) throw new Error(`GET ${path} -> ${r.status} ${t}`);
+    return j;
+  }
+  async function apiPost(path, body){
+    const r = await fetch(apiUrl(path), {
+      method:"POST",
+      headers:{ "content-type":"application/json" },
+      body: body ? JSON.stringify(body) : "{}",
+      credentials:"include"
     });
-  </script>
+    const t = await r.text();
+    let j=null; try{ j = t ? JSON.parse(t) : null; }catch{}
+    if(!r.ok) throw new Error(`POST ${path} -> ${r.status} ${t}`);
+    return j;
+  }
+
+  function stopTimer(){
+    if(timerHandle) clearInterval(timerHandle);
+    timerHandle = null;
+    startedAtMs = null;
+    elTimer.textContent = "00:00";
+  }
+
+  function startTimer(){
+    if(timerHandle) clearInterval(timerHandle);
+    timerHandle = setInterval(() => {
+      if(!startedAtMs) return;
+      const s = Math.floor((Date.now() - startedAtMs)/1000);
+      const mm = String(Math.floor(s/60)).padStart(2,"0");
+      const ss = String(s%60).padStart(2,"0");
+      elTimer.textContent = `${mm}:${ss}`;
+    }, 250);
+  }
+
+  async function listDevices(){
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const cams = devices.filter(d => d.kind === "videoinput");
+    const mics = devices.filter(d => d.kind === "audioinput");
+
+    elCam.innerHTML = cams.map((d,i)=>`<option value="${d.deviceId}">${d.label || "Camera " + (i+1)}</option>`).join("");
+    elMic.innerHTML = mics.map((d,i)=>`<option value="${d.deviceId}">${d.label || "Mic " + (i+1)}</option>`).join("");
+  }
+
+  async function getLocalMedia(){
+    const camId = elCam.value || undefined;
+    const micId = elMic.value || undefined;
+
+    const constraints = {
+      video: camId ? { deviceId: { exact: camId }, width:{ ideal:1280 }, height:{ ideal:720 }, frameRate:{ ideal:30 } }
+                   : { width:{ ideal:1280 }, height:{ ideal:720 }, frameRate:{ ideal:30 } },
+      audio: micId ? { deviceId: { exact: micId } } : true
+    };
+
+    const stream = await navigator.mediaDevices.getUserMedia(constraints);
+    return stream;
+  }
+
+  async function preview(){
+    setStatus("previewing…");
+    if(localStream){
+      localStream.getTracks().forEach(t=>t.stop());
+      localStream = null;
+    }
+    localStream = await getLocalMedia();
+    videoEl.srcObject = localStream;
+    elInfo.textContent = "Preview ready.";
+    setStatus("ready");
+  }
+
+  async function provisionPublishToken(){
+    const eventId = elEventId.value.trim();
+    const key = elEventKey.value.trim();
+    if(!eventId || !key) throw new Error("Missing event or key");
+
+    // IMPORTANT: broadcaster should use per-event broadcast_key
+    const prov = await apiPost(`/api/events/${encodeURIComponent(eventId)}/rtc/provision?key=${encodeURIComponent(key)}`, {});
+    stageToken = prov?.publisher?.token;
+    if(!stageToken) throw new Error("No publisher token returned from /rtc/provision");
+    return prov;
+  }
+
+  async function goLive(){
+    const sdk = window.IVSBroadcastClient;
+    if(!sdk) throw new Error("IVS Web Broadcast SDK not loaded.");
+
+    const { Stage, StageEvents, SubscribeType, LocalStageStream, StageConnectionState } = sdk;
+
+    if(!localStream) await preview();
+    await provisionPublishToken();
+
+    const tracks = localStream.getTracks();
+    const audioTrack = tracks.find(t => t.kind === "audio");
+    const videoTrack = tracks.find(t => t.kind === "video");
+
+    if(!videoTrack) throw new Error("No video track available.");
+
+    const strategy = {
+      audioTrack: audioTrack ? new LocalStageStream(audioTrack) : null,
+      videoTrack: new LocalStageStream(videoTrack),
+
+      stageStreamsToPublish() {
+        const out = [];
+        if(this.audioTrack) out.push(this.audioTrack);
+        if(this.videoTrack) out.push(this.videoTrack);
+        return out;
+      },
+      shouldPublishParticipant() { return true; },
+      shouldSubscribeToParticipant() { return SubscribeType.NONE; } // broadcaster doesn't need to subscribe
+    };
+
+    stage = new Stage(stageToken, strategy);
+
+    stage.on(StageEvents.STAGE_CONNECTION_STATE_CHANGED, async (state) => {
+      log("RTC state", state);
+      if(state === StageConnectionState.CONNECTED){
+        setStatus("live");
+        // Call /start for the event (idempotent). This also starts HLS if enabled.
+        try{
+          const eventId = elEventId.value.trim();
+          const key = elEventKey.value.trim();
+          const res = await apiPost(`/api/events/${encodeURIComponent(eventId)}/start?key=${encodeURIComponent(key)}`, {});
+          log("START", res);
+        }catch(e){
+          log("START failed (non-fatal)", String(e));
+        }
+        if(!startedAtMs){ startedAtMs = Date.now(); startTimer(); }
+      }
+      if(state === StageConnectionState.CONNECTING) setStatus("connecting…");
+      if(state === StageConnectionState.ERRORED) setStatus("reconnecting…");
+      if(state === StageConnectionState.DISCONNECTED) setStatus("disconnected");
+    });
+
+    setStatus("joining…");
+    await stage.join();
+    elInfo.textContent = "Publishing to stage.";
+  }
+
+  async function stopAll(){
+    try{ stage && stage.leave(); }catch{}
+    stage = null;
+
+    if(localStream){
+      localStream.getTracks().forEach(t=>t.stop());
+      localStream = null;
+    }
+    videoEl.srcObject = null;
+
+    stopTimer();
+    setStatus("stopped");
+    elInfo.textContent = "";
+  }
+
+  btnPreview.onclick = async () => {
+    try{ btnPreview.disabled=true; await preview(); }
+    catch(e){ log("Preview error", String(e)); setStatus("error"); }
+    finally{ btnPreview.disabled=false; }
+  };
+
+  btnGoLive.onclick = async () => {
+    try{ btnGoLive.disabled=true; await goLive(); }
+    catch(e){ log("GoLive error", String(e)); setStatus("error"); }
+    finally{ btnGoLive.disabled=false; }
+  };
+
+  btnStop.onclick = async () => {
+    try{ await stopAll(); }
+    catch(e){ log("Stop error", String(e)); }
+  };
+
+  // init: ask permissions then list devices
+  (async () => {
+    try{
+      setStatus("init…");
+      // permission prompt so labels show
+      const s = await navigator.mediaDevices.getUserMedia({ video:true, audio:true });
+      s.getTracks().forEach(t=>t.stop());
+      await listDevices();
+      setStatus("ready");
+    }catch(e){
+      log("Init error", String(e));
+      setStatus("needs permissions");
+    }
+  })();
+})();
+</script>
 </body>
 </html>

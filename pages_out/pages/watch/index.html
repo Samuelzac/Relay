@@ -1,374 +1,456 @@
 <!doctype html>
-<html>
+<html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Relay Watch</title>
 
-  <!-- Amazon IVS Real-Time Web (Stage) SDK (WebRTC playback) -->
+  <!-- Amazon IVS Real-Time Web Broadcast SDK (Stages / WebRTC) -->
   <script src="https://web-broadcast.live-video.net/1.17.0/amazon-ivs-web-broadcast.js"></script>
 
-  <!-- Amazon IVS Player SDK (HLS playback) -->
+  <!-- Amazon IVS Player SDK (HLS) -->
   <script src="https://player.live-video.net/1.48.0/amazon-ivs-player.min.js"></script>
 
   <style>
-    body { font-family: system-ui, sans-serif; margin: 20px; }
-    video { width: 100%; max-width: 900px; background: #000; border-radius: 12px; }
-    .box { padding: 12px; border: 1px solid #ddd; border-radius: 12px; margin: 12px 0; }
-    .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
-    .btn {
-      appearance: none; border: 1px solid #ccc; background: #fff; padding: 8px 12px;
-      border-radius: 10px; cursor: pointer; font-weight: 600;
-    }
-    .btn[disabled] { opacity: 0.5; cursor: not-allowed; }
-    .btn.primary { border-color: #222; }
-    .hint { color: #555; font-size: 14px; }
-    .err { color: #b00020; white-space: pre-wrap; }
-    code { word-break: break-all; }
+    :root { color-scheme: dark; }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; background:#0b0c10; color:#e8e8e8; margin:0; }
+    header { padding:14px 16px; border-bottom:1px solid #20232a; display:flex; gap:12px; align-items:center; justify-content:space-between; }
+    .title { font-weight:700; }
+    .pill { font-size:12px; padding:4px 8px; border:1px solid #2b2f3a; border-radius:999px; color:#cbd5e1; }
+    main { padding:14px 16px; max-width:1100px; margin:0 auto; }
+    .row { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-bottom:10px; }
+    button { background:#1f2937; border:1px solid #334155; color:#e5e7eb; padding:10px 12px; border-radius:10px; cursor:pointer; }
+    button:disabled { opacity:0.55; cursor:not-allowed; }
+    select, input { background:#0f172a; border:1px solid #334155; color:#e5e7eb; padding:9px 10px; border-radius:10px; }
+    .card { border:1px solid #20232a; border-radius:14px; padding:12px; background:#0f1117; }
+    .grid { display:grid; gap:12px; grid-template-columns:1fr; }
+    @media (min-width:900px){ .grid { grid-template-columns:2fr 1fr; } }
+    video { width:100%; background:#000; border-radius:12px; border:1px solid #20232a; }
+    .videos { display:grid; gap:10px; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); }
+    .log { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:12px; white-space:pre-wrap; background:#0b1220; border:1px solid #202a3a; border-radius:12px; padding:10px; max-height:240px; overflow:auto; }
+    .muted { color:#a3a3a3; }
+    .err { color:#ffb4b4; }
   </style>
 </head>
 <body>
+  <header>
+    <div class="title">Relay Watch</div>
+    <div class="row">
+      <span id="modePill" class="pill">mode: auto</span>
+      <span id="statusPill" class="pill">status: —</span>
+    </div>
+  </header>
 
-<h1>Relay Watch</h1>
+  <main>
+    <div class="grid">
+      <div class="card">
+        <div class="row">
+          <label class="muted">Event</label>
+          <input id="eventId" style="min-width:320px" />
+          <label class="muted">Key</label>
+          <input id="eventKey" style="min-width:320px" />
+        </div>
 
-<div class="box">
-  <div><b>Event:</b> <code id="eventId"></code></div>
-  <div class="row" style="margin-top:8px">
-    <div><b>Status:</b> <span id="status">Loading…</span></div>
-    <span class="hint" id="modeHint"></span>
-  </div>
-  <div class="row" id="modeControls" style="margin-top:10px; display:none">
-    <button class="btn primary" id="btnRtc">Low latency (WebRTC)</button>
-    <button class="btn" id="btnHls">Standard (HLS)</button>
-  </div>
-  <div class="err" id="err"></div>
-</div>
+        <div class="row">
+          <label class="muted">Playback mode</label>
+          <select id="mode">
+            <option value="auto">Auto</option>
+            <option value="hls">HLS (IVS Player)</option>
+            <option value="rtc">WebRTC (Stage)</option>
+          </select>
 
-<video id="video" playsinline autoplay controls></video>
+          <button id="btnLoad">Load / Refresh</button>
+          <button id="btnPlay">Play</button>
+          <button id="btnStop">Stop</button>
+        </div>
+
+        <div id="errorLine" class="muted err" style="margin:6px 0 0; display:none;"></div>
+
+        <div id="hlsWrap" style="display:none;">
+          <div class="muted" style="margin:8px 0 6px;">HLS Player</div>
+          <video id="hlsVideo" playsinline controls></video>
+          <div class="muted" id="hlsInfo" style="margin-top:6px;"></div>
+        </div>
+
+        <div id="rtcWrap" style="display:none;">
+          <div class="muted" style="margin:8px 0 6px;">WebRTC Stage</div>
+          <div class="videos" id="rtcVideos"></div>
+          <div class="muted" id="rtcInfo" style="margin-top:6px;"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="row" style="justify-content:space-between;">
+          <div class="muted">Logs</div>
+          <button id="btnClear" style="padding:8px 10px;">Clear</button>
+        </div>
+        <div id="log" class="log"></div>
+      </div>
+    </div>
+  </main>
 
 <script>
-const API_BASE = "https://stream-platform-api.kiwismurph.workers.dev";
+(() => {
+  // If you're serving the HTML from Pages, keep API on the Worker.
+  const API_BASE =
+    (location.origin.includes("pages.dev") || location.origin.includes("localhost"))
+      ? "https://stream-platform-api.kiwismurph.workers.dev"
+      : location.origin;
 
-const statusEl = document.getElementById("status");
-const errEl = document.getElementById("err");
-const videoEl = document.getElementById("video");
-const modeControlsEl = document.getElementById("modeControls");
-const btnRtc = document.getElementById("btnRtc");
-const btnHls = document.getElementById("btnHls");
-const modeHintEl = document.getElementById("modeHint");
+  const qs = new URLSearchParams(location.search);
+  const $ = (id) => document.getElementById(id);
 
-let currentStage = null;     // IVS Realtime Stage instance (WebRTC playback)
-let currentIvsPlayer = null; // IVS Player instance (HLS playback)
-let currentMode = null;      // 'rtc' | 'hls'
-let lastPub = null;
+  const elEventId = $("eventId");
+  const elEventKey = $("eventKey");
+  const elMode = $("mode");
+  const elModePill = $("modePill");
+  const elStatusPill = $("statusPill");
+  const elLog = $("log");
+  const elErr = $("errorLine");
 
-let hlsRetryTimer = null;
-let hlsRetryMs = 1500;
-let lastPlaybackUrl = null;
+  const elHlsWrap = $("hlsWrap");
+  const elRtcWrap = $("rtcWrap");
+  const elHlsInfo = $("hlsInfo");
+  const elRtcInfo = $("rtcInfo");
+  const elRtcVideos = $("rtcVideos");
 
-function getParam(name) {
-  return new URLSearchParams(location.search).get(name) || "";
-}
+  const btnLoad = $("btnLoad");
+  const btnPlay = $("btnPlay");
+  const btnStop = $("btnStop");
+  const btnClear = $("btnClear");
 
-function getEventId() {
-  return getParam("event") || getParam("id") || "";
-}
+  // state
+  let ev = null;
 
-function clearUiError() {
-  errEl.textContent = "";
-  modeHintEl.textContent = "";
-}
+  // HLS state
+  let ivsPlayer = null;
+  let hlsRetryTimer = null;
+  let lastStartAt = 0;
 
-function setStatus(s) {
-  statusEl.textContent = s;
-}
+  // RTC state
+  let stage = null;
+  let stageToken = null;
 
-async function fetchJson(url, opts) {
-  const res = await fetch(url, opts);
-  const txt = await res.text();
-  let data = {};
-  try { data = txt ? JSON.parse(txt) : {}; } catch { data = { raw: txt }; }
-  if (!res.ok) throw new Error(`${res.status} ${JSON.stringify(data)}`);
-  return data;
-}
+  elEventId.value = qs.get("event") || qs.get("id") || "";
+  elEventKey.value = qs.get("key") || "";
+  elMode.value = (qs.get("mode") || "auto").toLowerCase();
 
-async function fetchPublic(eventId, key) {
-  return await fetchJson(`${API_BASE}/api/events/${eventId}/public?key=${encodeURIComponent(key)}`);
-}
+  function showError(msg){
+    elErr.style.display = msg ? "" : "none";
+    elErr.textContent = msg || "";
+  }
 
-async function callStart(eventId, key) {
-  // IMPORTANT: starting composition/channel happens here
-  return await fetchJson(`${API_BASE}/api/events/${eventId}/start?key=${encodeURIComponent(key)}`, { method: "POST" });
-}
+  function log(...args){
+    const line = args.map(a => typeof a === "string" ? a : JSON.stringify(a)).join(" ");
+    elLog.textContent += line + "\n";
+    elLog.scrollTop = elLog.scrollHeight;
+    console.log(...args);
+  }
 
-async function rtcProvision(eventId, key) {
-  // Your API uses rtc/provision (not rtc/token)
-  return await fetchJson(`${API_BASE}/api/events/${eventId}/rtc/provision?key=${encodeURIComponent(key)}`, { method: "POST" });
-}
+  btnClear.onclick = () => { elLog.textContent = ""; };
 
-function getRealtimeSdk() {
-  const sdk = window.IVSBroadcastClient;
-  if (!sdk) return null;
-  if (!sdk.Stage || !sdk.StageEvents) return null;
-  return sdk;
-}
+  function setStatus(text){ elStatusPill.textContent = "status: " + text; }
+  function setModePill(){ elModePill.textContent = "mode: " + elMode.value; }
 
-function stopRtcIfRunning() {
-  try {
-    if (currentStage) {
-      currentStage.leave();
-      currentStage = null;
+  function apiUrl(path){ return API_BASE + path; }
+
+  async function fetchJson(path, init){
+    const r = await fetch(apiUrl(path), init);
+    const t = await r.text();
+    let j = null;
+    try { j = t ? JSON.parse(t) : null; } catch {}
+    if(!r.ok){
+      const msg = typeof j === "object" && j ? JSON.stringify(j) : t;
+      const err = new Error(`${r.status} ${msg}`);
+      err.status = r.status;
+      err.body = j ?? t;
+      throw err;
     }
-  } catch (_) {}
-}
+    return j;
+  }
 
-function stopHlsIfRunning() {
-  try {
-    if (currentIvsPlayer) {
-      currentIvsPlayer.pause();
-      currentIvsPlayer.delete();
-      currentIvsPlayer = null;
+  async function apiGet(path){
+    return fetchJson(path, { method:"GET", credentials:"include" });
+  }
+
+  async function apiPost(path, body){
+    return fetchJson(path, {
+      method:"POST",
+      headers:{ "content-type":"application/json" },
+      body: body ? JSON.stringify(body) : "{}",
+      credentials:"include"
+    });
+  }
+
+  function showHls(){ elHlsWrap.style.display = ""; elRtcWrap.style.display = "none"; }
+  function showRtc(){ elRtcWrap.style.display = ""; elHlsWrap.style.display = "none"; }
+  function showNone(){ elRtcWrap.style.display = "none"; elHlsWrap.style.display = "none"; }
+
+  async function loadPublic(){
+    showError("");
+    const eventId = elEventId.value.trim();
+    const key = elEventKey.value.trim();
+    if(!eventId || !key) throw new Error("Missing event or key");
+
+    setStatus("loading…");
+    setModePill();
+
+    const pub = await apiGet(`/api/events/${encodeURIComponent(eventId)}/public?key=${encodeURIComponent(key)}`);
+    ev = pub;
+
+    setStatus(pub.status || "ok");
+    log("PUBLIC", pub);
+
+    if(elMode.value === "auto"){
+      if(pub.hls_enabled && pub.playback_url) elMode.value = "hls";
+      else if(pub.rtc_enabled) elMode.value = "rtc";
     }
-  } catch (_) {}
+    setModePill();
 
-  try {
-    videoEl.removeAttribute("src");
-    if (videoEl.srcObject) videoEl.srcObject = null;
-    videoEl.load();
-  } catch (_) {}
+    if(elMode.value === "hls") showHls();
+    else if(elMode.value === "rtc") showRtc();
+    else showNone();
 
-  if (hlsRetryTimer) {
-    clearTimeout(hlsRetryTimer);
-    hlsRetryTimer = null;
+    return pub;
   }
-  hlsRetryMs = 1500;
-}
 
-function setButtons(pub) {
-  const both = !!pub?.rtc_enabled && !!pub?.hls_enabled;
-  if (!both) {
-    modeControlsEl.style.display = "none";
-    btnRtc.disabled = true;
-    btnHls.disabled = true;
-    return;
-  }
-  modeControlsEl.style.display = "";
-  btnRtc.disabled = false;
-  btnHls.disabled = false;
-
-  btnRtc.classList.toggle("primary", currentMode === "rtc");
-  btnHls.classList.toggle("primary", currentMode === "hls");
-}
-
-function scheduleHlsRetry(eventId, key, reason) {
-  if (currentMode !== "hls") return;
-  if (hlsRetryTimer) return;
-
-  const wait = hlsRetryMs;
-  hlsRetryMs = Math.min(15000, Math.floor(hlsRetryMs * 1.6));
-
-  setStatus(`HLS: retrying in ${Math.round(wait/100)/10}s…`);
-  if (reason) modeHintEl.textContent = reason;
-
-  hlsRetryTimer = setTimeout(async () => {
-    hlsRetryTimer = null;
-    try {
-      clearUiError();
-      await startHlsPlayback(eventId, key);
-    } catch (e) {
-      errEl.textContent = e?.stack || String(e);
-      scheduleHlsRetry(eventId, key, "Still waiting for live HLS segments…");
+  // ----------------
+  // HLS (IVS Player)
+  // ----------------
+  function stopHls(){
+    if(hlsRetryTimer){ clearTimeout(hlsRetryTimer); hlsRetryTimer = null; }
+    if(ivsPlayer){
+      try { ivsPlayer.pause(); } catch {}
+      try { ivsPlayer.delete(); } catch {}
+      ivsPlayer = null;
     }
-  }, wait);
-}
-
-async function startRtcPlayback(eventId, key) {
-  stopHlsIfRunning();
-  currentMode = "rtc";
-
-  // Always refresh public state
-  const pub = await fetchPublic(eventId, key);
-  lastPub = pub;
-  setButtons(pub);
-
-  if (!pub.rtc_enabled) {
-    setStatus("WebRTC playback not enabled for this event.");
-    return;
+    const v = $("hlsVideo");
+    v.srcObject = null;
+    v.removeAttribute("src");
+    v.load();
+    elHlsInfo.textContent = "";
   }
 
-  setStatus("Provisioning WebRTC…");
-  const prov = await rtcProvision(eventId, key);
+  async function ensureStartedForHls(){
+    const now = Date.now();
+    if(now - lastStartAt < 2500) return; // prevent /start spam
+    lastStartAt = now;
 
-  const subToken = prov?.subscriber?.token || prov?.subscriber?.participantToken || prov?.subscriber;
-  if (!subToken) throw new Error(`rtc/provision missing subscriber token: ${JSON.stringify(prov)}`);
+    const eventId = elEventId.value.trim();
+    const key = elEventKey.value.trim();
 
-  const sdk = getRealtimeSdk();
-  if (!sdk) throw new Error("IVS Realtime SDK not loaded (IVSBroadcastClient missing)");
+    const res = await apiPost(`/api/events/${encodeURIComponent(eventId)}/start?key=${encodeURIComponent(key)}`, {});
+    log("START", res);
+  }
 
-  const strategy = {
-    stageStreamsToPublish: () => [],
-    shouldPublishParticipant: () => false,
-    shouldSubscribeToParticipant: () => true,
-  };
+  async function playHls(){
+    if(!ev) await loadPublic();
+    if(!ev.hls_enabled) throw new Error("This event is not HLS-enabled.");
 
-  const stage = new sdk.Stage(subToken, strategy);
-  currentStage = stage;
+    await ensureStartedForHls();
+    await new Promise(r => setTimeout(r, 900));
+    ev = await loadPublic();
 
-  stage.on(sdk.StageEvents.STAGE_CONNECTION_STATE_CHANGED, (state) => {
-    setStatus("WebRTC: " + state);
-  });
+    const playbackUrl = ev.playback_url;
+    if(!playbackUrl) throw new Error("No playback_url returned yet.");
+    elHlsInfo.textContent = playbackUrl;
 
-  stage.on(sdk.StageEvents.STAGE_PARTICIPANT_STREAMS_ADDED, (participant, streams) => {
-    let ms = videoEl.srcObject instanceof MediaStream ? videoEl.srcObject : new MediaStream();
-    for (const stream of streams) {
-      const t = stream.mediaStreamTrack;
-      if (!t) continue;
-      try { ms.addTrack(t); } catch (_) {}
+    const videoEl = $("hlsVideo");
+    if(!window.IVSPlayer || !IVSPlayer.isPlayerSupported || !IVSPlayer.isPlayerSupported()){
+      throw new Error("IVS Player not supported in this browser.");
     }
-    videoEl.srcObject = ms;
-  });
 
-  stage.on(sdk.StageEvents.STAGE_PARTICIPANT_STREAMS_REMOVED, () => {
-    try { videoEl.srcObject = null; } catch (_) {}
-  });
+    stopHls();
 
-  setStatus("Joining live stream (WebRTC)…");
-  await stage.join();
-  setStatus("WebRTC: Live");
-}
+    ivsPlayer = IVSPlayer.create();
+    ivsPlayer.attachHTMLVideoElement(videoEl);
 
-async function startHlsPlayback(eventId, key) {
-  stopRtcIfRunning();
-  currentMode = "hls";
+    const tryLoad = async (label) => {
+      if(!ivsPlayer) return;
+      const urlNow = (ev && ev.playback_url) ? ev.playback_url : playbackUrl;
+      log(`HLS load (${label})`, urlNow);
+      try{
+        ivsPlayer.load(urlNow);
+        ivsPlayer.play();
+        setStatus("playing (hls)");
+      }catch(e){
+        log("HLS load/play threw", String(e));
+      }
+    };
 
-  // Ensure backend has started channel + composition.
-  // This is idempotent in your API and is REQUIRED to make HLS exist.
-  try {
-    setStatus("Starting HLS…");
-    await callStart(eventId, key);
-  } catch (e) {
-    // Start can fail if event not paid etc. Show but keep retry loop.
-    errEl.textContent = "Start failed: " + (e?.message || String(e));
-  }
-
-  // Always refresh public after start
-  const pub = await fetchPublic(eventId, key);
-  lastPub = pub;
-  setButtons(pub);
-
-  if (!pub.hls_enabled) {
-    setStatus("HLS playback not enabled for this event.");
-    return;
-  }
-
-  const playbackUrl = pub.ivs_playback_url || pub.playback_url;
-  if (!playbackUrl) {
-    setStatus("HLS not ready yet… (missing playback URL)");
-    scheduleHlsRetry(eventId, key, "Waiting for playback URL…");
-    return;
-  }
-
-  lastPlaybackUrl = playbackUrl;
-
-  setStatus("Loading stream (HLS)…");
-
-  const IVSPlayer = window.IVSPlayer;
-  const canUseIvsPlayer = IVSPlayer && IVSPlayer.isPlayerSupported;
-
-  // If player already exists, just reload URL
-  if (canUseIvsPlayer) {
-    if (!currentIvsPlayer) {
-      const player = IVSPlayer.create();
-      currentIvsPlayer = player;
-      player.attachHTMLVideoElement(videoEl);
-
-      player.addEventListener(IVSPlayer.PlayerEventType.ERROR, (err) => {
-        const msg = err?.message || JSON.stringify(err);
-        errEl.textContent = "IVS Player error: " + msg;
-
-        // Auto-recover from playlist issues
-        if (String(msg).toLowerCase().includes("playlist") || String(msg).toLowerCase().includes("manifest")) {
-          scheduleHlsRetry(eventId, key, "HLS not ready / ended — retrying…");
+    const scheduleRetry = (why) => {
+      if(hlsRetryTimer) return;
+      hlsRetryTimer = setTimeout(async () => {
+        hlsRetryTimer = null;
+        try{
+          await ensureStartedForHls(); // safe/idempotent
+          ev = await loadPublic();
+        }catch(e){
+          log("HLS retry failed", String(e));
         }
-      });
+        await tryLoad(why);
+      }, 2500);
+    };
 
-      player.addEventListener(IVSPlayer.PlayerEventType.STATE_CHANGED, (state) => {
-        setStatus("HLS: " + state);
-        // If it ends, retry (common if broadcaster disconnects)
-        if (String(state).toLowerCase() === "ended") {
-          scheduleHlsRetry(eventId, key, "Stream ended — waiting for it to resume…");
-        }
-      });
-    }
+    ivsPlayer.addEventListener(IVSPlayer.PlayerEventType.ERROR, (err) => {
+      log("IVS ERROR", err);
+      setStatus("hls error");
+      scheduleRetry("retry");
+    });
 
-    currentIvsPlayer.load(playbackUrl);
-    currentIvsPlayer.play();
-    return;
+    ivsPlayer.addEventListener(IVSPlayer.PlayerEventType.ENDED, () => {
+      log("IVS ENDED");
+      setStatus("hls ended");
+      scheduleRetry("ended-retry");
+    });
+
+    await tryLoad("initial");
   }
 
-  // Native HLS fallback (iOS Safari)
-  videoEl.srcObject = null;
-  videoEl.src = playbackUrl;
-  const p = videoEl.play();
-  if (p && typeof p.catch === "function") p.catch(() => {});
-  setStatus("HLS: Live");
-  modeHintEl.textContent = "Using native playback (your browser doesn't support the IVS player).";
-}
-
-async function main() {
-  const eventId = getEventId();
-  const key = getParam("key");
-
-  document.getElementById("eventId").textContent = eventId || "(missing)";
-
-  if (!eventId || !key) {
-    setStatus("Missing eventId or key");
-    return;
+  // -----------------------
+  // RTC (Stage subscribe)
+  // -----------------------
+  function stopRtc(){
+    try { stage && stage.leave(); } catch {}
+    stage = null;
+    stageToken = null;
+    elRtcVideos.innerHTML = "";
+    elRtcInfo.textContent = "";
   }
 
-  // First public fetch
-  const pub = await fetchPublic(eventId, key);
-  lastPub = pub;
+  async function rtcViewerToken(){
+    // IMPORTANT: viewer uses /rtc/token (NOT /rtc/provision)
+    const eventId = elEventId.value.trim();
+    const key = elEventKey.value.trim();
+    const res = await apiPost(`/api/events/${encodeURIComponent(eventId)}/rtc/token?key=${encodeURIComponent(key)}`, {});
+    stageToken = res.participantToken || res.token || res.subscriberToken || null;
+    if(!stageToken) throw new Error("No participantToken returned from /rtc/token");
+    log("RTC TOKEN ok");
+    return res;
+  }
 
-  // Decide default mode
-  if (pub.hls_enabled && !pub.rtc_enabled) currentMode = "hls";
-  else currentMode = "rtc";
+  function createParticipantEl(id, label){
+    let wrap = document.getElementById("p_" + id);
+    if(wrap) return wrap.querySelector("video");
 
-  setButtons(pub);
+    wrap = document.createElement("div");
+    wrap.id = "p_" + id;
+    wrap.className = "card";
+    wrap.style.padding = "8px";
 
-  btnRtc.onclick = async () => {
-    try {
-      clearUiError();
-      await startRtcPlayback(eventId, key);
-    } catch (e) {
-      setStatus("Error");
-      errEl.textContent = e?.stack || String(e);
+    const cap = document.createElement("div");
+    cap.className = "muted";
+    cap.style.marginBottom = "6px";
+    cap.textContent = label || id;
+
+    const v = document.createElement("video");
+    v.autoplay = true;
+    v.playsInline = true;
+    v.controls = false;
+
+    wrap.appendChild(cap);
+    wrap.appendChild(v);
+    elRtcVideos.appendChild(wrap);
+    return v;
+  }
+
+  function removeParticipantEl(id){
+    const wrap = document.getElementById("p_" + id);
+    if(wrap) wrap.remove();
+  }
+
+  async function playRtc(){
+    if(!ev) await loadPublic();
+    if(!ev.rtc_enabled) throw new Error("This event is not RTC-enabled.");
+
+    await rtcViewerToken();
+
+    const sdk = window.IVSBroadcastClient;
+    if(!sdk) throw new Error("IVS Web Broadcast SDK not loaded.");
+
+    const { Stage, StageEvents, SubscribeType, StageConnectionState } = sdk;
+
+    const strategy = {
+      shouldPublishParticipant: () => false,
+      stageStreamsToPublish: () => [],
+      shouldSubscribeToParticipant: () => SubscribeType.AUDIO_VIDEO,
+    };
+
+    stage = new Stage(stageToken, strategy);
+
+    stage.on(StageEvents.STAGE_CONNECTION_STATE_CHANGED, (state) => {
+      log("RTC state", state);
+      if(state === StageConnectionState.CONNECTED) setStatus("playing (rtc)");
+      if(state === StageConnectionState.CONNECTING) setStatus("rtc connecting…");
+      if(state === StageConnectionState.ERRORED) setStatus("rtc errored…");
+      if(state === StageConnectionState.DISCONNECTED) setStatus("rtc disconnected");
+    });
+
+    stage.on(StageEvents.STAGE_PARTICIPANT_LEFT, (p) => {
+      log("RTC left", p.id);
+      removeParticipantEl(p.id);
+    });
+
+    stage.on(StageEvents.STAGE_PARTICIPANT_STREAMS_ADDED, (participant, streams) => {
+      log("RTC streams added", participant.id, streams.map(s => s.streamType));
+      const videoEl = createParticipantEl(participant.id, participant.info?.userInfo || participant.id);
+      const ms = new MediaStream();
+      streams.forEach(s => { if(s.mediaStreamTrack) ms.addTrack(s.mediaStreamTrack); });
+      videoEl.srcObject = ms;
+    });
+
+    stage.on(StageEvents.STAGE_PARTICIPANT_STREAMS_REMOVED, (participant) => {
+      log("RTC streams removed", participant.id);
+      removeParticipantEl(participant.id);
+    });
+
+    await stage.join();
+    elRtcInfo.textContent = "Connected. Waiting for broadcaster…";
+  }
+
+  // ------------
+  // UI actions
+  // ------------
+  async function onPlay(){
+    showError("");
+    try{
+      btnPlay.disabled = true;
+      if(elMode.value === "hls") await playHls();
+      else if(elMode.value === "rtc") await playRtc();
+      else await loadPublic();
+    }catch(e){
+      log("PLAY error:", String(e));
+      setStatus("error");
+      showError(String(e));
+    }finally{
+      btnPlay.disabled = false;
     }
+  }
+
+  function onStop(){
+    stopHls();
+    stopRtc();
+    setStatus("stopped");
+    showError("");
+  }
+
+  btnLoad.onclick = async () => {
+    showError("");
+    try { await loadPublic(); }
+    catch(e){ log("LOAD error:", String(e)); setStatus("error"); showError(String(e)); }
   };
 
-  btnHls.onclick = async () => {
-    try {
-      clearUiError();
-      await startHlsPlayback(eventId, key);
-    } catch (e) {
-      setStatus("Error");
-      errEl.textContent = e?.stack || String(e);
-    }
-  };
+  btnPlay.onclick = onPlay;
+  btnStop.onclick = onStop;
 
-  // Initial load
-  if (currentMode === "hls") {
-    await startHlsPlayback(eventId, key);
-  } else {
-    await startRtcPlayback(eventId, key);
-  }
-}
+  elMode.onchange = () => { setModePill(); showNone(); };
 
-main().catch(err => {
-  setStatus("Error");
-  errEl.textContent = err?.stack || String(err);
-});
+  // auto-load once
+  (async () => {
+    try{ await loadPublic(); }
+    catch(e){ log("Initial load failed:", String(e)); setStatus("error"); showError(String(e)); }
+  })();
+})();
 </script>
-
 </body>
 </html>
