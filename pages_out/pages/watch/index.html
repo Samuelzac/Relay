@@ -256,7 +256,8 @@
     elHlsInfo.textContent = playbackUrl;
 
     const videoEl = $("hlsVideo");
-    if(!window.IVSPlayer || !IVSPlayer.isPlayerSupported || !IVSPlayer.isPlayerSupported()){
+    // In the IVS Player SDK, isPlayerSupported is a boolean (not a function).
+    if(!window.IVSPlayer || !IVSPlayer.isPlayerSupported){
       throw new Error("IVS Player not supported in this browser.");
     }
 
