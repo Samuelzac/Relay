@@ -24,85 +24,39 @@
       --btn: #1f2937;
       --btnBorder: #334155;
       --focus: #60a5fa;
-
       --r: 16px;
-      --r2: 12px;
       --pad: 14px;
       --shadow: 0 12px 40px rgba(0,0,0,.35);
     }
-
     *{ box-sizing:border-box; }
-    body{
-      margin:0;
-      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
-      background: var(--bg);
-      color: var(--text);
-    }
-
+    body{ margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; background: var(--bg); color: var(--text); }
     header{
       position: sticky; top:0; z-index: 10;
       background: rgba(11,12,16,.92);
       backdrop-filter: blur(8px);
       border-bottom: 1px solid var(--border);
       padding: calc(10px + env(safe-area-inset-top)) 14px 10px;
-      display:flex;
-      align-items:center;
-      justify-content:space-between;
-      gap:12px;
+      display:flex; align-items:center; justify-content:space-between; gap:12px;
     }
-
-    .brand{
-      display:flex; align-items:center; gap:10px;
-      min-width: 0;
-    }
+    .brand{ display:flex; align-items:center; gap:10px; min-width: 0; }
     .logo{
-      width:30px; height:30px;
-      border-radius: 10px;
+      width:30px; height:30px; border-radius: 10px;
       background: linear-gradient(135deg, #334155, #111827);
       border: 1px solid var(--border2);
       box-shadow: 0 6px 18px rgba(0,0,0,.25);
       flex: 0 0 auto;
     }
     .titleWrap{ min-width:0; }
-    .title{
-      font-weight:800;
-      letter-spacing: .2px;
-      line-height: 1.1;
-      white-space:nowrap;
-      overflow:hidden;
-      text-overflow:ellipsis;
-    }
-    .subtitle{
-      font-size:12px;
-      color: var(--muted);
-      white-space:nowrap;
-      overflow:hidden;
-      text-overflow:ellipsis;
-      margin-top:2px;
-    }
+    .title{ font-weight:800; letter-spacing: .2px; line-height: 1.1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .subtitle{ font-size:12px; color: var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:2px; }
 
-    .statusRow{
-      display:flex; align-items:center; gap:8px;
-      flex-wrap:wrap;
-      justify-content:flex-end;
-    }
-
+    .statusRow{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; justify-content:flex-end; }
     .pill{
-      font-size:12px;
-      padding:6px 10px;
-      border:1px solid var(--border2);
-      border-radius: 999px;
-      color: #cbd5e1;
-      display:inline-flex;
-      align-items:center;
-      gap:8px;
+      font-size:12px; padding:6px 10px; border:1px solid var(--border2);
+      border-radius: 999px; color: #cbd5e1; display:inline-flex; align-items:center; gap:8px;
       background: rgba(15,17,23,.5);
     }
-    .dot{
-      width:8px; height:8px; border-radius:999px;
-      background: #64748b;
-      box-shadow: 0 0 0 3px rgba(100,116,139,.12);
-    }
+    .dot{ width:8px; height:8px; border-radius:999px; background: #64748b; box-shadow: 0 0 0 3px rgba(100,116,139,.12); }
     .pill.good .dot{ background: var(--good); box-shadow: 0 0 0 3px rgba(52,211,153,.12); }
     .pill.warn .dot{ background: var(--warn); box-shadow: 0 0 0 3px rgba(251,191,36,.12); }
     .pill.bad .dot{ background: var(--bad);  box-shadow: 0 0 0 3px rgba(251,113,133,.12); }
@@ -113,181 +67,70 @@
       max-width: 1100px;
       margin: 0 auto;
     }
+    .grid{ display:grid; gap:12px; grid-template-columns: 1fr; }
+    @media (min-width: 980px){ .grid{ grid-template-columns: 2fr 1fr; align-items:start; } }
 
-    .grid{
-      display:grid;
-      gap:12px;
-      grid-template-columns: 1fr;
-    }
-    @media (min-width: 980px){
-      .grid{ grid-template-columns: 2fr 1fr; align-items:start; }
-    }
+    .card{ background: var(--panel); border:1px solid var(--border); border-radius: var(--r); padding: var(--pad); box-shadow: var(--shadow); }
+    .sectionTitle{ font-size: 12px; color: var(--muted); letter-spacing: .12em; text-transform: uppercase; margin: 0 0 10px; }
 
-    .card{
-      background: var(--panel);
-      border:1px solid var(--border);
-      border-radius: var(--r);
-      padding: var(--pad);
-      box-shadow: var(--shadow);
-    }
+    .fieldGrid{ display:grid; gap:10px; grid-template-columns: 1fr; margin-bottom: 12px; }
+    @media (min-width: 680px){ .fieldGrid{ grid-template-columns: 1fr 1fr; } }
 
-    .sectionTitle{
-      font-size: 12px;
-      color: var(--muted);
-      letter-spacing: .12em;
-      text-transform: uppercase;
-      margin: 0 0 10px;
-    }
-
-    .fieldGrid{
-      display:grid;
-      gap:10px;
-      grid-template-columns: 1fr;
-      margin-bottom: 12px;
-    }
-    @media (min-width: 680px){
-      .fieldGrid{ grid-template-columns: 1fr 1fr; }
-    }
-
-    label{
-      display:block;
-      font-size:12px;
-      color: var(--muted);
-      margin: 0 0 6px;
-    }
+    label{ display:block; font-size:12px; color: var(--muted); margin: 0 0 6px; }
     input, select{
-      width:100%;
-      background:#0f172a;
-      border:1px solid var(--btnBorder);
-      color: var(--text);
-      padding: 11px 12px;
-      border-radius: 12px;
-      outline: none;
+      width:100%; background:#0f172a; border:1px solid var(--btnBorder);
+      color: var(--text); padding: 11px 12px; border-radius: 12px; outline: none;
     }
-    input:focus, select:focus{
-      border-color: var(--focus);
-      box-shadow: 0 0 0 3px rgba(96,165,250,.18);
-    }
+    input:focus, select:focus{ border-color: var(--focus); box-shadow: 0 0 0 3px rgba(96,165,250,.18); }
 
-    video{
-      width:100%;
-      background:#000;
-      border-radius: 14px;
-      border:1px solid var(--border);
-      display:block;
-    }
+    video{ width:100%; background:#000; border-radius: 14px; border:1px solid var(--border); display:block; }
 
-    .videoMeta{
-      display:flex;
-      justify-content:space-between;
-      align-items:center;
-      gap:10px;
-      margin: 10px 2px 0;
-      flex-wrap:wrap;
-    }
-    .hint{
-      color: var(--muted);
-      font-size: 13px;
-      line-height: 1.35;
-    }
-    .timer{
-      font-variant-numeric: tabular-nums;
-      font-weight: 800;
-      letter-spacing: .4px;
-    }
+    .videoMeta{ display:flex; justify-content:space-between; align-items:center; gap:10px; margin: 10px 2px 0; flex-wrap:wrap; }
+    .hint{ color: var(--muted); font-size: 13px; line-height: 1.35; }
+    .timer{ font-variant-numeric: tabular-nums; font-weight: 800; letter-spacing: .4px; }
 
-    .actions{
-      display:grid;
-      gap:10px;
-      margin-top: 12px;
-      grid-template-columns: 1fr;
-    }
+    .actions{ display:grid; gap:10px; margin-top: 12px; grid-template-columns: 1fr; }
     @media (min-width: 520px){
       .actions{ grid-template-columns: 1fr 1fr; }
       .actions .primary{ grid-column: span 2; }
     }
 
     button{
-      appearance:none;
-      border:1px solid var(--btnBorder);
-      background: var(--btn);
-      color: #e5e7eb;
-      padding: 12px 12px;
-      border-radius: 14px;
-      cursor:pointer;
-      font-weight: 700;
-      letter-spacing: .2px;
+      appearance:none; border:1px solid var(--btnBorder); background: var(--btn); color: #e5e7eb;
+      padding: 12px 12px; border-radius: 14px; cursor:pointer; font-weight: 700; letter-spacing: .2px;
     }
     button:disabled{ opacity:.55; cursor:not-allowed; }
-    button.secondary{
-      background: transparent;
-    }
-    button.danger{
-      border-color: rgba(251,113,133,.55);
-      background: rgba(251,113,133,.10);
-    }
+    button.secondary{ background: transparent; }
+    button.danger{ border-color: rgba(251,113,133,.55); background: rgba(251,113,133,.10); }
     button.primary{
-      padding: 14px 14px;
-      font-size: 16px;
+      padding: 14px 14px; font-size: 16px;
       border-color: rgba(96,165,250,.45);
       background: linear-gradient(180deg, rgba(96,165,250,.22), rgba(31,41,55,.22));
     }
 
-    details{
-      border-radius: 14px;
-      border:1px solid var(--border);
-      background: rgba(15,17,23,.55);
-      overflow:hidden;
-    }
+    details{ border-radius: 14px; border:1px solid var(--border); background: rgba(15,17,23,.55); overflow:hidden; }
     summary{
-      cursor:pointer;
-      padding: 12px 12px;
-      list-style:none;
-      display:flex;
-      align-items:center;
-      justify-content:space-between;
-      gap:10px;
-      user-select:none;
+      cursor:pointer; padding: 12px 12px; list-style:none; display:flex; align-items:center; justify-content:space-between;
+      gap:10px; user-select:none;
     }
     summary::-webkit-details-marker{ display:none; }
-    .diagBody{
-      padding: 0 12px 12px;
-    }
+    .diagBody{ padding: 0 12px 12px; }
     .log{
       font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-      font-size: 12px;
-      white-space: pre-wrap;
-      background: var(--panel2);
-      border: 1px solid #202a3a;
-      border-radius: 12px;
-      padding: 10px;
-      max-height: 220px;
-      overflow:auto;
+      font-size: 12px; white-space: pre-wrap; background: var(--panel2);
+      border: 1px solid #202a3a; border-radius: 12px; padding: 10px; max-height: 220px; overflow:auto;
     }
-    .diagRow{
-      display:flex;
-      gap:10px;
-      justify-content:flex-end;
-      margin: 10px 0 0;
-      flex-wrap: wrap;
-    }
+    .diagRow{ display:flex; gap:10px; justify-content:flex-end; margin: 10px 0 0; flex-wrap: wrap; }
 
     .msg{
-      margin-top: 10px;
-      padding: 10px 12px;
-      border-radius: 12px;
-      border: 1px solid var(--border);
-      background: rgba(2,6,23,.35);
-      color: var(--muted);
-      font-size: 13px;
+      margin-top: 10px; padding: 10px 12px; border-radius: 12px;
+      border: 1px solid var(--border); background: rgba(2,6,23,.35);
+      color: var(--muted); font-size: 13px;
     }
     .msg.bad{ border-color: rgba(251,113,133,.35); color: #ffb4b4; }
     .msg.good{ border-color: rgba(52,211,153,.35); color: #bff7de; }
 
-    .tiny{
-      font-size: 12px;
-      color: var(--muted);
-    }
+    .tiny{ font-size: 12px; color: var(--muted); }
   </style>
 </head>
 <body>
@@ -309,7 +152,6 @@
 
   <main>
     <div class="grid">
-      <!-- MAIN: video + controls -->
       <div class="card">
         <div class="sectionTitle">Broadcast</div>
 
@@ -345,7 +187,7 @@
         <div id="message" class="msg" style="display:none;"></div>
 
         <div class="actions">
-          <button id="btnPrimary" class="primary">Go Live</button>
+          <button id="btnPrimary" class="primary" disabled>Go Live</button>
           <button id="btnPreview" class="secondary">Preview</button>
           <button id="btnEnd" class="danger" style="display:none;">End Stream</button>
         </div>
@@ -355,7 +197,6 @@
         </div>
       </div>
 
-      <!-- RIGHT: settings + diagnostics -->
       <div class="card">
         <div class="sectionTitle">Status</div>
 
@@ -385,7 +226,6 @@
 
 <script>
 (() => {
-  // Keep API rules exactly as you already had them.
   const API_BASE =
     (location.origin.includes("pages.dev") || location.origin.includes("localhost"))
       ? "https://stream-platform-api.kiwismurph.workers.dev"
@@ -394,16 +234,13 @@
   const qs = new URLSearchParams(location.search);
   const $ = (id) => document.getElementById(id);
 
-  // Inputs
   const elEventId = $("eventId");
   const elEventKey = $("eventKey");
   const elCam = $("camera");
   const elMic = $("mic");
 
-  // Video
   const videoEl = $("preview");
 
-  // UI bits
   const elHdrSub = $("hdrSub");
   const elModePill = $("modePill");
   const elModeText = $("modeText");
@@ -418,7 +255,6 @@
   const elStatusDetail = $("statusDetail");
   const elDiagHint = $("diagHint");
 
-  // Buttons
   const btnPrimary = $("btnPrimary");
   const btnPreview = $("btnPreview");
   const btnEnd = $("btnEnd");
@@ -428,7 +264,6 @@
   const elLog = $("log");
   const diagDetails = document.querySelector("details");
 
-  // State
   let localStream = null;
   let stage = null;
   let stageToken = null;
@@ -438,7 +273,6 @@
 
   let publicEvent = null;
 
-  // ----- helpers
   function apiUrl(path){ return API_BASE + path; }
 
   function log(...args){
@@ -470,13 +304,11 @@
     elStateText.textContent = state;
     elStatePill.classList.remove("good","warn","bad");
     if(kind) elStatePill.classList.add(kind);
-
     elStatusHeadline.textContent = state;
     elStatusDetail.textContent = detail || "";
   }
 
   function setPrimaryButtons(isLiveLike){
-    // Primary button text depends on state.
     if(isLiveLike){
       btnPrimary.style.display = "none";
       btnEnd.style.display = "";
@@ -542,14 +374,13 @@
     return { eventId, key };
   }
 
-  // ----- public (for mode indicator only; read-only)
   async function loadPublicForMode(){
     try{
       const { eventId, key } = currentEventParams();
       const pub = await apiGet(`/api/events/${encodeURIComponent(eventId)}/public?key=${encodeURIComponent(key)}`);
       publicEvent = pub;
 
-      const hls = !!pub.hls_enabled;
+      const hls = !!pub.hls_enabled || !!pub.hls_url;
       const rtc = !!pub.rtc_enabled;
 
       if(rtc && hls) setMode("RTC → HLS enabled", "good");
@@ -560,7 +391,6 @@
       elHdrSub.textContent = `Event loaded • ${pub.status || "ok"}`;
       return pub;
     }catch(e){
-      // Don’t block broadcasting if public fetch fails; just show a mild hint.
       setMode("RTC", null);
       elHdrSub.textContent = "Enter Event + Key to begin";
       log("PUBLIC (non-fatal) failed:", String(e));
@@ -568,7 +398,34 @@
     }
   }
 
-  // ----- media
+  async function waitForPaid({ timeoutMs = 120000 } = {}){
+    const hasParams = elEventId.value.trim() && elEventKey.value.trim();
+    if(!hasParams) return false;
+
+    const started = Date.now();
+    setState("CONNECTING", "warn", "Confirming payment…");
+    showMessage("", "Payment processing… this can take about a minute.");
+    btnPrimary.disabled = true;
+
+    while (Date.now() - started < timeoutMs) {
+      const pub = await loadPublicForMode();
+      if(pub?.status === "paid"){
+        setState("OFFLINE", null, "Ready to go live.");
+        showMessage("", "");
+        elInfoLine.textContent = "Ready.";
+        btnPrimary.disabled = false;
+        return true;
+      }
+      elInfoLine.textContent = "Waiting for payment confirmation…";
+      await new Promise(r => setTimeout(r, 2000));
+    }
+
+    setState("OFFLINE", "warn", "Still processing payment.");
+    showMessage("", "Still waiting on payment confirmation. Leave this page open — it should update soon.");
+    btnPrimary.disabled = false;
+    return false;
+  }
+
   async function listDevices(){
     const devices = await navigator.mediaDevices.enumerateDevices();
     const cams = devices.filter(d => d.kind === "videoinput");
@@ -594,7 +451,6 @@
 
   async function preview(){
     showMessage("", "");
-    setState("OFFLINE", null, "Preparing preview…");
     elInfoLine.textContent = "Starting preview…";
 
     if(localStream){
@@ -606,17 +462,14 @@
     videoEl.srcObject = localStream;
 
     elInfoLine.textContent = "Preview ready.";
-    setState("OFFLINE", null, "Ready to go live.");
+    if(publicEvent?.status === "paid") setState("OFFLINE", null, "Ready to go live.");
+    else setState("OFFLINE", null, "Enter Event + Key (or wait for payment).");
   }
 
-  // ----- IVS stage publish
   async function provisionPublishToken(){
     const { eventId, key } = currentEventParams();
-
-    // IMPORTANT: broadcaster uses /rtc/provision with per-event key
     const prov = await apiPost(`/api/events/${encodeURIComponent(eventId)}/rtc/provision?key=${encodeURIComponent(key)}`, {});
     stageToken = prov?.participantToken || prov?.publisher?.token;
-
     if(!stageToken) throw new Error("No publisher token returned from /rtc/provision");
     return prov;
   }
@@ -629,11 +482,10 @@
 
     showMessage("", "");
 
-    // Ensure preview exists
-    if(!localStream) await preview();
+    // Make the wait feel intentional instead of broken.
+    await waitForPaid({ timeoutMs: 120000 });
 
-    // Pull public once (mode indicator only)
-    await loadPublicForMode();
+    if(!localStream) await preview();
 
     setState("CONNECTING", "warn", "Requesting publish token…");
     elInfoLine.textContent = "Preparing stream…";
@@ -676,7 +528,6 @@
         elInfoLine.textContent = "Live. Publishing to stage.";
         showMessage("good", "You’re live.");
 
-        // Call /start (idempotent) once we are actually connected.
         try{
           const { eventId, key } = currentEventParams();
           const res = await apiPost(`/api/events/${encodeURIComponent(eventId)}/start?key=${encodeURIComponent(key)}`, {});
@@ -693,7 +544,6 @@
       }
 
       if(state === StageConnectionState.ERRORED){
-        // Keep retry safety; just surface a calm UI.
         setState("CONNECTING", "warn", "Reconnecting… (don’t close this tab)");
         elInfoLine.textContent = "Reconnecting…";
         showMessage("", "Connection hiccup — attempting to recover.");
@@ -701,7 +551,6 @@
       }
 
       if(state === StageConnectionState.DISCONNECTED){
-        // If we get here without user pressing End, we still show disconnected but keep UI safe.
         setState("OFFLINE", "bad", "Disconnected.");
         elInfoLine.textContent = "Disconnected.";
         showMessage("bad", "Disconnected. You can go live again.");
@@ -717,7 +566,6 @@
   }
 
   async function endStream(){
-    // User intent: end stream hard.
     try{ stage && stage.leave(); }catch{}
     stage = null;
     stageToken = null;
@@ -735,7 +583,6 @@
     showMessage("", "");
   }
 
-  // ----- UI wiring
   btnClear.onclick = () => { elLog.textContent = ""; };
   btnCopy.onclick = async () => {
     try{
@@ -789,20 +636,20 @@
     }
   };
 
-  // Load query params
   elEventId.value = qs.get("event") || qs.get("id") || "";
   elEventKey.value = qs.get("key") || "";
 
-  // Update public mode indicator when event/key changes (no backend changes).
   let pubDebounce = null;
   function schedulePublicRefresh(){
     if(pubDebounce) clearTimeout(pubDebounce);
-    pubDebounce = setTimeout(() => loadPublicForMode(), 250);
+    pubDebounce = setTimeout(async () => {
+      await loadPublicForMode();
+      await waitForPaid({ timeoutMs: 120000 });
+    }, 250);
   }
   elEventId.addEventListener("input", schedulePublicRefresh);
   elEventKey.addEventListener("input", schedulePublicRefresh);
 
-  // Init: permissions so device labels appear, then list devices.
   (async () => {
     try{
       setState("OFFLINE", null, "Requesting camera/mic permission…");
@@ -810,12 +657,15 @@
       s.getTracks().forEach(t=>t.stop());
 
       await listDevices();
-      setState("OFFLINE", null, "Ready to go live.");
+      setState("OFFLINE", null, "Ready.");
       elInfoLine.textContent = "Preview not started.";
 
-      // If event/key are already present, show mode pill.
       if(elEventId.value.trim() && elEventKey.value.trim()){
         await loadPublicForMode();
+        await waitForPaid({ timeoutMs: 120000 });
+      }else{
+        showMessage("", "Enter Event + Key to unlock broadcasting.");
+        btnPrimary.disabled = true;
       }
     }catch(e){
       log("Init error", String(e));
