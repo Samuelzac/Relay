@@ -394,10 +394,10 @@ export default {
             let ev = await getEvent(client, eventId);
             if (!ev) return json(env, { error: "not_found" }, 404);
 
-            // Allow either the per-event broadcast_key (broadcaster control) OR secret_key (watch link) to start the event.
-// This keeps /start idempotent and fixes 401s when watch pages call /start with the secret key.
-if ((!ev.broadcast_key && !ev.secret_key) || !key) return json(env, { error: "missing_key" }, 401);
-if (key !== ev.broadcast_key && key !== ev.secret_key) return json(env, { error: "unauthorized" }, 401);
+            // Allow either broadcast_key (broadcaster control) OR secret_key (watch link) to call /start.
+            if ((!ev.broadcast_key && !ev.secret_key) || !key) return json(env, { error: "missing_key" }, 401);
+            if (key !== ev.broadcast_key && key !== ev.secret_key) return json(env, { error: "unauthorized" }, 401);
+
 if (ev.status !== "paid") return json(env, { error: "not_paid" }, 403);
             if (isExpired(ev)) return json(env, { error: "expired" }, 410);
 
@@ -498,32 +498,39 @@ if (ev.status !== "paid") return json(env, { error: "not_paid" }, 403);
                 }
               }
 
-              // 4) Ensure Composition exists
+              // 4) Ensure Composition is STARTED (stored ARN does NOT mean running)
               compositionArn = getCompositionArnFromEndpoints(endpoints);
 
-              if (!compositionArn && stageArn && channelArn && encoderConfigurationArn) {
-                console.log("START(HLS): creating composition...");
+              if (stageArn && channelArn && encoderConfigurationArn) {
+                console.log("START(HLS): ensuring composition started...");
                 try {
-                  const comp = await createComposition(env, stageArn, channelArn, encoderConfigurationArn);
-                  compositionArn = comp?.arn || comp?.composition?.arn || null;
+                  // Use a stable idempotency token so retries won't create duplicate compositions.
+                  // (AWS allows replays with the same token to be treated idempotently.)
+                  const idempotencyToken = `relay-${eventId}-hls`;
 
-                  if (compositionArn) {
+                  const comp = await createComposition(env, stageArn, channelArn, encoderConfigurationArn, idempotencyToken);
+
+                  const compArn = (comp && (comp as any).arn) || (comp as any)?.composition?.arn || null;
+                  if (compArn) {
+                    compositionArn = compArn;
                     endpoints = withCompositionArn(endpoints, compositionArn);
                     await updateRtcEndpoints(client, eventId, endpoints);
                     compositionStarted = true;
                     console.log("START(HLS): compositionArn", compositionArn);
                   } else {
-                    console.error("START(HLS): composition response missing arn", JSON.stringify(comp));
+                    console.error("START(HLS): StartComposition response missing arn", JSON.stringify(comp));
                   }
                 } catch (e) {
-                  console.error("START(HLS): CreateComposition failed", eventId, e);
+                  console.error("START(HLS): StartComposition failed", eventId, e);
                 }
-              } else if (compositionArn) {
-                console.log("START(HLS): composition already stored", compositionArn);
               } else {
-                console.log("START(HLS): composition not started (missing prereqs)", JSON.stringify({ stageArn, channelArn, encoderConfigurationArn }));
+                console.log(
+                  "START(HLS): composition not started (missing prereqs)",
+                  JSON.stringify({ stageArn, channelArn, encoderConfigurationArn })
+                );
               }
-            }
+
+}
 
             // Re-read to return updated playback_url
             const evOut = await getEvent(client, eventId);
