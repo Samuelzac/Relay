@@ -52,6 +52,10 @@
     button{ appearance:none; border:1px solid var(--border2); background: rgba(31,41,55,.45); color:#e5e7eb; padding:10px 12px; border-radius:12px; cursor:pointer; font-weight:800; font-size:13px; }
     button.secondary{ background: transparent; }
     select{ background:#0f172a; border:1px solid var(--border2); color:var(--text); padding:10px 12px; border-radius:12px; outline:none; font-weight:800; font-size:13px; }
+    details{ margin-top:12px; border-radius:14px; border:1px solid var(--border); background: rgba(15,17,23,.55); overflow:hidden; }
+    summary{ cursor:pointer; padding:12px; list-style:none; display:flex; justify-content:space-between; color:var(--muted); font-size:13px; }
+    summary::-webkit-details-marker{ display:none; }
+    pre{ margin:0; padding:12px; white-space:pre-wrap; word-break:break-word; font-family: ui-monospace, Menlo, Consolas, monospace; font-size:12px; color:#a7b0c0; }
   </style>
 </head>
 <body>
@@ -91,6 +95,11 @@
         <button id="btnRetry" class="secondary">Retry</button>
       </div>
     </div>
+
+    <details>
+      <summary><span>Diagnostics</span><span id="diagHint">hidden</span></summary>
+      <pre id="diagPre">{}</pre>
+    </details>
   </div>
 </main>
 
@@ -123,7 +132,15 @@
   const stateText = $("stateText");
   const pillLive = $("pillLive");
 
+  const diagPre = $("diagPre");
+  const diagHint = $("diagHint");
+  const details = document.querySelector("details");
+
   if(wl) brand.style.display = "none";
+
+  details.addEventListener("toggle", () => {
+    diagHint.textContent = details.open ? "shown" : "hidden";
+  });
 
   function setPill(el, kind){
     el.classList.remove("good","warn","bad");
@@ -180,6 +197,37 @@
       body:"{}",
       credentials:"include"
     });
+  }
+
+  // ✅ Robustly find HLS URL regardless of backend field name
+  function pickHlsUrl(pub){
+    if(!pub || typeof pub !== "object") return null;
+
+    const candidates = [
+      pub.hls_url,
+      pub.hlsUrl,
+      pub.hls_playback_url,
+      pub.hlsPlaybackUrl,
+      pub.playback_url,
+      pub.playbackUrl,
+      pub.channel_playback_url,
+      pub.channelPlaybackUrl,
+      pub.ivs_playback_url,
+      pub.ivsPlaybackUrl,
+      pub?.hls?.url,
+      pub?.playback?.hls,
+      pub?.outputs?.hls,
+      pub?.outputs?.hls_url,
+      pub?.channel?.playback_url,
+      pub?.channel?.playbackUrl,
+      pub?.ivs?.playback_url,
+      pub?.ivs?.playbackUrl
+    ];
+
+    for(const u of candidates){
+      if(typeof u === "string" && u.startsWith("http")) return u;
+    }
+    return null;
   }
 
   async function probeOk(url){
@@ -280,11 +328,12 @@
     stopRTC(); stopHLS();
     videoEl.srcObject = null;
 
-    setMode((modeSel.value || "auto").toUpperCase(), null);
+    const want = (modeSel.value || "auto").toLowerCase();
+    setMode(want.toUpperCase(), null);
     setState("STARTING","warn","Checking event…");
     showOverlay("Stream starting…","Checking event details…");
 
-    // SPEED-UP: warm start early
+    // Warm /start early (idempotent)
     postStartNonFatal();
 
     let pub = null;
@@ -297,17 +346,23 @@
     }
     if(my !== runId) return;
 
+    diagPre.textContent = JSON.stringify(pub, null, 2);
+
     hdrSub.textContent = pub?.title ? pub.title : "Relay";
-    const hlsUrl = pub?.hls_url || null;
+    const hlsUrl = pickHlsUrl(pub);
     const rtcEnabled = pub?.rtc_enabled !== false;
 
-    const want = (modeSel.value || "auto").toLowerCase();
     if(want === "rtc"){
       if(!rtcEnabled){ showOverlay("RTC unavailable","Switch to HLS."); setState("ERROR","bad","RTC unavailable."); return; }
       await startRTC(); return;
     }
     if(want === "hls"){
-      if(!hlsUrl){ showOverlay("Stream starting…","Waiting for HLS output…"); setState("WAITING","warn","Waiting for HLS…"); setTimeout(start, 2000); return; }
+      if(!hlsUrl){
+        showOverlay("Stream starting…","Waiting for HLS output (URL not published yet)");
+        setState("WAITING","warn","Waiting for HLS URL…");
+        setTimeout(start, 2000);
+        return;
+      }
       await startHLS(hlsUrl); return;
     }
 
