@@ -24,39 +24,76 @@
       --btn: #1f2937;
       --btnBorder: #334155;
       --focus: #60a5fa;
+
       --r: 16px;
       --pad: 14px;
       --shadow: 0 12px 40px rgba(0,0,0,.35);
     }
     *{ box-sizing:border-box; }
-    body{ margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; background: var(--bg); color: var(--text); }
+    body{
+      margin:0;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
     header{
       position: sticky; top:0; z-index: 10;
       background: rgba(11,12,16,.92);
       backdrop-filter: blur(8px);
       border-bottom: 1px solid var(--border);
       padding: calc(10px + env(safe-area-inset-top)) 14px 10px;
-      display:flex; align-items:center; justify-content:space-between; gap:12px;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
     }
     .brand{ display:flex; align-items:center; gap:10px; min-width: 0; }
     .logo{
-      width:30px; height:30px; border-radius: 10px;
+      width:30px; height:30px;
+      border-radius: 10px;
       background: linear-gradient(135deg, #334155, #111827);
       border: 1px solid var(--border2);
       box-shadow: 0 6px 18px rgba(0,0,0,.25);
       flex: 0 0 auto;
     }
     .titleWrap{ min-width:0; }
-    .title{ font-weight:800; letter-spacing: .2px; line-height: 1.1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-    .subtitle{ font-size:12px; color: var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:2px; }
-
-    .statusRow{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; justify-content:flex-end; }
+    .title{
+      font-weight:800;
+      letter-spacing: .2px;
+      line-height: 1.1;
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
+    }
+    .subtitle{
+      font-size:12px;
+      color: var(--muted);
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
+      margin-top:2px;
+    }
+    .statusRow{
+      display:flex; align-items:center; gap:8px;
+      flex-wrap:wrap;
+      justify-content:flex-end;
+    }
     .pill{
-      font-size:12px; padding:6px 10px; border:1px solid var(--border2);
-      border-radius: 999px; color: #cbd5e1; display:inline-flex; align-items:center; gap:8px;
+      font-size:12px;
+      padding:6px 10px;
+      border:1px solid var(--border2);
+      border-radius: 999px;
+      color: #cbd5e1;
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
       background: rgba(15,17,23,.5);
     }
-    .dot{ width:8px; height:8px; border-radius:999px; background: #64748b; box-shadow: 0 0 0 3px rgba(100,116,139,.12); }
+    .dot{
+      width:8px; height:8px; border-radius:999px;
+      background: #64748b;
+      box-shadow: 0 0 0 3px rgba(100,116,139,.12);
+    }
     .pill.good .dot{ background: var(--good); box-shadow: 0 0 0 3px rgba(52,211,153,.12); }
     .pill.warn .dot{ background: var(--warn); box-shadow: 0 0 0 3px rgba(251,191,36,.12); }
     .pill.bad .dot{ background: var(--bad);  box-shadow: 0 0 0 3px rgba(251,113,133,.12); }
@@ -67,69 +104,162 @@
       max-width: 1100px;
       margin: 0 auto;
     }
-    .grid{ display:grid; gap:12px; grid-template-columns: 1fr; }
-    @media (min-width: 980px){ .grid{ grid-template-columns: 2fr 1fr; align-items:start; } }
-
-    .card{ background: var(--panel); border:1px solid var(--border); border-radius: var(--r); padding: var(--pad); box-shadow: var(--shadow); }
-    .sectionTitle{ font-size: 12px; color: var(--muted); letter-spacing: .12em; text-transform: uppercase; margin: 0 0 10px; }
-
-    .fieldGrid{ display:grid; gap:10px; grid-template-columns: 1fr; margin-bottom: 12px; }
-    @media (min-width: 680px){ .fieldGrid{ grid-template-columns: 1fr 1fr; } }
-
-    label{ display:block; font-size:12px; color: var(--muted); margin: 0 0 6px; }
-    input, select{
-      width:100%; background:#0f172a; border:1px solid var(--btnBorder);
-      color: var(--text); padding: 11px 12px; border-radius: 12px; outline: none;
+    .grid{
+      display:grid;
+      gap:12px;
+      grid-template-columns: 1fr;
     }
-    input:focus, select:focus{ border-color: var(--focus); box-shadow: 0 0 0 3px rgba(96,165,250,.18); }
-
-    video{ width:100%; background:#000; border-radius: 14px; border:1px solid var(--border); display:block; }
-
-    .videoMeta{ display:flex; justify-content:space-between; align-items:center; gap:10px; margin: 10px 2px 0; flex-wrap:wrap; }
-    .hint{ color: var(--muted); font-size: 13px; line-height: 1.35; }
-    .timer{ font-variant-numeric: tabular-nums; font-weight: 800; letter-spacing: .4px; }
-
-    .actions{ display:grid; gap:10px; margin-top: 12px; grid-template-columns: 1fr; }
+    @media (min-width: 980px){
+      .grid{ grid-template-columns: 2fr 1fr; align-items:start; }
+    }
+    .card{
+      background: var(--panel);
+      border:1px solid var(--border);
+      border-radius: var(--r);
+      padding: var(--pad);
+      box-shadow: var(--shadow);
+    }
+    .sectionTitle{
+      font-size: 12px;
+      color: var(--muted);
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      margin: 0 0 10px;
+    }
+    .fieldGrid{
+      display:grid;
+      gap:10px;
+      grid-template-columns: 1fr;
+      margin-bottom: 12px;
+    }
+    @media (min-width: 680px){
+      .fieldGrid{ grid-template-columns: 1fr 1fr; }
+    }
+    label{
+      display:block;
+      font-size:12px;
+      color: var(--muted);
+      margin: 0 0 6px;
+    }
+    input, select{
+      width:100%;
+      background:#0f172a;
+      border:1px solid var(--btnBorder);
+      color: var(--text);
+      padding: 11px 12px;
+      border-radius: 12px;
+      outline: none;
+    }
+    input:focus, select:focus{
+      border-color: var(--focus);
+      box-shadow: 0 0 0 3px rgba(96,165,250,.18);
+    }
+    video{
+      width:100%;
+      background:#000;
+      border-radius: 14px;
+      border:1px solid var(--border);
+      display:block;
+    }
+    .videoMeta{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:10px;
+      margin: 10px 2px 0;
+      flex-wrap:wrap;
+    }
+    .hint{
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.35;
+    }
+    .timer{
+      font-variant-numeric: tabular-nums;
+      font-weight: 800;
+      letter-spacing: .4px;
+    }
+    .actions{
+      display:grid;
+      gap:10px;
+      margin-top: 12px;
+      grid-template-columns: 1fr;
+    }
     @media (min-width: 520px){
       .actions{ grid-template-columns: 1fr 1fr; }
       .actions .primary{ grid-column: span 2; }
     }
-
     button{
-      appearance:none; border:1px solid var(--btnBorder); background: var(--btn); color: #e5e7eb;
-      padding: 12px 12px; border-radius: 14px; cursor:pointer; font-weight: 700; letter-spacing: .2px;
+      appearance:none;
+      border:1px solid var(--btnBorder);
+      background: var(--btn);
+      color: #e5e7eb;
+      padding: 12px 12px;
+      border-radius: 14px;
+      cursor:pointer;
+      font-weight: 700;
+      letter-spacing: .2px;
     }
     button:disabled{ opacity:.55; cursor:not-allowed; }
     button.secondary{ background: transparent; }
-    button.danger{ border-color: rgba(251,113,133,.55); background: rgba(251,113,133,.10); }
+    button.danger{
+      border-color: rgba(251,113,133,.55);
+      background: rgba(251,113,133,.10);
+    }
     button.primary{
-      padding: 14px 14px; font-size: 16px;
+      padding: 14px 14px;
+      font-size: 16px;
       border-color: rgba(96,165,250,.45);
       background: linear-gradient(180deg, rgba(96,165,250,.22), rgba(31,41,55,.22));
     }
-
-    details{ border-radius: 14px; border:1px solid var(--border); background: rgba(15,17,23,.55); overflow:hidden; }
+    details{
+      border-radius: 14px;
+      border:1px solid var(--border);
+      background: rgba(15,17,23,.55);
+      overflow:hidden;
+    }
     summary{
-      cursor:pointer; padding: 12px 12px; list-style:none; display:flex; align-items:center; justify-content:space-between;
-      gap:10px; user-select:none;
+      cursor:pointer;
+      padding: 12px 12px;
+      list-style:none;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+      user-select:none;
     }
     summary::-webkit-details-marker{ display:none; }
     .diagBody{ padding: 0 12px 12px; }
     .log{
       font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-      font-size: 12px; white-space: pre-wrap; background: var(--panel2);
-      border: 1px solid #202a3a; border-radius: 12px; padding: 10px; max-height: 220px; overflow:auto;
+      font-size: 12px;
+      white-space: pre-wrap;
+      background: var(--panel2);
+      border: 1px solid #202a3a;
+      border-radius: 12px;
+      padding: 10px;
+      max-height: 220px;
+      overflow:auto;
     }
-    .diagRow{ display:flex; gap:10px; justify-content:flex-end; margin: 10px 0 0; flex-wrap: wrap; }
-
+    .diagRow{
+      display:flex;
+      gap:10px;
+      justify-content:flex-end;
+      margin: 10px 0 0;
+      flex-wrap: wrap;
+    }
     .msg{
-      margin-top: 10px; padding: 10px 12px; border-radius: 12px;
-      border: 1px solid var(--border); background: rgba(2,6,23,.35);
-      color: var(--muted); font-size: 13px;
+      margin-top: 10px;
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: rgba(2,6,23,.35);
+      color: var(--muted);
+      font-size: 13px;
     }
     .msg.bad{ border-color: rgba(251,113,133,.35); color: #ffb4b4; }
     .msg.good{ border-color: rgba(52,211,153,.35); color: #bff7de; }
-
+    .msg.warn{ border-color: rgba(251,191,36,.35); color: #ffe3a3; }
     .tiny{ font-size: 12px; color: var(--muted); }
   </style>
 </head>
@@ -139,7 +269,7 @@
       <div class="logo" aria-hidden="true"></div>
       <div class="titleWrap">
         <div class="title" id="hdrTitle">Relay Broadcast</div>
-        <div class="subtitle" id="hdrSub">Enter Event + Key to begin</div>
+        <div class="subtitle" id="hdrSub">Enter Event + Key</div>
       </div>
     </div>
 
@@ -193,7 +323,7 @@
         </div>
 
         <div class="tiny" style="margin-top:10px;">
-          Tip: Use a phone-friendly link like <span class="tiny">/broadcast?event=…&key=…</span>
+          Go Live is enabled only when the event is <b>paid</b> and the stream is <b>ready</b>.
         </div>
       </div>
 
@@ -238,7 +368,6 @@
   const elEventKey = $("eventKey");
   const elCam = $("camera");
   const elMic = $("mic");
-
   const videoEl = $("preview");
 
   const elHdrSub = $("hdrSub");
@@ -272,6 +401,8 @@
   let timerHandle = null;
 
   let publicEvent = null;
+  let readinessAbort = { token: 0 };
+  let isReady = false;
 
   function apiUrl(path){ return API_BASE + path; }
 
@@ -304,6 +435,7 @@
     elStateText.textContent = state;
     elStatePill.classList.remove("good","warn","bad");
     if(kind) elStatePill.classList.add(kind);
+
     elStatusHeadline.textContent = state;
     elStatusDetail.textContent = detail || "";
   }
@@ -355,7 +487,7 @@
   }
 
   async function apiGet(path){
-    return fetchJson(path, { method:"GET", credentials:"include" });
+    return fetchJson(path, { method:"GET", credentials:"include", cache:"no-store" });
   }
 
   async function apiPost(path, body){
@@ -385,47 +517,104 @@
 
       if(rtc && hls) setMode("RTC → HLS enabled", "good");
       else if(rtc) setMode("RTC", "good");
-      else if(hls) setMode("HLS only", "warn");
+      else if(hls) setMode("HLS", "warn");
       else setMode("Unknown", "warn");
 
-      elHdrSub.textContent = `Event loaded • ${pub.status || "ok"}`;
+      elHdrSub.textContent = pub?.title ? pub.title : `Event loaded • ${pub.status || "ok"}`;
       return pub;
     }catch(e){
       setMode("RTC", null);
-      elHdrSub.textContent = "Enter Event + Key to begin";
+      elHdrSub.textContent = "Enter Event + Key";
       log("PUBLIC (non-fatal) failed:", String(e));
+      publicEvent = null;
       return null;
     }
   }
 
-  async function waitForPaid({ timeoutMs = 120000 } = {}){
-    const hasParams = elEventId.value.trim() && elEventKey.value.trim();
-    if(!hasParams) return false;
-
-    const started = Date.now();
-    setState("CONNECTING", "warn", "Confirming payment…");
-    showMessage("", "Payment processing… this can take about a minute.");
+  // ---- Readiness gate: paid -> start warmup -> provision dry-run -> enable Go Live
+  async function runReadinessGate(){
+    const myToken = ++readinessAbort.token;
+    isReady = false;
     btnPrimary.disabled = true;
 
-    while (Date.now() - started < timeoutMs) {
-      const pub = await loadPublicForMode();
-      if(pub?.status === "paid"){
-        setState("OFFLINE", null, "Ready to go live.");
-        showMessage("", "");
-        elInfoLine.textContent = "Ready.";
-        btnPrimary.disabled = false;
-        return true;
-      }
-      elInfoLine.textContent = "Waiting for payment confirmation…";
-      await new Promise(r => setTimeout(r, 2000));
+    const hasParams = elEventId.value.trim() && elEventKey.value.trim();
+    if(!hasParams){
+      setState("OFFLINE", null, "Enter event + key.");
+      showMessage("", "");
+      elInfoLine.textContent = "Preview not started.";
+      return;
     }
 
-    setState("OFFLINE", "warn", "Still processing payment.");
-    showMessage("", "Still waiting on payment confirmation. Leave this page open — it should update soon.");
+    setState("CONNECTING", "warn", "Checking event…");
+    showMessage("", "");
+    elInfoLine.textContent = "Checking event…";
+
+    // 1) Wait until paid (up to 2 mins, but keep going politely)
+    const started = Date.now();
+    while(true){
+      if(myToken != readinessAbort.token) return;
+      const pub = await loadPublicForMode();
+      if(pub?.expired){
+        setState("OFFLINE", "bad", "Event expired.");
+        showMessage("bad", "This event has expired.");
+        return;
+      }
+      if(pub?.status === "paid"){
+        break;
+      }
+      setState("CONNECTING", "warn", "Confirming payment…");
+      showMessage("warn", "Payment processing… this usually takes about a minute.");
+      elInfoLine.textContent = "Waiting for payment confirmation…";
+      await new Promise(r => setTimeout(r, 2000));
+      // after 2 minutes, keep waiting but don’t look “stuck”
+      if(Date.now() - started > 120000){
+        showMessage("warn", "Still waiting on payment confirmation. Leave this page open — it should update soon.");
+      }
+    }
+
+    if(myToken != readinessAbort.token) return;
+
+    // 2) Warm up HLS early (idempotent)
+    setState("CONNECTING", "warn", "Preparing stream…");
+    showMessage("", "Preparing stream…");
+    elInfoLine.textContent = "Preparing stream…";
+
+    try{
+      const { eventId, key } = currentEventParams();
+      const res = await apiPost(`/api/events/${encodeURIComponent(eventId)}/start?key=${encodeURIComponent(key)}`, {});
+      log("WARMUP /start", res);
+    }catch(e){
+      // Non-fatal; still allow RTC
+      log("WARMUP /start failed (non-fatal)", String(e));
+    }
+
+    if(myToken != readinessAbort.token) return;
+
+    // 3) Dry-run provision so “Go Live” doesn't fail on first click
+    try{
+      const { eventId, key } = currentEventParams();
+      const prov = await apiPost(`/api/events/${encodeURIComponent(eventId)}/rtc/provision?key=${encodeURIComponent(key)}`, {});
+      const token = prov?.participantToken || prov?.publisher?.token;
+      if(!token) throw new Error("No participant token from provision");
+      log("WARMUP /rtc/provision ok");
+    }catch(e){
+      setState("OFFLINE", "bad", "Stream not ready.");
+      showMessage("bad", "Stream setup failed. Refresh and try again, or check diagnostics.");
+      log("WARMUP /rtc/provision failed", String(e));
+      return;
+    }
+
+    if(myToken != readinessAbort.token) return;
+
+    // Ready!
+    isReady = true;
     btnPrimary.disabled = false;
-    return false;
+    setState("OFFLINE", null, "Ready to go live.");
+    showMessage("good", "Ready. You can go live now.");
+    elInfoLine.textContent = "Ready to go live.";
   }
 
+  // ---- media
   async function listDevices(){
     const devices = await navigator.mediaDevices.enumerateDevices();
     const cams = devices.filter(d => d.kind === "videoinput");
@@ -451,6 +640,7 @@
 
   async function preview(){
     showMessage("", "");
+    setState("OFFLINE", null, "Preparing preview…");
     elInfoLine.textContent = "Starting preview…";
 
     if(localStream){
@@ -462,8 +652,8 @@
     videoEl.srcObject = localStream;
 
     elInfoLine.textContent = "Preview ready.";
-    if(publicEvent?.status === "paid") setState("OFFLINE", null, "Ready to go live.");
-    else setState("OFFLINE", null, "Enter Event + Key (or wait for payment).");
+    // keep readiness gate status, don't stomp it
+    if(!isReady) setState("CONNECTING", "warn", "Waiting for payment / readiness…");
   }
 
   async function provisionPublishToken(){
@@ -475,15 +665,18 @@
   }
 
   async function goLive(){
+    if(!isReady){
+      showMessage("warn", "Not ready yet — confirming payment and preparing stream.");
+      await runReadinessGate();
+      if(!isReady) return;
+    }
+
     const sdk = window.IVSBroadcastClient;
     if(!sdk) throw new Error("IVS Web Broadcast SDK not loaded.");
 
     const { Stage, StageEvents, SubscribeType, LocalStageStream, StageConnectionState } = sdk;
 
     showMessage("", "");
-
-    // Make the wait feel intentional instead of broken.
-    await waitForPaid({ timeoutMs: 120000 });
 
     if(!localStream) await preview();
 
@@ -528,6 +721,7 @@
         elInfoLine.textContent = "Live. Publishing to stage.";
         showMessage("good", "You’re live.");
 
+        // Call /start once we are actually connected (still idempotent).
         try{
           const { eventId, key } = currentEventParams();
           const res = await apiPost(`/api/events/${encodeURIComponent(eventId)}/start?key=${encodeURIComponent(key)}`, {});
@@ -546,7 +740,7 @@
       if(state === StageConnectionState.ERRORED){
         setState("CONNECTING", "warn", "Reconnecting… (don’t close this tab)");
         elInfoLine.textContent = "Reconnecting…";
-        showMessage("", "Connection hiccup — attempting to recover.");
+        showMessage("warn", "Connection hiccup — attempting to recover.");
         return;
       }
 
@@ -556,6 +750,9 @@
         showMessage("bad", "Disconnected. You can go live again.");
         setPrimaryButtons(false);
         stopTimer();
+        // run readiness gate again (token might have expired)
+        isReady = false;
+        runReadinessGate();
         return;
       }
     });
@@ -581,6 +778,10 @@
     setState("OFFLINE", null, "Not connected.");
     elInfoLine.textContent = "Stream ended.";
     showMessage("", "");
+
+    // Re-run readiness so they can restart cleanly
+    isReady = false;
+    runReadinessGate();
   }
 
   btnClear.onclick = () => { elLog.textContent = ""; };
@@ -620,8 +821,10 @@
       setPrimaryButtons(false);
       setState("OFFLINE", "bad", "Could not go live.");
       showMessage("bad", String(e));
+      isReady = false;
+      runReadinessGate();
     }finally{
-      btnPrimary.disabled = false;
+      btnPrimary.disabled = !isReady;
     }
   };
 
@@ -639,16 +842,13 @@
   elEventId.value = qs.get("event") || qs.get("id") || "";
   elEventKey.value = qs.get("key") || "";
 
-  let pubDebounce = null;
-  function schedulePublicRefresh(){
-    if(pubDebounce) clearTimeout(pubDebounce);
-    pubDebounce = setTimeout(async () => {
-      await loadPublicForMode();
-      await waitForPaid({ timeoutMs: 120000 });
-    }, 250);
+  let gateDebounce = null;
+  function scheduleGate(){
+    if(gateDebounce) clearTimeout(gateDebounce);
+    gateDebounce = setTimeout(() => runReadinessGate(), 250);
   }
-  elEventId.addEventListener("input", schedulePublicRefresh);
-  elEventKey.addEventListener("input", schedulePublicRefresh);
+  elEventId.addEventListener("input", scheduleGate);
+  elEventKey.addEventListener("input", scheduleGate);
 
   (async () => {
     try{
@@ -657,16 +857,11 @@
       s.getTracks().forEach(t=>t.stop());
 
       await listDevices();
-      setState("OFFLINE", null, "Ready.");
+      setState("OFFLINE", null, "Enter event + key.");
       elInfoLine.textContent = "Preview not started.";
 
-      if(elEventId.value.trim() && elEventKey.value.trim()){
-        await loadPublicForMode();
-        await waitForPaid({ timeoutMs: 120000 });
-      }else{
-        showMessage("", "Enter Event + Key to unlock broadcasting.");
-        btnPrimary.disabled = true;
-      }
+      // initial gate if params exist
+      await runReadinessGate();
     }catch(e){
       log("Init error", String(e));
       setState("OFFLINE", "bad", "Permissions needed to broadcast.");
