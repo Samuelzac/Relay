@@ -1,722 +1,172 @@
 <!doctype html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-  <title>Relay Broadcast</title>
+<meta charset="utf-8">
+<title>Relay Broadcast</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
 
-  <!-- Amazon IVS Real-Time Web Broadcast SDK (Stages / WebRTC) -->
-  <script src="https://web-broadcast.live-video.net/1.17.0/amazon-ivs-web-broadcast.js"></script>
-
-  <style>
-    :root{
-      color-scheme: dark;
-      --bg: #0b0c10;
-      --panel: #0f1117;
-      --panel2: #0b1220;
-      --border: #20232a;
-      --border2: #2b2f3a;
-      --text: #e8e8e8;
-      --muted: #a3a3a3;
-      --good: #34d399;
-      --warn: #fbbf24;
-      --bad: #fb7185;
-      --btn: #1f2937;
-      --btnBorder: #334155;
-      --focus: #60a5fa;
-      --r: 16px;
-      --pad: 14px;
-      --shadow: 0 12px 40px rgba(0,0,0,.35);
-    }
-    *{ box-sizing:border-box; }
-    body{ margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; background:var(--bg); color:var(--text); }
-    header{
-      position: sticky; top:0; z-index:10;
-      background: rgba(11,12,16,.92);
-      backdrop-filter: blur(8px);
-      border-bottom: 1px solid var(--border);
-      padding: calc(10px + env(safe-area-inset-top)) 14px 10px;
-      display:flex; align-items:center; justify-content:space-between; gap:12px;
-    }
-    .brand{ display:flex; align-items:center; gap:10px; min-width:0; }
-    .logo{
-      width:30px; height:30px; border-radius:10px;
-      background: linear-gradient(135deg,#334155,#111827);
-      border:1px solid var(--border2);
-      box-shadow: 0 6px 18px rgba(0,0,0,.25);
-      flex:0 0 auto;
-    }
-    .titleWrap{ min-width:0; }
-    .title{ font-weight:800; letter-spacing:.2px; line-height:1.1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-    .subtitle{ font-size:12px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:2px; }
-    .statusRow{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; justify-content:flex-end; }
-    .pill{
-      font-size:12px; padding:6px 10px; border:1px solid var(--border2);
-      border-radius:999px; color:#cbd5e1; display:inline-flex; align-items:center; gap:8px;
-      background: rgba(15,17,23,.5);
-    }
-    .dot{ width:8px; height:8px; border-radius:999px; background:#64748b; box-shadow: 0 0 0 3px rgba(100,116,139,.12); }
-    .pill.good .dot{ background: var(--good); box-shadow: 0 0 0 3px rgba(52,211,153,.12); }
-    .pill.warn .dot{ background: var(--warn); box-shadow: 0 0 0 3px rgba(251,191,36,.12); }
-    .pill.bad  .dot{ background: var(--bad);  box-shadow: 0 0 0 3px rgba(251,113,133,.12); }
-
-    main{ padding:14px; padding-bottom: calc(18px + env(safe-area-inset-bottom)); max-width:1100px; margin:0 auto; }
-    .grid{ display:grid; gap:12px; grid-template-columns:1fr; }
-    @media (min-width:980px){ .grid{ grid-template-columns: 2fr 1fr; align-items:start; } }
-    .card{ background:var(--panel); border:1px solid var(--border); border-radius:var(--r); padding:var(--pad); box-shadow:var(--shadow); }
-    .sectionTitle{ font-size:12px; color:var(--muted); letter-spacing:.12em; text-transform:uppercase; margin:0 0 10px; }
-    .fieldGrid{ display:grid; gap:10px; grid-template-columns:1fr; margin-bottom:12px; }
-    @media (min-width:680px){ .fieldGrid{ grid-template-columns:1fr 1fr; } }
-    label{ display:block; font-size:12px; color:var(--muted); margin:0 0 6px; }
-    input,select{
-      width:100%; background:#0f172a; border:1px solid var(--btnBorder);
-      color:var(--text); padding: 11px 12px; border-radius:12px; outline:none;
-    }
-    input:focus, select:focus{ border-color:var(--focus); box-shadow: 0 0 0 3px rgba(96,165,250,.18); }
-    video{ width:100%; background:#000; border-radius:14px; border:1px solid var(--border); display:block; }
-    .videoMeta{ display:flex; justify-content:space-between; align-items:center; gap:10px; margin:10px 2px 0; flex-wrap:wrap; }
-    .hint{ color:var(--muted); font-size:13px; line-height:1.35; }
-    .timer{ font-variant-numeric: tabular-nums; font-weight:800; letter-spacing:.4px; }
-    .actions{ display:grid; gap:10px; margin-top:12px; grid-template-columns:1fr; }
-    @media (min-width:520px){
-      .actions{ grid-template-columns: 1fr 1fr; }
-      .actions .primary{ grid-column: span 2; }
-    }
-    button{
-      appearance:none; border:1px solid var(--btnBorder); background:var(--btn);
-      color:#e5e7eb; padding:12px 12px; border-radius:14px; cursor:pointer;
-      font-weight:700; letter-spacing:.2px;
-    }
-    button:disabled{ opacity:.55; cursor:not-allowed; }
-    button.secondary{ background:transparent; }
-    button.danger{ border-color: rgba(251,113,133,.55); background: rgba(251,113,133,.10); }
-    button.primary{
-      padding:14px 14px; font-size:16px;
-      border-color: rgba(96,165,250,.45);
-      background: linear-gradient(180deg, rgba(96,165,250,.22), rgba(31,41,55,.22));
-    }
-    details{ border-radius:14px; border:1px solid var(--border); background: rgba(15,17,23,.55); overflow:hidden; }
-    summary{ cursor:pointer; padding:12px 12px; list-style:none; display:flex; align-items:center; justify-content:space-between; gap:10px; user-select:none; }
-    summary::-webkit-details-marker{ display:none; }
-    .diagBody{ padding: 0 12px 12px; }
-    .log{
-      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-      font-size:12px; white-space: pre-wrap;
-      background: var(--panel2); border:1px solid #202a3a; border-radius:12px;
-      padding:10px; max-height:220px; overflow:auto;
-    }
-    .diagRow{ display:flex; gap:10px; justify-content:flex-end; margin:10px 0 0; flex-wrap:wrap; }
-    .msg{
-      margin-top:10px; padding:10px 12px; border-radius:12px;
-      border:1px solid var(--border); background: rgba(2,6,23,.35);
-      color: var(--muted); font-size:13px;
-    }
-    .msg.bad{ border-color: rgba(251,113,133,.35); color:#ffb4b4; }
-    .msg.good{ border-color: rgba(52,211,153,.35); color:#bff7de; }
-    .msg.warn{ border-color: rgba(251,191,36,.35); color:#ffe3a3; }
-    .tiny{ font-size:12px; color: var(--muted); }
-  </style>
+<style>
+body{font-family:sans-serif;background:#111;color:#fff;margin:0;padding:20px}
+button{padding:14px 22px;font-size:18px;border-radius:8px;border:none}
+#go{background:#2ecc71;color:#000}
+#stop{background:#e74c3c;color:#fff}
+#status{margin-top:15px;font-size:16px}
+video{width:100%;max-width:900px;border-radius:10px;background:#000}
+</style>
 </head>
+
 <body>
-  <header>
-    <div class="brand">
-      <div class="logo" aria-hidden="true"></div>
-      <div class="titleWrap">
-        <div class="title" id="hdrTitle">Relay Broadcast</div>
-        <div class="subtitle" id="hdrSub">Enter Event + Key</div>
-      </div>
-    </div>
 
-    <div class="statusRow">
-      <span id="modePill" class="pill"><span class="dot"></span><span id="modeText">RTC</span></span>
-      <span id="statePill" class="pill"><span class="dot"></span><span id="stateText">OFFLINE</span></span>
-      <span id="timerPill" class="pill"><span class="tiny">LIVE</span> <span class="timer" id="timer">00:00</span></span>
-    </div>
-  </header>
+<h2>Broadcast</h2>
 
-  <main>
-    <div class="grid">
-      <div class="card">
-        <div class="sectionTitle">Broadcast</div>
+<video id="preview" autoplay muted playsinline></video>
 
-        <div class="fieldGrid">
-          <div>
-            <label for="eventId">Event</label>
-            <input id="eventId" placeholder="event id" autocomplete="off" />
-          </div>
-          <div>
-            <label for="eventKey">Key</label>
-            <input id="eventKey" placeholder="secret key" autocomplete="off" />
-          </div>
-        </div>
+<br><br>
 
-        <div class="fieldGrid">
-          <div>
-            <label for="camera">Camera</label>
-            <select id="camera"></select>
-          </div>
-          <div>
-            <label for="mic">Mic</label>
-            <select id="mic"></select>
-          </div>
-        </div>
+<button id="go" disabled>Preparing stream…</button>
+<button id="stop" style="display:none">End Stream</button>
 
-        <video id="preview" playsinline autoplay muted></video>
-
-        <div class="videoMeta">
-          <div class="hint" id="infoLine">Preview not started.</div>
-          <div class="hint"><span class="tiny">Timer</span> <span class="timer" id="timerInline">00:00</span></div>
-        </div>
-
-        <div id="message" class="msg" style="display:none;"></div>
-
-        <div class="actions">
-          <button id="btnPrimary" class="primary" disabled>Go Live</button>
-          <button id="btnPreview" class="secondary">Preview</button>
-          <button id="btnEnd" class="danger" style="display:none;">End Stream</button>
-        </div>
-
-        <div class="tiny" style="margin-top:10px;">
-          Go Live unlocks when the event is <b>paid</b> (or paid-like) and provisioning succeeds.
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="sectionTitle">Status</div>
-
-        <div class="msg" id="statusCard">
-          <div><strong id="statusHeadline">OFFLINE</strong></div>
-          <div class="tiny" id="statusDetail">Not connected.</div>
-        </div>
-
-        <div style="height:12px;"></div>
-
-        <details>
-          <summary>
-            <span class="tiny">Diagnostics</span>
-            <span class="tiny" id="diagHint">hidden</span>
-          </summary>
-          <div class="diagBody">
-            <div id="log" class="log"></div>
-            <div class="diagRow">
-              <button id="btnCopy" class="secondary" style="padding:10px 12px;">Copy</button>
-              <button id="btnClear" class="secondary" style="padding:10px 12px;">Clear</button>
-            </div>
-          </div>
-        </details>
-      </div>
-    </div>
-  </main>
+<div id="status">Initializing…</div>
 
 <script>
-(() => {
-  const API_BASE =
-    (location.origin.includes("pages.dev") || location.origin.includes("localhost"))
-      ? "https://stream-platform-api.kiwismurph.workers.dev"
-      : location.origin;
 
-  const qs = new URLSearchParams(location.search);
-  const $ = (id) => document.getElementById(id);
+const API="https://stream-platform-api.kiwismurph.workers.dev"
 
-  const elEventId = $("eventId");
-  const elEventKey = $("eventKey");
-  const elCam = $("camera");
-  const elMic = $("mic");
-  const videoEl = $("preview");
+const qs=new URLSearchParams(location.search)
+const EVENT=qs.get("event")
+const KEY=qs.get("key")
 
-  const elHdrSub = $("hdrSub");
-  const elModePill = $("modePill");
-  const elModeText = $("modeText");
-  const elStatePill = $("statePill");
-  const elStateText = $("stateText");
-  const elTimer = $("timer");
-  const elTimerInline = $("timerInline");
-  const elInfoLine = $("infoLine");
-  const elMessage = $("message");
+const statusEl=document.getElementById("status")
+const goBtn=document.getElementById("go")
+const stopBtn=document.getElementById("stop")
+const preview=document.getElementById("preview")
 
-  const elStatusHeadline = $("statusHeadline");
-  const elStatusDetail = $("statusDetail");
-  const elDiagHint = $("diagHint");
+let localStream
+let stage
+let joined=false
 
-  const btnPrimary = $("btnPrimary");
-  const btnPreview = $("btnPreview");
-  const btnEnd = $("btnEnd");
-  const btnClear = $("btnClear");
-  const btnCopy = $("btnCopy");
+function log(msg){
+  console.log(msg)
+  statusEl.innerText=msg
+}
 
-  const elLog = $("log");
-  const diagDetails = document.querySelector("details");
+async function apiPost(url,data={}){
+  const r=await fetch(url,{
+    method:"POST",
+    headers:{'content-type':'application/json'},
+    body:JSON.stringify(data)
+  })
+  if(!r.ok) throw new Error(await r.text())
+  return r.json()
+}
 
-  let localStream = null;
-  let stage = null;
-  let stageToken = null;
+async function waitUntilReady(){
 
-  let startedAtMs = null;
-  let timerHandle = null;
+  log("Preparing stream…")
 
-  let publicEvent = null;
-  let readinessAbort = { token: 0 };
-  let isReady = false;
-
-  function apiUrl(path){ return API_BASE + path; }
-
-  function log(...args){
-    const line = args.map(a => typeof a === "string" ? a : JSON.stringify(a)).join(" ");
-    elLog.textContent += line + "\n";
-    elLog.scrollTop = elLog.scrollHeight;
-    console.log(...args);
-  }
-
-  function showMessage(kind, text){
-    if(!text){
-      elMessage.style.display = "none";
-      elMessage.textContent = "";
-      elMessage.className = "msg";
-      return;
-    }
-    elMessage.style.display = "";
-    elMessage.textContent = text;
-    elMessage.className = "msg" + (kind ? (" " + kind) : "");
-  }
-
-  function setMode(text, kind){
-    elModeText.textContent = text;
-    elModePill.classList.remove("good","warn","bad");
-    if(kind) elModePill.classList.add(kind);
-  }
-
-  function setState(state, kind, detail){
-    elStateText.textContent = state;
-    elStatePill.classList.remove("good","warn","bad");
-    if(kind) elStatePill.classList.add(kind);
-    elStatusHeadline.textContent = state;
-    elStatusDetail.textContent = detail || "";
-  }
-
-  function setPrimaryButtons(isLiveLike){
-    if(isLiveLike){
-      btnPrimary.style.display = "none";
-      btnEnd.style.display = "";
-    }else{
-      btnPrimary.style.display = "";
-      btnEnd.style.display = "none";
-    }
-  }
-
-  function stopTimer(){
-    if(timerHandle) clearInterval(timerHandle);
-    timerHandle = null;
-    startedAtMs = null;
-    elTimer.textContent = "00:00";
-    elTimerInline.textContent = "00:00";
-  }
-
-  function startTimer(){
-    if(timerHandle) clearInterval(timerHandle);
-    timerHandle = setInterval(() => {
-      if(!startedAtMs) return;
-      const s = Math.floor((Date.now() - startedAtMs)/1000);
-      const mm = String(Math.floor(s/60)).padStart(2,"0");
-      const ss = String(s%60).padStart(2,"0");
-      const t = `${mm}:${ss}`;
-      elTimer.textContent = t;
-      elTimerInline.textContent = t;
-    }, 250);
-  }
-
-  async function fetchJson(path, init){
-    const r = await fetch(apiUrl(path), init);
-    const t = await r.text();
-    let j = null;
-    try { j = t ? JSON.parse(t) : null; } catch {}
-    if(!r.ok){
-      const msg = typeof j === "object" && j ? JSON.stringify(j) : t;
-      const err = new Error(`${r.status} ${msg}`);
-      err.status = r.status;
-      err.body = j ?? t;
-      throw err;
-    }
-    return j;
-  }
-
-  async function apiGet(path){
-    return fetchJson(path, { method:"GET", credentials:"include", cache:"no-store" });
-  }
-
-  async function apiPost(path, body){
-    return fetchJson(path, {
-      method:"POST",
-      headers:{ "content-type":"application/json" },
-      body: body ? JSON.stringify(body) : "{}",
-      credentials:"include"
-    });
-  }
-
-  function currentEventParams(){
-    const eventId = elEventId.value.trim();
-    const key = elEventKey.value.trim();
-    if(!eventId || !key) throw new Error("Missing event or key");
-    return { eventId, key };
-  }
-
-  // IMPORTANT: tolerant paid detection so we don't brick the UI if schema differs.
-  function isPaidLike(pub){
-    const s = (pub?.status || "").toLowerCase();
-    if(pub?.paid === true) return true;
-    if(["paid","active","ready","provisioned","ok"].includes(s)) return true;
-    return false;
-  }
-
-  async function loadPublicForMode(){
-    try{
-      const { eventId, key } = currentEventParams();
-      const pub = await apiGet(`/api/events/${encodeURIComponent(eventId)}/public?key=${encodeURIComponent(key)}`);
-      publicEvent = pub;
-
-      const hls = !!pub.hls_enabled || !!pub.hls_url;
-      const rtc = pub.rtc_enabled !== false; // default true unless explicitly false
-
-      if(rtc && hls) setMode("RTC → HLS enabled", "good");
-      else if(rtc) setMode("RTC", "good");
-      else if(hls) setMode("HLS", "warn");
-      else setMode("Unknown", "warn");
-
-      const statusText = pub?.status ? `Status: ${pub.status}` : "Status: unknown";
-      elHdrSub.textContent = pub?.title ? pub.title : statusText;
-      return pub;
-    }catch(e){
-      setMode("RTC", null);
-      elHdrSub.textContent = "Enter Event + Key";
-      log("PUBLIC failed:", String(e));
-      publicEvent = null;
-      return null;
-    }
-  }
-
-  async function runReadinessGate(){
-    const myToken = ++readinessAbort.token;
-    isReady = false;
-    btnPrimary.disabled = true;
-
-    const hasParams = elEventId.value.trim() && elEventKey.value.trim();
-    if(!hasParams){
-      setState("OFFLINE", null, "Enter event + key.");
-      showMessage("", "");
-      elInfoLine.textContent = "Preview not started.";
-      return;
-    }
-
-    setState("CONNECTING", "warn", "Checking event…");
-    showMessage("", "");
-    elInfoLine.textContent = "Checking event…";
-
-    // 1) Wait until paid-like (keeps polling; doesn't get stuck on exact string)
-    const t0 = Date.now();
-    while(true){
-      if(myToken !== readinessAbort.token) return;
-
-      const pub = await loadPublicForMode();
-
-      if(pub?.expired){
-        setState("OFFLINE", "bad", "Event expired.");
-        showMessage("bad", "This event has expired.");
-        return;
-      }
-
-      elInfoLine.textContent = pub
-        ? `Event status: ${pub?.status || "unknown"} — checking…`
-        : "Unable to read event status — retrying…";
-
-      if(isPaidLike(pub)) break;
-
-      setState("CONNECTING", "warn", "Payment processing…");
-      showMessage("warn", "Payment processing… this usually takes about a minute.");
-      await new Promise(r => setTimeout(r, 2000));
-
-      if(Date.now() - t0 > 120000){
-        showMessage("warn", "Still waiting on confirmation. If you believe it's paid, refresh—otherwise leave this open.");
-      }
-    }
-
-    if(myToken !== readinessAbort.token) return;
-
-    // 2) Warm HLS early (idempotent)
-    setState("CONNECTING", "warn", "Preparing stream…");
-    showMessage("", "Preparing stream…");
-    elInfoLine.textContent = "Preparing stream…";
+  while(true){
 
     try{
-      const { eventId, key } = currentEventParams();
-      const res = await apiPost(`/api/events/${encodeURIComponent(eventId)}/start?key=${encodeURIComponent(key)}`, {});
-      log("WARMUP /start", res);
+
+      const prov=await apiPost(
+        `${API}/api/events/${EVENT}/rtc/provision?key=${KEY}`,{}
+      )
+
+      if(prov){
+        log("Ready to go live")
+        goBtn.disabled=false
+        goBtn.innerText="Go Live"
+        return
+      }
+
     }catch(e){
-      log("WARMUP /start failed (non-fatal)", String(e));
+      log("Preparing stream… please wait")
     }
 
-    if(myToken !== readinessAbort.token) return;
+    await new Promise(r=>setTimeout(r,2000))
+  }
+}
 
-    // 3) Dry-run provision so Go Live doesn't fail on first click
-    try{
-      const { eventId, key } = currentEventParams();
-      const prov = await apiPost(`/api/events/${encodeURIComponent(eventId)}/rtc/provision?key=${encodeURIComponent(key)}`, {});
-      const token = prov?.participantToken || prov?.publisher?.token || prov?.viewer?.token || prov?.subscriber?.token;
-      if(!token) throw new Error("No participant token from provision");
-      log("WARMUP /rtc/provision ok");
-    }catch(e){
-      setState("OFFLINE", "bad", "Stream not ready.");
-      showMessage("bad", "Provisioning failed. Retry in a moment, or check Diagnostics.");
-      log("WARMUP /rtc/provision failed", String(e));
-      return;
-    }
+async function setupCamera(){
 
-    if(myToken !== readinessAbort.token) return;
+  localStream=await navigator.mediaDevices.getUserMedia({
+    video:true,
+    audio:true
+  })
 
-    isReady = true;
-    btnPrimary.disabled = false;
-    setState("OFFLINE", null, "Ready to go live.");
-    showMessage("good", "Ready. You can go live now.");
-    elInfoLine.textContent = "Ready to go live.";
+  preview.srcObject=localStream
+}
+
+async function goLive(){
+
+  goBtn.disabled=true
+  log("Starting broadcast…")
+
+  try{
+
+    const prov=await apiPost(
+      `${API}/api/events/${EVENT}/rtc/provision?key=${KEY}`,{}
+    )
+
+    const token=
+      prov.participantToken ||
+      prov.publisher?.token ||
+      prov.token
+
+    stage=new IVSBroadcastClient.Stage(token)
+
+    stage.on("connectionStateChanged",(s)=>{
+      log("Connection: "+s)
+    })
+
+    await stage.join()
+
+    localStream.getTracks().forEach(track=>{
+      stage.publishTrack(track)
+    })
+
+    joined=true
+
+    goBtn.style.display="none"
+    stopBtn.style.display="inline-block"
+
+    log("LIVE")
+
+  }catch(e){
+    log("Failed to start: "+e.message)
+    goBtn.disabled=false
   }
 
-  async function listDevices(){
-    const devices = await navigator.mediaDevices.enumerateDevices();
-    const cams = devices.filter(d => d.kind === "videoinput");
-    const mics = devices.filter(d => d.kind === "audioinput");
+}
 
-    elCam.innerHTML = cams.map((d,i)=>`<option value="${d.deviceId}">${d.label || "Camera " + (i+1)}</option>`).join("");
-    elMic.innerHTML = mics.map((d,i)=>`<option value="${d.deviceId}">${d.label || "Mic " + (i+1)}</option>`).join("");
+async function stopLive(){
+
+  if(stage){
+    stage.leave()
   }
 
-  async function getLocalMedia(){
-    const camId = elCam.value || undefined;
-    const micId = elMic.value || undefined;
+  joined=false
 
-    const constraints = {
-      video: camId
-        ? { deviceId: { exact: camId }, width:{ ideal:1280 }, height:{ ideal:720 }, frameRate:{ ideal:30 } }
-        : { width:{ ideal:1280 }, height:{ ideal:720 }, frameRate:{ ideal:30 } },
-      audio: micId ? { deviceId: { exact: micId } } : true
-    };
-    return navigator.mediaDevices.getUserMedia(constraints);
-  }
+  stopBtn.style.display="none"
+  goBtn.style.display="inline-block"
+  goBtn.disabled=false
 
-  async function preview(){
-    showMessage("", "");
-    setState("OFFLINE", null, "Preparing preview…");
-    elInfoLine.textContent = "Starting preview…";
+  log("Stream ended")
+}
 
-    if(localStream){
-      localStream.getTracks().forEach(t=>t.stop());
-      localStream = null;
-    }
+goBtn.onclick=goLive
+stopBtn.onclick=stopLive
 
-    localStream = await getLocalMedia();
-    videoEl.srcObject = localStream;
+async function init(){
+  await setupCamera()
+  await waitUntilReady()
+}
 
-    elInfoLine.textContent = "Preview ready.";
-  }
+init()
 
-  async function provisionPublishToken(){
-    const { eventId, key } = currentEventParams();
-    const prov = await apiPost(`/api/events/${encodeURIComponent(eventId)}/rtc/provision?key=${encodeURIComponent(key)}`, {});
-    stageToken = prov?.participantToken || prov?.publisher?.token;
-    if(!stageToken) throw new Error("No publisher token returned from /rtc/provision");
-    return prov;
-  }
-
-  async function goLive(){
-    if(!isReady){
-      await runReadinessGate();
-      if(!isReady){
-        showMessage("warn", "Still not ready—retrying readiness checks. Open Diagnostics if it persists.");
-        return;
-      }
-    }
-
-    const sdk = window.IVSBroadcastClient;
-    if(!sdk) throw new Error("IVS Web Broadcast SDK not loaded.");
-
-    const { Stage, StageEvents, SubscribeType, LocalStageStream, StageConnectionState } = sdk;
-
-    showMessage("", "");
-    if(!localStream) await preview();
-
-    setState("CONNECTING", "warn", "Requesting publish token…");
-    elInfoLine.textContent = "Preparing stream…";
-    setPrimaryButtons(true);
-
-    await provisionPublishToken();
-
-    const tracks = localStream.getTracks();
-    const audioTrack = tracks.find(t => t.kind === "audio");
-    const videoTrack = tracks.find(t => t.kind === "video");
-    if(!videoTrack) throw new Error("No video track available.");
-
-    const strategy = {
-      audioTrack: audioTrack ? new LocalStageStream(audioTrack) : null,
-      videoTrack: new LocalStageStream(videoTrack),
-      stageStreamsToPublish() {
-        const out = [];
-        if(this.audioTrack) out.push(this.audioTrack);
-        if(this.videoTrack) out.push(this.videoTrack);
-        return out;
-      },
-      shouldPublishParticipant() { return true; },
-      shouldSubscribeToParticipant() { return SubscribeType.NONE; }
-    };
-
-    stage = new Stage(stageToken, strategy);
-
-    stage.on(StageEvents.STAGE_CONNECTION_STATE_CHANGED, async (state) => {
-      log("RTC state", state);
-
-      if(state === StageConnectionState.CONNECTING){
-        setState("CONNECTING", "warn", "Connecting…");
-        elInfoLine.textContent = "Connecting…";
-        return;
-      }
-
-      if(state === StageConnectionState.CONNECTED){
-        setState("LIVE", "good", "You are live.");
-        elInfoLine.textContent = "Live. Publishing to stage.";
-        showMessage("good", "You’re live.");
-
-        try{
-          const { eventId, key } = currentEventParams();
-          const res = await apiPost(`/api/events/${encodeURIComponent(eventId)}/start?key=${encodeURIComponent(key)}`, {});
-          log("START", res);
-        }catch(e){
-          log("START failed (non-fatal)", String(e));
-        }
-
-        if(!startedAtMs){
-          startedAtMs = Date.now();
-          startTimer();
-        }
-        return;
-      }
-
-      if(state === StageConnectionState.ERRORED){
-        setState("CONNECTING", "warn", "Reconnecting… (don’t close this tab)");
-        elInfoLine.textContent = "Reconnecting…";
-        showMessage("warn", "Connection hiccup — attempting to recover.");
-        return;
-      }
-
-      if(state === StageConnectionState.DISCONNECTED){
-        setState("OFFLINE", "bad", "Disconnected.");
-        elInfoLine.textContent = "Disconnected.";
-        showMessage("bad", "Disconnected. You can go live again.");
-        setPrimaryButtons(false);
-        stopTimer();
-        isReady = false;
-        runReadinessGate();
-        return;
-      }
-    });
-
-    setState("CONNECTING", "warn", "Joining stage…");
-    elInfoLine.textContent = "Joining stage…";
-    await stage.join();
-  }
-
-  async function endStream(){
-    try{ stage && stage.leave(); }catch{}
-    stage = null;
-    stageToken = null;
-
-    if(localStream){
-      localStream.getTracks().forEach(t=>t.stop());
-      localStream = null;
-    }
-    videoEl.srcObject = null;
-
-    stopTimer();
-    setPrimaryButtons(false);
-    setState("OFFLINE", null, "Not connected.");
-    elInfoLine.textContent = "Stream ended.";
-    showMessage("", "");
-
-    isReady = false;
-    runReadinessGate();
-  }
-
-  btnClear.onclick = () => { elLog.textContent = ""; };
-  btnCopy.onclick = async () => {
-    try{
-      await navigator.clipboard.writeText(elLog.textContent || "");
-      elDiagHint.textContent = "copied";
-      setTimeout(() => elDiagHint.textContent = diagDetails.open ? "shown" : "hidden", 1200);
-    }catch(e){
-      log("COPY failed", String(e));
-    }
-  };
-
-  diagDetails.addEventListener("toggle", () => {
-    elDiagHint.textContent = diagDetails.open ? "shown" : "hidden";
-  });
-
-  btnPreview.onclick = async () => {
-    btnPreview.disabled = true;
-    try{ await preview(); }
-    catch(e){
-      log("Preview error", String(e));
-      setState("OFFLINE", "bad", "Preview failed.");
-      showMessage("bad", String(e));
-    }finally{ btnPreview.disabled = false; }
-  };
-
-  btnPrimary.onclick = async () => {
-    btnPrimary.disabled = true;
-    try{ await goLive(); }
-    catch(e){
-      log("GoLive error", String(e));
-      setPrimaryButtons(false);
-      setState("OFFLINE", "bad", "Could not go live.");
-      showMessage("bad", String(e));
-      isReady = false;
-      runReadinessGate();
-    }finally{
-      btnPrimary.disabled = !isReady;
-    }
-  };
-
-  btnEnd.onclick = async () => {
-    btnEnd.disabled = true;
-    try{ await endStream(); }
-    catch(e){ log("End error", String(e)); }
-    finally{ btnEnd.disabled = false; }
-  };
-
-  elEventId.value = qs.get("event") || qs.get("id") || "";
-  elEventKey.value = qs.get("key") || "";
-
-  let gateDebounce = null;
-  function scheduleGate(){
-    if(gateDebounce) clearTimeout(gateDebounce);
-    gateDebounce = setTimeout(() => runReadinessGate(), 300);
-  }
-  elEventId.addEventListener("input", scheduleGate);
-  elEventKey.addEventListener("input", scheduleGate);
-
-  (async () => {
-    try{
-      setState("OFFLINE", null, "Requesting camera/mic permission…");
-      const s = await navigator.mediaDevices.getUserMedia({ video:true, audio:true });
-      s.getTracks().forEach(t=>t.stop());
-
-      await listDevices();
-      setState("OFFLINE", null, "Enter event + key.");
-      elInfoLine.textContent = "Preview not started.";
-
-      await runReadinessGate();
-    }catch(e){
-      log("Init error", String(e));
-      setState("OFFLINE", "bad", "Permissions needed to broadcast.");
-      showMessage("bad", "Allow camera + microphone permissions, then refresh.");
-    }
-  })();
-})();
 </script>
+
+<script src="https://web-broadcast.live-video.net/1.15.0/amazon-ivs-web-broadcast.js"></script>
+
 </body>
 </html>

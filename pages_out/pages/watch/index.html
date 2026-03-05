@@ -1,514 +1,118 @@
 <!doctype html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-  <title>Relay Watch</title>
+<meta charset="utf-8">
+<title>Relay Watch</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
 
-  <script src="https://player.live-video.net/1.48.0/amazon-ivs-player.min.js"></script>
-  <script src="https://web-broadcast.live-video.net/1.17.0/amazon-ivs-web-broadcast.js"></script>
-
-  <style>
-    :root{
-      color-scheme: dark;
-      --bg:#0b0c10;
-      --panel:#0f1117;
-      --panel2:#0b1220;
-      --border:#20232a;
-      --border2:#2b2f3a;
-      --text:#e8e8e8;
-      --muted:#9ca3af;
-      --good:#34d399;
-      --warn:#fbbf24;
-      --bad:#fb7185;
-      --shadow: 0 12px 40px rgba(0,0,0,.35);
-      --r:16px;
-    }
-    *{ box-sizing:border-box; }
-    body{ margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; background:var(--bg); color:var(--text); }
-    header{
-      position:sticky; top:0; z-index:10;
-      background: rgba(11,12,16,.92);
-      backdrop-filter: blur(8px);
-      border-bottom:1px solid var(--border);
-      padding: calc(10px + env(safe-area-inset-top)) 14px 10px;
-      display:flex; align-items:center; justify-content:space-between; gap:12px;
-    }
-    .brand{ display:flex; align-items:center; gap:10px; min-width:0; }
-    .logo{
-      width:30px;height:30px;border-radius:10px;
-      background: linear-gradient(135deg,#334155,#111827);
-      border:1px solid var(--border2);
-      box-shadow: 0 6px 18px rgba(0,0,0,.25);
-      flex:0 0 auto;
-    }
-    .titleWrap{ min-width:0; }
-    .title{ font-weight:800; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; line-height:1.1; }
-    .subtitle{ font-size:12px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:2px; }
-    .statusRow{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; justify-content:flex-end; }
-    .pill{
-      font-size:12px; padding:6px 10px; border:1px solid var(--border2);
-      border-radius:999px; color:#cbd5e1; display:inline-flex; align-items:center; gap:8px;
-      background: rgba(15,17,23,.5);
-    }
-    .dot{ width:8px;height:8px;border-radius:999px; background:#64748b; box-shadow: 0 0 0 3px rgba(100,116,139,.12); }
-    .pill.good .dot{ background:var(--good); box-shadow: 0 0 0 3px rgba(52,211,153,.12); }
-    .pill.warn .dot{ background:var(--warn); box-shadow: 0 0 0 3px rgba(251,191,36,.12); }
-    .pill.bad  .dot{ background:var(--bad);  box-shadow: 0 0 0 3px rgba(251,113,133,.12); }
-
-    main{ padding:14px; padding-bottom: calc(18px + env(safe-area-inset-bottom)); max-width:1100px; margin:0 auto; }
-    .card{ background:var(--panel); border:1px solid var(--border); border-radius:var(--r); padding:14px; box-shadow:var(--shadow); }
-    .videoWrap{ position:relative; background:#000; border-radius:14px; border:1px solid var(--border); overflow:hidden; }
-    video{ width:100%; display:block; background:#000; }
-    .overlay{
-      position:absolute; inset:0;
-      display:flex; flex-direction:column; align-items:center; justify-content:center;
-      text-align:center; padding:20px; background: rgba(0,0,0,.45);
-      font-size:16px; font-weight:800; letter-spacing:.2px; gap:8px;
-    }
-    .overlay small{ font-size:13px; color: rgba(255,255,255,.75); font-weight:500; line-height:1.35; max-width:42rem; }
-    .overlay.hidden{ display:none; }
-    .row{ margin-top:10px; display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; }
-    .hint{ color:var(--muted); font-size:13px; }
-    .controls{ display:flex; gap:10px; flex-wrap:wrap; justify-content:flex-end; }
-    button{
-      appearance:none; border:1px solid var(--border2); background: rgba(31,41,55,.45);
-      color:#e5e7eb; padding:10px 12px; border-radius:12px; cursor:pointer; font-weight:700; font-size:13px;
-    }
-    button.secondary{ background: transparent; }
-    select{
-      background:#0f172a; border:1px solid var(--border2); color:var(--text);
-      padding:10px 12px; border-radius:12px; outline:none; font-weight:700; font-size:13px;
-    }
-    details{ margin-top:12px; border-radius:14px; border:1px solid var(--border); background: rgba(15,17,23,.55); overflow:hidden; }
-    summary{
-      cursor:pointer; padding:12px 12px; list-style:none;
-      display:flex; align-items:center; justify-content:space-between; gap:10px;
-      user-select:none; color:var(--muted); font-size:13px;
-    }
-    summary::-webkit-details-marker{ display:none; }
-    .diagBody{ padding: 0 12px 12px; }
-    .log{
-      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-      font-size:12px; white-space:pre-wrap;
-      background:var(--panel2); border:1px solid #202a3a; border-radius:12px;
-      padding:10px; max-height:220px; overflow:auto; color:#94a3b8;
-    }
-  </style>
+<style>
+body{background:#111;color:#fff;font-family:sans-serif;margin:0;padding:20px}
+video{width:100%;max-width:900px;border-radius:10px;background:#000}
+#status{margin-top:12px}
+</style>
 </head>
+
 <body>
-  <header>
-    <div class="brand" id="brand">
-      <div class="logo" aria-hidden="true"></div>
-      <div class="titleWrap">
-        <div class="title">Relay Watch</div>
-        <div class="subtitle" id="hdrSub">Loading…</div>
-      </div>
-    </div>
 
-    <div class="statusRow">
-      <span id="modePill" class="pill"><span class="dot"></span><span id="modeText">AUTO</span></span>
-      <span id="statePill" class="pill"><span class="dot"></span><span id="stateText">LOADING</span></span>
-      <span id="livePill" class="pill bad" style="display:none;"><span class="dot"></span><span>LIVE</span></span>
-    </div>
-  </header>
+<h2>Live Stream</h2>
 
-  <main>
-    <div class="card">
-      <div class="videoWrap">
-        <video id="video" playsinline controls></video>
-        <div id="overlay" class="overlay">
-          <div id="overlayMain">Loading…</div>
-          <small id="overlaySub"></small>
-        </div>
-      </div>
+<video id="video" playsinline controls></video>
 
-      <div class="row">
-        <div class="hint" id="statusLine"></div>
-        <div class="controls">
-          <select id="modeSel" title="Mode">
-            <option value="auto">Auto</option>
-            <option value="rtc">RTC (low latency)</option>
-            <option value="hls">HLS (standard)</option>
-          </select>
-          <button id="btnRetry" class="secondary">Retry</button>
-        </div>
-      </div>
+<div id="status">Loading…</div>
 
-      <details>
-        <summary><span>Diagnostics</span><span id="diagHint">hidden</span></summary>
-        <div class="diagBody">
-          <div id="log" class="log"></div>
-        </div>
-      </details>
-    </div>
-  </main>
+<script src="https://player.live-video.net/1.20.0/amazon-ivs-player.min.js"></script>
 
 <script>
-(() => {
-  const API_BASE =
-    (location.origin.includes("pages.dev") || location.origin.includes("localhost"))
-      ? "https://stream-platform-api.kiwismurph.workers.dev"
-      : location.origin;
 
-  const qs = new URLSearchParams(location.search);
-  const eventId = qs.get("event") || qs.get("id") || "";
-  const key = qs.get("key") || "";
-  const wl = qs.get("wl") === "1";
+const API="https://stream-platform-api.kiwismurph.workers.dev"
 
-  const $ = (id)=>document.getElementById(id);
+const qs=new URLSearchParams(location.search)
+const EVENT=qs.get("event")
+const KEY=qs.get("key")
 
-  const videoEl = $("video");
-  const overlayEl = $("overlay");
-  const overlayMainEl = $("overlayMain");
-  const overlaySubEl = $("overlaySub");
-  const statusLineEl = $("statusLine");
-  const modeSel = $("modeSel");
-  const btnRetry = $("btnRetry");
+const video=document.getElementById("video")
+const statusEl=document.getElementById("status")
 
-  const hdrSub = $("hdrSub");
-  const modePill = $("modePill");
-  const modeText = $("modeText");
-  const statePill = $("statePill");
-  const stateText = $("stateText");
-  const livePill = $("livePill");
-  const brand = $("brand");
+let player
+let retry=0
 
-  const logEl = $("log");
-  const diagDetails = document.querySelector("details");
-  const diagHint = $("diagHint");
+function log(msg){
+  console.log(msg)
+  statusEl.innerText=msg
+}
 
-  if(wl) brand.style.display = "none";
+async function getPublic(){
 
-  function log(...args){
-    const line = args.map(a => typeof a === "string" ? a : JSON.stringify(a)).join(" ");
-    logEl.textContent += line + "\n";
-    logEl.scrollTop = logEl.scrollHeight;
-    console.log(...args);
-  }
+  const r=await fetch(
+    `${API}/api/events/${EVENT}/public?key=${KEY}`
+  )
 
-  function setPill(el, kind){
-    el.classList.remove("good","warn","bad");
-    if(kind) el.classList.add(kind);
-  }
-  function setState(state, kind, sub){
-    stateText.textContent = state;
-    setPill(statePill, kind);
-    if(sub) statusLineEl.textContent = sub;
-  }
-  function setModePill(text, kind){
-    modeText.textContent = text;
-    setPill(modePill, kind);
-  }
-  function setLive(on){ livePill.style.display = on ? "" : "none"; }
+  if(!r.ok) throw new Error("public failed")
 
-  function showOverlay(main, sub){
-    overlayEl.classList.remove("hidden");
-    overlayMainEl.textContent = main;
-    overlaySubEl.textContent = sub || "";
-  }
-  function hideOverlay(){ overlayEl.classList.add("hidden"); overlaySubEl.textContent = ""; }
+  return r.json()
+}
 
-  async function fetchJson(url, init){
-    const r = await fetch(url, init);
-    const t = await r.text();
-    let j = null;
-    try { j = t ? JSON.parse(t) : null; } catch {}
-    if(!r.ok){
-      const msg = typeof j === "object" && j ? JSON.stringify(j) : t;
-      const err = new Error(`${r.status} ${msg}`);
-      err.status = r.status;
-      err.body = j ?? t;
-      throw err;
-    }
-    return j;
-  }
+async function waitForHLS(url){
 
-  function api(path){ return API_BASE + path; }
+  while(true){
 
-  function isPaidLike(pub){
-    const s = (pub?.status || "").toLowerCase();
-    if(pub?.paid === true) return true;
-    if(["paid","active","ready","provisioned","ok"].includes(s)) return true;
-    return false;
-  }
-
-  async function getPublic(){
-    return fetchJson(api(`/api/events/${encodeURIComponent(eventId)}/public?key=${encodeURIComponent(key)}`), { cache:"no-store" });
-  }
-
-  async function postProvision(){
-    return fetchJson(api(`/api/events/${encodeURIComponent(eventId)}/rtc/provision?key=${encodeURIComponent(key)}`), {
-      method:"POST",
-      headers:{ "content-type":"application/json" },
-      body:"{}",
-      credentials:"include"
-    });
-  }
-
-  async function postStartWarm(){
     try{
-      return await fetchJson(api(`/api/events/${encodeURIComponent(eventId)}/start?key=${encodeURIComponent(key)}`), {
-        method:"POST",
-        headers:{ "content-type":"application/json" },
-        body:"{}",
-        credentials:"include"
-      });
-    }catch(e){
-      log("warm /start failed (non-fatal)", String(e));
-      return null;
-    }
+      const r=await fetch(url,{cache:"no-store"})
+      if(r.ok) return
+    }catch{}
+
+    retry++
+
+    log(`Stream starting… preparing video (${retry})`)
+
+    await new Promise(r=>setTimeout(r,2000))
+  }
+}
+
+function startHLS(url){
+
+  player=IVSPlayer.create()
+
+  player.attachHTMLVideoElement(video)
+
+  player.addEventListener(
+    IVSPlayer.PlayerState.PLAYING,
+    ()=>log("LIVE")
+  )
+
+  player.addEventListener(
+    IVSPlayer.PlayerEventType.ERROR,
+    ()=>log("Reconnecting…")
+  )
+
+  player.load(url)
+  player.play()
+
+}
+
+async function init(){
+
+  log("Checking event…")
+
+  const pub=await getPublic()
+
+  const hls=pub.hls_url
+
+  if(!hls){
+    log("Waiting for broadcaster…")
+    setTimeout(init,2000)
+    return
   }
 
-  async function probeUrlOk(url){
-    try{
-      const r = await fetch(url, { method:"GET", cache:"no-store" });
-      return r.ok;
-    }catch(e){
-      return false;
-    }
-  }
+  await waitForHLS(hls)
 
-  // RTC
-  let rtcStage = null;
-  function stopRTC(){ try{ rtcStage && rtcStage.leave(); }catch{} rtcStage = null; }
+  startHLS(hls)
 
-  async function startRTC(){
-    const sdk = window.IVSBroadcastClient;
-    if(!sdk) throw new Error("IVS Web Broadcast SDK not loaded");
-    const { Stage, StageEvents, SubscribeType, StageConnectionState } = sdk;
+}
 
-    showOverlay("Connecting…", "Starting low-latency stream");
-    setState("CONNECTING", "warn", "Connecting (RTC)…");
-    setModePill("RTC", "good");
+init()
 
-    const prov = await postProvision();
-    const rtcToken = prov?.participantToken || prov?.subscriber?.token || prov?.viewer?.token;
-    if(!rtcToken) throw new Error("No participantToken returned from /rtc/provision");
-
-    const strategy = {
-      shouldSubscribeToParticipant(){ return SubscribeType.AUDIO_VIDEO; },
-      shouldPublishParticipant(){ return false; },
-      stageStreamsToPublish(){ return []; }
-    };
-
-    rtcStage = new Stage(rtcToken, strategy);
-
-    rtcStage.on(StageEvents.STAGE_CONNECTION_STATE_CHANGED, (state) => {
-      log("RTC state", state);
-      if(state === StageConnectionState.CONNECTING){
-        showOverlay("Connecting…", "Hold tight");
-        setState("CONNECTING", "warn", "Connecting (RTC)…");
-      }else if(state === StageConnectionState.CONNECTED){
-        setState("LIVE", "good", "Live (RTC) — waiting for video…");
-      }else if(state === StageConnectionState.ERRORED){
-        showOverlay("Reconnecting…", "RTC connection hiccup");
-        setState("CONNECTING", "warn", "Reconnecting (RTC)…");
-      }else if(state === StageConnectionState.DISCONNECTED){
-        showOverlay("Stream not available", "RTC disconnected. Retrying…");
-        setState("WAITING", "warn", "Waiting (RTC)…");
-      }
-    });
-
-    rtcStage.on(StageEvents.STAGE_PARTICIPANT_STREAMS_ADDED, (participant, streams) => {
-      try{
-        log("RTC streams added", participant?.id || "", streams?.length || 0);
-        const ms = new MediaStream();
-        for(const s of streams){
-          if(s?.mediaStreamTrack) ms.addTrack(s.mediaStreamTrack);
-        }
-        videoEl.srcObject = ms;
-        videoEl.play().catch(()=>{});
-        hideOverlay();
-        setLive(true);
-        setState("LIVE", "good", "Live now.");
-      }catch(e){
-        log("RTC attach error", String(e));
-      }
-    });
-
-    rtcStage.on(StageEvents.STAGE_PARTICIPANT_STREAMS_REMOVED, () => {
-      setLive(false);
-      showOverlay("Stream starting…", "Waiting for video");
-      setState("WAITING", "warn", "Waiting for video…");
-    });
-
-    await rtcStage.join();
-  }
-
-  // HLS
-  let hlsPlayer = null;
-  function stopHLS(){ try{ hlsPlayer && hlsPlayer.pause(); }catch{} try{ hlsPlayer && hlsPlayer.delete(); }catch{} hlsPlayer = null; }
-
-  async function startHLS(hlsUrl){
-    if(!window.IVSPlayer || !IVSPlayer.isPlayerSupported){
-      showOverlay("Browser not supported", "IVS Player not supported here.");
-      return;
-    }
-
-    setModePill("HLS", "warn");
-    showOverlay("Stream starting…", "Preparing video (this can take ~60s)");
-    setState("STARTING", "warn", "Preparing video…");
-    setLive(false);
-
-    let attempt = 0;
-    while(true){
-      attempt++;
-      const ok = await probeUrlOk(hlsUrl);
-      if(ok) break;
-      showOverlay("Stream starting…", `Preparing video… retrying in 2s (attempt ${attempt})`);
-      setState("STARTING", "warn", `Preparing video… (attempt ${attempt})`);
-      await new Promise(r => setTimeout(r, 2000));
-    }
-
-    stopHLS();
-    hlsPlayer = IVSPlayer.create();
-    hlsPlayer.attachHTMLVideoElement(videoEl);
-
-    hlsPlayer.addEventListener(IVSPlayer.PlayerState.PLAYING, () => {
-      hideOverlay();
-      setLive(true);
-      setState("LIVE", "good", "Live now.");
-    });
-
-    hlsPlayer.addEventListener(IVSPlayer.PlayerState.BUFFERING, () => {
-      showOverlay("Buffering…", "Hold tight");
-      setState("CONNECTING", "warn", "Buffering…");
-    });
-
-    hlsPlayer.addEventListener(IVSPlayer.PlayerEventType.ERROR, (err) => {
-      log("HLS error", err);
-      showOverlay("Stream starting…", "Recovering…");
-      setLive(false);
-      setTimeout(() => startHLS(hlsUrl), 2000);
-    });
-
-    hlsPlayer.load(hlsUrl);
-    hlsPlayer.play().catch(()=>{});
-  }
-
-  let abortToken = 0;
-
-  async function gateAndStart(){
-    const my = ++abortToken;
-
-    if(!eventId || !key){
-      showOverlay("Missing link details", "Event or key missing in URL.");
-      setState("ERROR", "bad", "Missing event or key.");
-      return;
-    }
-
-    stopRTC(); stopHLS();
-    videoEl.srcObject = null;
-    setLive(false);
-
-    showOverlay("Loading…", "Checking event status");
-    setState("LOADING", "warn", "Checking event…");
-    setModePill((modeSel.value || "auto").toUpperCase(), null);
-
-    // wait until paid-like
-    while(true){
-      if(my !== abortToken) return;
-
-      let pub = null;
-      try{ pub = await getPublic(); }
-      catch(e){
-        log("public error", String(e));
-        showOverlay("Unable to load event", "Retrying…");
-        setState("ERROR", "bad", "Retrying…");
-        await new Promise(r => setTimeout(r, 2000));
-        continue;
-      }
-
-      hdrSub.textContent = pub?.title ? pub.title : `Status: ${pub?.status || "unknown"}`;
-
-      if(pub?.expired){
-        showOverlay("Event ended", "This link is no longer active.");
-        setState("ENDED", "bad", "Event expired.");
-        return;
-      }
-
-      if(isPaidLike(pub)) break;
-
-      showOverlay("Preparing event…", "Payment processing (usually ~1 minute)");
-      setState("LOCKED", "warn", `Not active yet (status: ${pub?.status || "unknown"})`);
-      await new Promise(r => setTimeout(r, 2000));
-    }
-
-    if(my !== abortToken) return;
-
-    // Warm /start so HLS comes up sooner (idempotent)
-    await postStartWarm();
-
-    // Read latest state
-    let pubFinal = null;
-    try{ pubFinal = await getPublic(); } catch {}
-
-    const rtcEnabled = pubFinal?.rtc_enabled !== false;
-    const hlsUrl = pubFinal?.hls_url || null;
-    const hlsEnabled = !!hlsUrl || !!pubFinal?.hls_enabled;
-
-    const chosen = (modeSel.value || "auto").toLowerCase();
-
-    showOverlay("Preparing stream…", "Provisioning access");
-    setState("CONNECTING", "warn", "Preparing stream…");
-
-    if(chosen === "rtc"){
-      if(!rtcEnabled){
-        showOverlay("RTC unavailable", "Switch to HLS mode.");
-        setState("ERROR", "bad", "RTC unavailable.");
-        return;
-      }
-      try{ await postProvision(); }
-      catch(e){
-        log("provision failed", String(e));
-        showOverlay("Stream not ready", "Still provisioning… please retry in a moment.");
-        setState("WAITING", "warn", "Provisioning…");
-        return;
-      }
-      await startRTC();
-      return;
-    }
-
-    if(chosen === "hls"){
-      if(!hlsEnabled || !hlsUrl){
-        showOverlay("HLS unavailable", "Waiting for stream output.");
-        setState("WAITING", "warn", "Waiting for HLS…");
-        return;
-      }
-      await startHLS(hlsUrl);
-      return;
-    }
-
-    // AUTO: prefer RTC, fall back to HLS
-    if(rtcEnabled){
-      try{
-        await postProvision();
-        await startRTC();
-        return;
-      }catch(e){
-        log("auto rtc failed, falling back", String(e));
-      }
-    }
-    if(hlsEnabled && hlsUrl){
-      await startHLS(hlsUrl);
-      return;
-    }
-
-    showOverlay("Waiting for broadcaster…", "No stream output yet.");
-    setState("WAITING", "warn", "Waiting…");
-  }
-
-  btnRetry.onclick = () => gateAndStart();
-  modeSel.value = (qs.get("mode") || "auto").toLowerCase();
-  modeSel.addEventListener("change", () => gateAndStart());
-
-  diagDetails.addEventListener("toggle", () => {
-    diagHint.textContent = diagDetails.open ? "shown" : "hidden";
-  });
-
-  gateAndStart();
-})();
 </script>
+
 </body>
 </html>
