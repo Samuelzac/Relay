@@ -5,145 +5,224 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
   <title>Relay Broadcast</title>
 
-  <!-- Load SDK BEFORE our code -->
-  <script src="https://web-broadcast.live-video.net/1.32.0/amazon-ivs-web-broadcast.js"></script>
+  <!-- Amazon IVS Real-Time Web Broadcast SDK (Stages / WebRTC) -->
+  <script src="https://web-broadcast.live-video.net/1.17.0/amazon-ivs-web-broadcast.js"></script>
 
   <style>
     :root{
       color-scheme: dark;
-      --bg:#0b0c10; --panel:#0f1117; --border:#20232a; --border2:#2b2f3a;
-      --text:#e8e8e8; --muted:#9ca3af;
-      --good:#34d399; --warn:#fbbf24; --bad:#fb7185;
+      --bg: #0b0c10;
+      --panel: #0f1117;
+      --panel2: #0b1220;
+      --border: #20232a;
+      --border2: #2b2f3a;
+      --text: #e8e8e8;
+      --muted: #a3a3a3;
+      --good: #34d399;
+      --warn: #fbbf24;
+      --bad: #fb7185;
+      --btn: #1f2937;
+      --btnBorder: #334155;
+      --focus: #60a5fa;
+      --r: 16px;
+      --pad: 14px;
       --shadow: 0 12px 40px rgba(0,0,0,.35);
-      --r:16px;
     }
     *{ box-sizing:border-box; }
-    body{ margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; background:var(--bg); color:var(--text); }
+    body{ margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; background: var(--bg); color: var(--text); }
     header{
-      position:sticky; top:0; z-index:10;
-      background: rgba(11,12,16,.92); backdrop-filter: blur(8px);
-      border-bottom:1px solid var(--border);
+      position: sticky; top:0; z-index: 10;
+      background: rgba(11,12,16,.92);
+      backdrop-filter: blur(8px);
+      border-bottom: 1px solid var(--border);
       padding: calc(10px + env(safe-area-inset-top)) 14px 10px;
       display:flex; align-items:center; justify-content:space-between; gap:12px;
     }
-    .brand{ display:flex; align-items:center; gap:10px; min-width:0; }
-    .logo{ width:30px; height:30px; border-radius:10px; background:linear-gradient(135deg,#334155,#111827); border:1px solid var(--border2); box-shadow:0 6px 18px rgba(0,0,0,.25); }
-    .title{ font-weight:800; line-height:1.1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-    .subtitle{ font-size:12px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:2px; }
+    .brand{ display:flex; align-items:center; gap:10px; min-width: 0; }
+    .logo{
+      width:30px; height:30px; border-radius: 10px;
+      background: linear-gradient(135deg, #334155, #111827);
+      border: 1px solid var(--border2);
+      box-shadow: 0 6px 18px rgba(0,0,0,.25);
+      flex: 0 0 auto;
+    }
+    .titleWrap{ min-width:0; }
+    .title{ font-weight:800; letter-spacing: .2px; line-height: 1.1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .subtitle{ font-size:12px; color: var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:2px; }
+
+    .statusRow{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; justify-content:flex-end; }
     .pill{
       font-size:12px; padding:6px 10px; border:1px solid var(--border2);
-      border-radius:999px; color:#cbd5e1; display:inline-flex; align-items:center; gap:8px;
+      border-radius: 999px; color: #cbd5e1; display:inline-flex; align-items:center; gap:8px;
       background: rgba(15,17,23,.5);
     }
-    .dot{ width:8px; height:8px; border-radius:999px; background:#64748b; box-shadow:0 0 0 3px rgba(100,116,139,.12); }
-    .pill.good .dot{ background:var(--good); box-shadow:0 0 0 3px rgba(52,211,153,.12); }
-    .pill.warn .dot{ background:var(--warn); box-shadow:0 0 0 3px rgba(251,191,36,.12); }
-    .pill.bad  .dot{ background:var(--bad);  box-shadow:0 0 0 3px rgba(251,113,133,.12); }
-    main{ padding:14px; padding-bottom: calc(18px + env(safe-area-inset-bottom)); max-width:1100px; margin:0 auto; }
-    .card{ background:var(--panel); border:1px solid var(--border); border-radius:var(--r); padding:14px; box-shadow:var(--shadow); }
-    .grid{ display:grid; gap:12px; grid-template-columns:1fr; }
-    @media (min-width:980px){ .grid{ grid-template-columns: 2fr 1fr; align-items:start; } }
-    label{ display:block; font-size:12px; color:var(--muted); margin:0 0 6px; }
-    input,select{ width:100%; background:#0f172a; border:1px solid var(--border2); color:var(--text); padding:11px 12px; border-radius:12px; outline:none; }
-    video{ width:100%; background:#000; border-radius:14px; border:1px solid var(--border); display:block; }
-    .row{ display:flex; gap:10px; flex-wrap:wrap; justify-content:space-between; align-items:center; margin-top:10px; }
-    .hint{ color:var(--muted); font-size:13px; }
-    .timer{ font-variant-numeric: tabular-nums; font-weight:800; letter-spacing:.4px; }
-    .actions{ display:grid; gap:10px; margin-top:12px; grid-template-columns:1fr; }
-    @media (min-width:520px){ .actions{ grid-template-columns:1fr 1fr; } .actions .primary{ grid-column: span 2; } }
-    button{
-      appearance:none; border:1px solid var(--border2); background: rgba(31,41,55,.45);
-      color:#e5e7eb; padding:12px 12px; border-radius:14px; cursor:pointer; font-weight:800;
+    .dot{ width:8px; height:8px; border-radius:999px; background: #64748b; box-shadow: 0 0 0 3px rgba(100,116,139,.12); }
+    .pill.good .dot{ background: var(--good); box-shadow: 0 0 0 3px rgba(52,211,153,.12); }
+    .pill.warn .dot{ background: var(--warn); box-shadow: 0 0 0 3px rgba(251,191,36,.12); }
+    .pill.bad .dot{ background: var(--bad);  box-shadow: 0 0 0 3px rgba(251,113,133,.12); }
+
+    main{
+      padding: 14px;
+      padding-bottom: calc(18px + env(safe-area-inset-bottom));
+      max-width: 1100px;
+      margin: 0 auto;
     }
-    button.primary{ font-size:16px; padding:14px; border-color: rgba(96,165,250,.45); background: linear-gradient(180deg, rgba(96,165,250,.22), rgba(31,41,55,.22)); }
-    button.danger{ border-color: rgba(251,113,133,.55); background: rgba(251,113,133,.10); }
+    .grid{ display:grid; gap:12px; grid-template-columns: 1fr; }
+    @media (min-width: 980px){ .grid{ grid-template-columns: 2fr 1fr; align-items:start; } }
+
+    .card{ background: var(--panel); border:1px solid var(--border); border-radius: var(--r); padding: var(--pad); box-shadow: var(--shadow); }
+    .sectionTitle{ font-size: 12px; color: var(--muted); letter-spacing: .12em; text-transform: uppercase; margin: 0 0 10px; }
+
+    .fieldGrid{ display:grid; gap:10px; grid-template-columns: 1fr; margin-bottom: 12px; }
+    @media (min-width: 680px){ .fieldGrid{ grid-template-columns: 1fr 1fr; } }
+
+    label{ display:block; font-size:12px; color: var(--muted); margin: 0 0 6px; }
+    input, select{
+      width:100%; background:#0f172a; border:1px solid var(--btnBorder);
+      color: var(--text); padding: 11px 12px; border-radius: 12px; outline: none;
+    }
+    input:focus, select:focus{ border-color: var(--focus); box-shadow: 0 0 0 3px rgba(96,165,250,.18); }
+
+    video{ width:100%; background:#000; border-radius: 14px; border:1px solid var(--border); display:block; }
+
+    .videoMeta{ display:flex; justify-content:space-between; align-items:center; gap:10px; margin: 10px 2px 0; flex-wrap:wrap; }
+    .hint{ color: var(--muted); font-size: 13px; line-height: 1.35; }
+    .timer{ font-variant-numeric: tabular-nums; font-weight: 800; letter-spacing: .4px; }
+
+    .actions{ display:grid; gap:10px; margin-top: 12px; grid-template-columns: 1fr; }
+    @media (min-width: 520px){
+      .actions{ grid-template-columns: 1fr 1fr; }
+      .actions .primary{ grid-column: span 2; }
+    }
+
+    button{
+      appearance:none; border:1px solid var(--btnBorder); background: var(--btn); color: #e5e7eb;
+      padding: 12px 12px; border-radius: 14px; cursor:pointer; font-weight: 700; letter-spacing: .2px;
+    }
     button:disabled{ opacity:.55; cursor:not-allowed; }
-    .msg{ margin-top:10px; padding:10px 12px; border-radius:12px; border:1px solid var(--border); background: rgba(2,6,23,.35); color:var(--muted); font-size:13px; }
-    .msg.good{ border-color: rgba(52,211,153,.35); color:#bff7de; }
-    .msg.warn{ border-color: rgba(251,191,36,.35); color:#ffe3a3; }
-    .msg.bad { border-color: rgba(251,113,133,.35); color:#ffb4b4; }
-    .log{ font-family: ui-monospace, Menlo, Consolas, monospace; font-size:12px; white-space: pre-wrap; background:#0b1220; border:1px solid #202a3a; border-radius:12px; padding:10px; max-height:220px; overflow:auto; }
-    details{ margin-top:12px; border-radius:14px; border:1px solid var(--border); background: rgba(15,17,23,.55); overflow:hidden; }
-    summary{ cursor:pointer; padding:12px; list-style:none; display:flex; justify-content:space-between; color:var(--muted); font-size:13px; }
+    button.secondary{ background: transparent; }
+    button.danger{ border-color: rgba(251,113,133,.55); background: rgba(251,113,133,.10); }
+    button.primary{
+      padding: 14px 14px; font-size: 16px;
+      border-color: rgba(96,165,250,.45);
+      background: linear-gradient(180deg, rgba(96,165,250,.22), rgba(31,41,55,.22));
+    }
+
+    details{ border-radius: 14px; border:1px solid var(--border); background: rgba(15,17,23,.55); overflow:hidden; }
+    summary{
+      cursor:pointer; padding: 12px 12px; list-style:none; display:flex; align-items:center; justify-content:space-between;
+      gap:10px; user-select:none;
+    }
     summary::-webkit-details-marker{ display:none; }
+    .diagBody{ padding: 0 12px 12px; }
+    .log{
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px; white-space: pre-wrap; background: var(--panel2);
+      border: 1px solid #202a3a; border-radius: 12px; padding: 10px; max-height: 220px; overflow:auto;
+    }
+    .diagRow{ display:flex; gap:10px; justify-content:flex-end; margin: 10px 0 0; flex-wrap: wrap; }
+
+    .msg{
+      margin-top: 10px; padding: 10px 12px; border-radius: 12px;
+      border: 1px solid var(--border); background: rgba(2,6,23,.35);
+      color: var(--muted); font-size: 13px;
+    }
+    .msg.bad{ border-color: rgba(251,113,133,.35); color: #ffb4b4; }
+    .msg.good{ border-color: rgba(52,211,153,.35); color: #bff7de; }
+
+    .tiny{ font-size: 12px; color: var(--muted); }
   </style>
 </head>
 <body>
-<header>
-  <div class="brand">
-    <div class="logo" aria-hidden="true"></div>
-    <div>
-      <div class="title">Relay Broadcast</div>
-      <div class="subtitle" id="hdrSub">Preparing…</div>
-    </div>
-  </div>
-  <div style="display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end;">
-    <span id="pillMode" class="pill good"><span class="dot"></span><span id="modeText">RTC</span></span>
-    <span id="pillState" class="pill warn"><span class="dot"></span><span id="stateText">CONNECTING</span></span>
-    <span class="pill"><span style="font-size:12px;color:var(--muted);">LIVE</span> <span class="timer" id="timer">00:00</span></span>
-  </div>
-</header>
-
-<main>
-  <div class="grid">
-    <div class="card">
-      <div style="display:grid; gap:10px; grid-template-columns:1fr; margin-bottom:12px;">
-        <div>
-          <label>Event</label>
-          <input id="eventId" autocomplete="off" />
-        </div>
-        <div>
-          <label>Key</label>
-          <input id="eventKey" autocomplete="off" />
-        </div>
-      </div>
-
-      <div style="display:grid; gap:10px; grid-template-columns:1fr 1fr; margin-bottom:12px;">
-        <div>
-          <label>Camera</label>
-          <select id="camera"></select>
-        </div>
-        <div>
-          <label>Mic</label>
-          <select id="mic"></select>
-        </div>
-      </div>
-
-      <video id="preview" playsinline autoplay muted></video>
-
-      <div class="row">
-        <div class="hint" id="infoLine">Preparing…</div>
-        <div class="hint"><span style="font-size:12px;color:var(--muted);">Timer</span> <span class="timer" id="timer2">00:00</span></div>
-      </div>
-
-      <div id="msg" class="msg warn">Preparing stream…</div>
-
-      <div class="actions">
-        <button id="btnGo" class="primary" disabled>Preparing…</button>
-        <button id="btnPreview">Preview</button>
-        <button id="btnEnd" class="danger" style="display:none;">End Stream</button>
+  <header>
+    <div class="brand">
+      <div class="logo" aria-hidden="true"></div>
+      <div class="titleWrap">
+        <div class="title" id="hdrTitle">Relay Broadcast</div>
+        <div class="subtitle" id="hdrSub">Enter Event + Key to begin</div>
       </div>
     </div>
 
-    <div class="card">
-      <div class="msg" id="statusCard">
-        <div style="font-weight:900;" id="statusHead">CONNECTING</div>
-        <div style="font-size:12px;color:var(--muted);" id="statusDetail">Starting up…</div>
-      </div>
+    <div class="statusRow">
+      <span id="modePill" class="pill"><span class="dot"></span><span id="modeText">RTC</span></span>
+      <span id="statePill" class="pill"><span class="dot"></span><span id="stateText">OFFLINE</span></span>
+      <span id="timerPill" class="pill"><span class="tiny">LIVE</span> <span class="timer" id="timer">00:00</span></span>
+    </div>
+  </header>
 
-      <details>
-        <summary><span>Diagnostics</span><span id="diagHint">hidden</span></summary>
-        <div style="padding:0 12px 12px;">
-          <div id="log" class="log"></div>
-          <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:10px; flex-wrap:wrap;">
-            <button id="btnCopy">Copy</button>
-            <button id="btnClear">Clear</button>
+  <main>
+    <div class="grid">
+      <div class="card">
+        <div class="sectionTitle">Broadcast</div>
+
+        <div class="fieldGrid">
+          <div>
+            <label for="eventId">Event</label>
+            <input id="eventId" placeholder="event id" autocomplete="off" />
+          </div>
+          <div>
+            <label for="eventKey">Key</label>
+            <input id="eventKey" placeholder="secret key" autocomplete="off" />
           </div>
         </div>
-      </details>
+
+        <div class="fieldGrid">
+          <div>
+            <label for="camera">Camera</label>
+            <select id="camera"></select>
+          </div>
+          <div>
+            <label for="mic">Mic</label>
+            <select id="mic"></select>
+          </div>
+        </div>
+
+        <video id="preview" playsinline autoplay muted></video>
+
+        <div class="videoMeta">
+          <div class="hint" id="infoLine">Preview not started.</div>
+          <div class="hint"><span class="tiny">Timer</span> <span class="timer" id="timerInline">00:00</span></div>
+        </div>
+
+        <div id="message" class="msg" style="display:none;"></div>
+
+        <div class="actions">
+          <button id="btnPrimary" class="primary" disabled>Go Live</button>
+          <button id="btnPreview" class="secondary">Preview</button>
+          <button id="btnEnd" class="danger" style="display:none;">End Stream</button>
+        </div>
+
+        <div class="tiny" style="margin-top:10px;">
+          Tip: Use a phone-friendly link like <span class="tiny">/broadcast?event=…&key=…</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="sectionTitle">Status</div>
+
+        <div class="msg" id="statusCard">
+          <div><strong id="statusHeadline">OFFLINE</strong></div>
+          <div class="tiny" id="statusDetail">Not connected.</div>
+        </div>
+
+        <div style="height:12px;"></div>
+
+        <details>
+          <summary>
+            <span class="tiny">Diagnostics</span>
+            <span class="tiny" id="diagHint">hidden</span>
+          </summary>
+          <div class="diagBody">
+            <div id="log" class="log"></div>
+            <div class="diagRow">
+              <button id="btnCopy" class="secondary" style="padding:10px 12px;">Copy</button>
+              <button id="btnClear" class="secondary" style="padding:10px 12px;">Clear</button>
+            </div>
+          </div>
+        </details>
+      </div>
     </div>
-  </div>
-</main>
+  </main>
 
 <script>
 (() => {
@@ -159,72 +238,106 @@
   const elEventKey = $("eventKey");
   const elCam = $("camera");
   const elMic = $("mic");
+
   const videoEl = $("preview");
 
-  const hdrSub = $("hdrSub");
-  const pillMode = $("pillMode");
-  const modeText = $("modeText");
-  const pillState = $("pillState");
-  const stateText = $("stateText");
+  const elHdrSub = $("hdrSub");
+  const elModePill = $("modePill");
+  const elModeText = $("modeText");
+  const elStatePill = $("statePill");
+  const elStateText = $("stateText");
+  const elTimer = $("timer");
+  const elTimerInline = $("timerInline");
+  const elInfoLine = $("infoLine");
+  const elMessage = $("message");
 
-  const timerEl = $("timer");
-  const timer2El = $("timer2");
+  const elStatusHeadline = $("statusHeadline");
+  const elStatusDetail = $("statusDetail");
+  const elDiagHint = $("diagHint");
 
-  const infoLine = $("infoLine");
-  const msg = $("msg");
-  const logEl = $("log");
-  const diagHint = $("diagHint");
-
-  const statusHead = $("statusHead");
-  const statusDetail = $("statusDetail");
-
-  const btnGo = $("btnGo");
+  const btnPrimary = $("btnPrimary");
   const btnPreview = $("btnPreview");
   const btnEnd = $("btnEnd");
-  const btnCopy = $("btnCopy");
   const btnClear = $("btnClear");
+  const btnCopy = $("btnCopy");
 
-  const details = document.querySelector("details");
-
-  // Prefill from URL
-  elEventId.value = qs.get("event") || qs.get("id") || "";
-  elEventKey.value = qs.get("key") || "";
+  const elLog = $("log");
+  const diagDetails = document.querySelector("details");
 
   let localStream = null;
   let stage = null;
   let stageToken = null;
 
-  let startedAt = null;
+  let startedAtMs = null;
   let timerHandle = null;
 
-  let gateAbort = 0;
-  let ready = false;
+  let publicEvent = null;
 
-  function setPill(el, kind){
-    el.classList.remove("good","warn","bad");
-    if(kind) el.classList.add(kind);
-  }
-
-  function setState(s, kind, detail){
-    stateText.textContent = s;
-    setPill(pillState, kind);
-    statusHead.textContent = s;
-    statusDetail.textContent = detail || "";
-  }
-
-  function setMsg(kind, text){
-    msg.className = "msg " + (kind || "");
-    msg.textContent = text || "";
-  }
+  function apiUrl(path){ return API_BASE + path; }
 
   function log(...args){
     const line = args.map(a => typeof a === "string" ? a : JSON.stringify(a)).join(" ");
-    logEl.textContent += line + "\n";
-    logEl.scrollTop = logEl.scrollHeight;
+    elLog.textContent += line + "\n";
+    elLog.scrollTop = elLog.scrollHeight;
     console.log(...args);
   }
 
-  function apiUrl(path){ return API_BASE + path; }
+  function showMessage(kind, text){
+    if(!text){
+      elMessage.style.display = "none";
+      elMessage.textContent = "";
+      elMessage.className = "msg";
+      return;
+    }
+    elMessage.style.display = "";
+    elMessage.textContent = text;
+    elMessage.className = "msg" + (kind ? (" " + kind) : "");
+  }
+
+  function setMode(text, kind){
+    elModeText.textContent = text;
+    elModePill.classList.remove("good","warn","bad");
+    if(kind) elModePill.classList.add(kind);
+  }
+
+  function setState(state, kind, detail){
+    elStateText.textContent = state;
+    elStatePill.classList.remove("good","warn","bad");
+    if(kind) elStatePill.classList.add(kind);
+    elStatusHeadline.textContent = state;
+    elStatusDetail.textContent = detail || "";
+  }
+
+  function setPrimaryButtons(isLiveLike){
+    if(isLiveLike){
+      btnPrimary.style.display = "none";
+      btnEnd.style.display = "";
+    }else{
+      btnPrimary.style.display = "";
+      btnEnd.style.display = "none";
+    }
+  }
+
+  function stopTimer(){
+    if(timerHandle) clearInterval(timerHandle);
+    timerHandle = null;
+    startedAtMs = null;
+    elTimer.textContent = "00:00";
+    elTimerInline.textContent = "00:00";
+  }
+
+  function startTimer(){
+    if(timerHandle) clearInterval(timerHandle);
+    timerHandle = setInterval(() => {
+      if(!startedAtMs) return;
+      const s = Math.floor((Date.now() - startedAtMs)/1000);
+      const mm = String(Math.floor(s/60)).padStart(2,"0");
+      const ss = String(s%60).padStart(2,"0");
+      const t = `${mm}:${ss}`;
+      elTimer.textContent = t;
+      elTimerInline.textContent = t;
+    }, 250);
+  }
 
   async function fetchJson(path, init){
     const r = await fetch(apiUrl(path), init);
@@ -232,7 +345,8 @@
     let j = null;
     try { j = t ? JSON.parse(t) : null; } catch {}
     if(!r.ok){
-      const err = new Error(`${r.status} ${t}`);
+      const msg = typeof j === "object" && j ? JSON.stringify(j) : t;
+      const err = new Error(`${r.status} ${msg}`);
       err.status = r.status;
       err.body = j ?? t;
       throw err;
@@ -241,8 +355,9 @@
   }
 
   async function apiGet(path){
-    return fetchJson(path, { method:"GET", cache:"no-store", credentials:"include" });
+    return fetchJson(path, { method:"GET", credentials:"include" });
   }
+
   async function apiPost(path, body){
     return fetchJson(path, {
       method:"POST",
@@ -252,17 +367,70 @@
     });
   }
 
-  function params(){
+  function currentEventParams(){
     const eventId = elEventId.value.trim();
     const key = elEventKey.value.trim();
     if(!eventId || !key) throw new Error("Missing event or key");
     return { eventId, key };
   }
 
+  async function loadPublicForMode(){
+    try{
+      const { eventId, key } = currentEventParams();
+      const pub = await apiGet(`/api/events/${encodeURIComponent(eventId)}/public?key=${encodeURIComponent(key)}`);
+      publicEvent = pub;
+
+      const hls = !!pub.hls_enabled || !!pub.hls_url;
+      const rtc = !!pub.rtc_enabled;
+
+      if(rtc && hls) setMode("RTC → HLS enabled", "good");
+      else if(rtc) setMode("RTC", "good");
+      else if(hls) setMode("HLS only", "warn");
+      else setMode("Unknown", "warn");
+
+      elHdrSub.textContent = `Event loaded • ${pub.status || "ok"}`;
+      return pub;
+    }catch(e){
+      setMode("RTC", null);
+      elHdrSub.textContent = "Enter Event + Key to begin";
+      log("PUBLIC (non-fatal) failed:", String(e));
+      return null;
+    }
+  }
+
+  async function waitForPaid({ timeoutMs = 120000 } = {}){
+    const hasParams = elEventId.value.trim() && elEventKey.value.trim();
+    if(!hasParams) return false;
+
+    const started = Date.now();
+    setState("CONNECTING", "warn", "Confirming payment…");
+    showMessage("", "Payment processing… this can take about a minute.");
+    btnPrimary.disabled = true;
+
+    while (Date.now() - started < timeoutMs) {
+      const pub = await loadPublicForMode();
+      if(pub?.status === "paid"){
+        setState("OFFLINE", null, "Ready to go live.");
+        showMessage("", "");
+        elInfoLine.textContent = "Ready.";
+        btnPrimary.disabled = false;
+        return true;
+      }
+      elInfoLine.textContent = "Waiting for payment confirmation…";
+      await new Promise(r => setTimeout(r, 2000));
+    }
+
+    setState("OFFLINE", "warn", "Still processing payment.");
+    showMessage("", "Still waiting on payment confirmation. Leave this page open — it should update soon.");
+    btnPrimary.disabled = false;
+    return false;
+  }
+
   async function listDevices(){
     const devices = await navigator.mediaDevices.enumerateDevices();
     const cams = devices.filter(d => d.kind === "videoinput");
     const mics = devices.filter(d => d.kind === "audioinput");
+
     elCam.innerHTML = cams.map((d,i)=>`<option value="${d.deviceId}">${d.label || "Camera " + (i+1)}</option>`).join("");
     elMic.innerHTML = mics.map((d,i)=>`<option value="${d.deviceId}">${d.label || "Mic " + (i+1)}</option>`).join("");
   }
@@ -270,155 +438,74 @@
   async function getLocalMedia(){
     const camId = elCam.value || undefined;
     const micId = elMic.value || undefined;
-    return navigator.mediaDevices.getUserMedia({
-      video: camId ? { deviceId:{ exact: camId }, width:{ ideal:1280 }, height:{ ideal:720 }, frameRate:{ ideal:30 } } : true,
-      audio: micId ? { deviceId:{ exact: micId } } : true
-    });
+
+    const constraints = {
+      video: camId
+        ? { deviceId: { exact: camId }, width:{ ideal:1280 }, height:{ ideal:720 }, frameRate:{ ideal:30 } }
+        : { width:{ ideal:1280 }, height:{ ideal:720 }, frameRate:{ ideal:30 } },
+      audio: micId ? { deviceId: { exact: micId } } : true
+    };
+
+    return navigator.mediaDevices.getUserMedia(constraints);
   }
 
-  async function ensurePreview(){
-    if(localStream) return;
+  async function preview(){
+    showMessage("", "");
+    elInfoLine.textContent = "Starting preview…";
+
+    if(localStream){
+      localStream.getTracks().forEach(t=>t.stop());
+      localStream = null;
+    }
+
     localStream = await getLocalMedia();
     videoEl.srcObject = localStream;
+
+    elInfoLine.textContent = "Preview ready.";
+    if(publicEvent?.status === "paid") setState("OFFLINE", null, "Ready to go live.");
+    else setState("OFFLINE", null, "Enter Event + Key (or wait for payment).");
   }
 
-  // SPEED-UP: call /start early (idempotent) so HLS warms in parallel
-  async function warmStartNonFatal(){
-    try{
-      const { eventId, key } = params();
-      const res = await apiPost(`/api/events/${encodeURIComponent(eventId)}/start?key=${encodeURIComponent(key)}`, {});
-      log("warm /start", res);
-    }catch(e){
-      log("warm /start (non-fatal)", String(e));
-    }
-  }
-
-  // REAL readiness gate: provision success
-  async function tryProvision(){
-    const { eventId, key } = params();
+  async function provisionPublishToken(){
+    const { eventId, key } = currentEventParams();
     const prov = await apiPost(`/api/events/${encodeURIComponent(eventId)}/rtc/provision?key=${encodeURIComponent(key)}`, {});
-    const token = prov?.participantToken || prov?.publisher?.token;
-    if(!token) throw new Error("No publisher token from /rtc/provision");
-    stageToken = token;
+    stageToken = prov?.participantToken || prov?.publisher?.token;
+    if(!stageToken) throw new Error("No publisher token returned from /rtc/provision");
     return prov;
   }
 
-  async function loadPublicNonFatal(){
-    try{
-      const { eventId, key } = params();
-      const pub = await apiGet(`/api/events/${encodeURIComponent(eventId)}/public?key=${encodeURIComponent(key)}`);
-      hdrSub.textContent = pub?.title ? pub.title : (pub?.status ? `Status: ${pub.status}` : "Relay");
-      const hls = !!pub.hls_url || !!pub.hls_enabled;
-      const rtc = pub?.rtc_enabled !== false;
-      if(rtc && hls){ modeText.textContent = "RTC → HLS enabled"; setPill(pillMode,"good"); }
-      else if(rtc){ modeText.textContent = "RTC"; setPill(pillMode,"good"); }
-      else if(hls){ modeText.textContent = "HLS"; setPill(pillMode,"warn"); }
-      else { modeText.textContent = "Unknown"; setPill(pillMode,"warn"); }
-      return pub;
-    }catch(e){
-      // don't brick UI; just keep going
-      hdrSub.textContent = "Relay";
-      return null;
-    }
-  }
-
-  async function readinessGate(){
-    const my = ++gateAbort;
-    ready = false;
-    btnGo.disabled = true;
-    btnGo.textContent = "Preparing…";
-    setState("CONNECTING","warn","Preparing stream…");
-    setMsg("warn","Preparing stream… this can take about a minute.");
-    infoLine.textContent = "Preparing…";
-
-    // Kick off warmup in parallel (non-blocking)
-    loadPublicNonFatal();
-    warmStartNonFatal();
-
-    let attempt = 0;
-    while(true){
-      if(my !== gateAbort) return;
-      attempt++;
-
-      // keep UI alive
-      if(attempt % 3 === 0) loadPublicNonFatal();
-
-      try{
-        await tryProvision();
-        break;
-      }catch(e){
-        // typical during warm-up or before paid
-        log("provision not ready", String(e));
-      }
-
-      infoLine.textContent = `Preparing… retrying (attempt ${attempt})`;
-      await new Promise(r => setTimeout(r, 2000));
-    }
-
-    if(my !== gateAbort) return;
-
-    ready = true;
-    setState("OFFLINE", null, "Ready to go live.");
-    setMsg("good","Ready. You can go live now.");
-    infoLine.textContent = "Ready.";
-    btnGo.disabled = false;
-    btnGo.textContent = "Go Live";
-  }
-
-  function startTimer(){
-    if(timerHandle) clearInterval(timerHandle);
-    timerHandle = setInterval(() => {
-      if(!startedAt) return;
-      const s = Math.floor((Date.now() - startedAt)/1000);
-      const mm = String(Math.floor(s/60)).padStart(2,"0");
-      const ss = String(s%60).padStart(2,"0");
-      const t = `${mm}:${ss}`;
-      timerEl.textContent = t;
-      timer2El.textContent = t;
-    }, 250);
-  }
-
-  function stopTimer(){
-    if(timerHandle) clearInterval(timerHandle);
-    timerHandle = null;
-    startedAt = null;
-    timerEl.textContent = "00:00";
-    timer2El.textContent = "00:00";
-  }
-
   async function goLive(){
-    if(!ready){
-      await readinessGate();
-      if(!ready) return;
-    }
-
-    await ensurePreview();
-
     const sdk = window.IVSBroadcastClient;
-    if(!sdk) throw new Error("IVS SDK not loaded.");
+    if(!sdk) throw new Error("IVS Web Broadcast SDK not loaded.");
 
     const { Stage, StageEvents, SubscribeType, LocalStageStream, StageConnectionState } = sdk;
 
-    // Re-provision right before join (fresh token)
-    await tryProvision();
+    showMessage("", "");
 
-    setState("CONNECTING","warn","Joining stage…");
-    setMsg("warn","Connecting…");
-    infoLine.textContent = "Connecting…";
+    // Make the wait feel intentional instead of broken.
+    await waitForPaid({ timeoutMs: 120000 });
+
+    if(!localStream) await preview();
+
+    setState("CONNECTING", "warn", "Requesting publish token…");
+    elInfoLine.textContent = "Preparing stream…";
+    setPrimaryButtons(true);
+
+    await provisionPublishToken();
 
     const tracks = localStream.getTracks();
     const audioTrack = tracks.find(t => t.kind === "audio");
     const videoTrack = tracks.find(t => t.kind === "video");
-    if(!videoTrack) throw new Error("No video track");
+    if(!videoTrack) throw new Error("No video track available.");
 
     const strategy = {
-      audioStream: audioTrack ? new LocalStageStream(audioTrack) : null,
-      videoStream: new LocalStageStream(videoTrack),
+      audioTrack: audioTrack ? new LocalStageStream(audioTrack) : null,
+      videoTrack: new LocalStageStream(videoTrack),
 
       stageStreamsToPublish() {
         const out = [];
-        if(this.audioStream) out.push(this.audioStream);
-        if(this.videoStream) out.push(this.videoStream);
+        if(this.audioTrack) out.push(this.audioTrack);
+        if(this.videoTrack) out.push(this.videoTrack);
         return out;
       },
       shouldPublishParticipant() { return true; },
@@ -427,125 +514,163 @@
 
     stage = new Stage(stageToken, strategy);
 
-    stage.on(StageEvents.STAGE_CONNECTION_STATE_CHANGED, async (st) => {
-      log("rtc state", st);
+    stage.on(StageEvents.STAGE_CONNECTION_STATE_CHANGED, async (state) => {
+      log("RTC state", state);
 
-      if(st === StageConnectionState.CONNECTING){
-        setState("CONNECTING","warn","Connecting…");
-        setMsg("warn","Connecting…");
+      if(state === StageConnectionState.CONNECTING){
+        setState("CONNECTING", "warn", "Connecting…");
+        elInfoLine.textContent = "Connecting…";
         return;
       }
 
-      if(st === StageConnectionState.CONNECTED){
-        setState("LIVE","good","You are live.");
-        setMsg("good","LIVE");
-        infoLine.textContent = "Live.";
-        btnGo.style.display = "none";
-        btnEnd.style.display = "";
-        if(!startedAt){ startedAt = Date.now(); startTimer(); }
+      if(state === StageConnectionState.CONNECTED){
+        setState("LIVE", "good", "You are live.");
+        elInfoLine.textContent = "Live. Publishing to stage.";
+        showMessage("good", "You’re live.");
 
-        // Ensure composition/HLS is running (idempotent)
-        warmStartNonFatal();
+        try{
+          const { eventId, key } = currentEventParams();
+          const res = await apiPost(`/api/events/${encodeURIComponent(eventId)}/start?key=${encodeURIComponent(key)}`, {});
+          log("START", res);
+        }catch(e){
+          log("START failed (non-fatal)", String(e));
+        }
+
+        if(!startedAtMs){
+          startedAtMs = Date.now();
+          startTimer();
+        }
         return;
       }
 
-      if(st === StageConnectionState.ERRORED){
-        setState("CONNECTING","warn","Reconnecting…");
-        setMsg("warn","Reconnecting…");
+      if(state === StageConnectionState.ERRORED){
+        setState("CONNECTING", "warn", "Reconnecting… (don’t close this tab)");
+        elInfoLine.textContent = "Reconnecting…";
+        showMessage("", "Connection hiccup — attempting to recover.");
         return;
       }
 
-      if(st === StageConnectionState.DISCONNECTED){
-        setState("OFFLINE","bad","Disconnected.");
-        setMsg("bad","Disconnected. You can try again.");
-        btnGo.style.display = "";
-        btnEnd.style.display = "none";
+      if(state === StageConnectionState.DISCONNECTED){
+        setState("OFFLINE", "bad", "Disconnected.");
+        elInfoLine.textContent = "Disconnected.";
+        showMessage("bad", "Disconnected. You can go live again.");
+        setPrimaryButtons(false);
         stopTimer();
-        stage = null;
-        ready = false;
-        readinessGate();
         return;
       }
     });
 
+    setState("CONNECTING", "warn", "Joining stage…");
+    elInfoLine.textContent = "Joining stage…";
     await stage.join();
   }
 
-  async function endLive(){
+  async function endStream(){
     try{ stage && stage.leave(); }catch{}
     stage = null;
+    stageToken = null;
 
     if(localStream){
-      localStream.getTracks().forEach(t => t.stop());
+      localStream.getTracks().forEach(t=>t.stop());
       localStream = null;
     }
     videoEl.srcObject = null;
 
-    btnGo.style.display = "";
-    btnEnd.style.display = "none";
     stopTimer();
-
-    setState("OFFLINE", null, "Stream ended.");
-    setMsg("warn","Stream ended.");
-    infoLine.textContent = "Ended.";
-
-    ready = false;
-    readinessGate();
+    setPrimaryButtons(false);
+    setState("OFFLINE", null, "Not connected.");
+    elInfoLine.textContent = "Stream ended.";
+    showMessage("", "");
   }
+
+  btnClear.onclick = () => { elLog.textContent = ""; };
+  btnCopy.onclick = async () => {
+    try{
+      await navigator.clipboard.writeText(elLog.textContent || "");
+      elDiagHint.textContent = "copied";
+      setTimeout(() => elDiagHint.textContent = diagDetails.open ? "shown" : "hidden", 1200);
+    }catch(e){
+      log("COPY failed", String(e));
+    }
+  };
+
+  diagDetails.addEventListener("toggle", () => {
+    elDiagHint.textContent = diagDetails.open ? "shown" : "hidden";
+  });
 
   btnPreview.onclick = async () => {
     btnPreview.disabled = true;
-    try{ await ensurePreview(); setMsg("good","Preview ready."); infoLine.textContent = "Preview ready."; }
-    catch(e){ setMsg("bad", String(e)); }
-    finally{ btnPreview.disabled = false; }
+    try{
+      await preview();
+    }catch(e){
+      log("Preview error", String(e));
+      setState("OFFLINE", "bad", "Preview failed.");
+      showMessage("bad", String(e));
+    }finally{
+      btnPreview.disabled = false;
+    }
   };
 
-  btnGo.onclick = async () => {
-    btnGo.disabled = true;
-    try{ await goLive(); }
-    catch(e){
-      log("goLive error", String(e));
-      setMsg("bad", "Failed to start: " + (e?.message || String(e)));
-      ready = false;
-      readinessGate();
-    } finally {
-      if(btnGo.style.display !== "none") btnGo.disabled = !ready;
+  btnPrimary.onclick = async () => {
+    btnPrimary.disabled = true;
+    try{
+      await goLive();
+    }catch(e){
+      log("GoLive error", String(e));
+      setPrimaryButtons(false);
+      setState("OFFLINE", "bad", "Could not go live.");
+      showMessage("bad", String(e));
+    }finally{
+      btnPrimary.disabled = false;
     }
   };
 
   btnEnd.onclick = async () => {
     btnEnd.disabled = true;
-    try{ await endLive(); } finally { btnEnd.disabled = false; }
+    try{
+      await endStream();
+    }catch(e){
+      log("End error", String(e));
+    }finally{
+      btnEnd.disabled = false;
+    }
   };
 
-  btnClear.onclick = () => { logEl.textContent = ""; };
-  btnCopy.onclick = async () => {
-    try{ await navigator.clipboard.writeText(logEl.textContent || ""); diagHint.textContent = "copied"; setTimeout(()=>diagHint.textContent=(details.open?"shown":"hidden"),1200); }
-    catch(e){ log("copy failed", String(e)); }
-  };
+  elEventId.value = qs.get("event") || qs.get("id") || "";
+  elEventKey.value = qs.get("key") || "";
 
-  details.addEventListener("toggle", () => { diagHint.textContent = details.open ? "shown" : "hidden"; });
-
-  // re-run gate if they change link fields
-  let debounce = null;
-  function scheduleGate(){
-    if(debounce) clearTimeout(debounce);
-    debounce = setTimeout(() => readinessGate(), 350);
+  let pubDebounce = null;
+  function schedulePublicRefresh(){
+    if(pubDebounce) clearTimeout(pubDebounce);
+    pubDebounce = setTimeout(async () => {
+      await loadPublicForMode();
+      await waitForPaid({ timeoutMs: 120000 });
+    }, 250);
   }
-  elEventId.addEventListener("input", scheduleGate);
-  elEventKey.addEventListener("input", scheduleGate);
+  elEventId.addEventListener("input", schedulePublicRefresh);
+  elEventKey.addEventListener("input", schedulePublicRefresh);
 
   (async () => {
     try{
-      setState("CONNECTING","warn","Requesting camera/mic permission…");
+      setState("OFFLINE", null, "Requesting camera/mic permission…");
       const s = await navigator.mediaDevices.getUserMedia({ video:true, audio:true });
       s.getTracks().forEach(t=>t.stop());
+
       await listDevices();
-      await readinessGate();
+      setState("OFFLINE", null, "Ready.");
+      elInfoLine.textContent = "Preview not started.";
+
+      if(elEventId.value.trim() && elEventKey.value.trim()){
+        await loadPublicForMode();
+        await waitForPaid({ timeoutMs: 120000 });
+      }else{
+        showMessage("", "Enter Event + Key to unlock broadcasting.");
+        btnPrimary.disabled = true;
+      }
     }catch(e){
-      setState("OFFLINE","bad","Permissions needed.");
-      setMsg("bad","Allow camera + microphone permissions, then refresh.");
-      log("init error", String(e));
+      log("Init error", String(e));
+      setState("OFFLINE", "bad", "Permissions needed to broadcast.");
+      showMessage("bad", "Allow camera + microphone permissions, then refresh.");
     }
   })();
 })();
