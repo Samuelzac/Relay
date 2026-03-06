@@ -35,6 +35,7 @@
     .pill.good .dot{ background:var(--good); box-shadow:0 0 0 3px rgba(52,211,153,.12); }
     .pill.warn .dot{ background:var(--warn); box-shadow:0 0 0 3px rgba(251,191,36,.12); }
     .pill.bad  .dot{ background:var(--bad);  box-shadow:0 0 0 3px rgba(251,113,133,.12); }
+
     main{ padding:14px; padding-bottom: calc(18px + env(safe-area-inset-bottom)); max-width:1100px; margin:0 auto; }
     .card{ background:var(--panel); border:1px solid var(--border); border-radius:var(--r); padding:14px; box-shadow:var(--shadow); }
     .videoWrap{ position:relative; background:#000; border-radius:14px; border:1px solid var(--border); overflow:hidden; }
@@ -68,7 +69,7 @@
     </div>
   </div>
   <div style="display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end;">
-    <span id="pillMode" class="pill"><span class="dot"></span><span id="modeText">AUTO</span></span>
+    <span id="pillMode" class="pill"><span class="dot"></span><span id="modeText">—</span></span>
     <span id="pillState" class="pill warn"><span class="dot"></span><span id="stateText">STARTING</span></span>
     <span id="pillLive" class="pill bad" style="display:none;"><span class="dot"></span><span>LIVE</span></span>
   </div>
@@ -80,7 +81,7 @@
       <video id="video" playsinline controls></video>
       <div id="overlay" class="overlay">
         <div id="ovMain">Stream starting…</div>
-        <small id="ovSub">Preparing video (this can take ~60s)</small>
+        <small id="ovSub">Preparing…</small>
       </div>
     </div>
 
@@ -114,6 +115,7 @@
   const eventId = qs.get("event") || qs.get("id") || "";
   const key = qs.get("key") || "";
   const wl = qs.get("wl") === "1";
+  const modeFromUrl = (qs.get("mode") || "").toLowerCase();
 
   const $ = (id)=>document.getElementById(id);
   const videoEl = $("video");
@@ -137,10 +139,7 @@
   const details = document.querySelector("details");
 
   if(wl) brand.style.display = "none";
-
-  details.addEventListener("toggle", () => {
-    diagHint.textContent = details.open ? "shown" : "hidden";
-  });
+  details.addEventListener("toggle", () => { diagHint.textContent = details.open ? "shown" : "hidden"; });
 
   function setPill(el, kind){
     el.classList.remove("good","warn","bad");
@@ -182,64 +181,82 @@
   async function postStartNonFatal(){
     try{
       await fetchJson(api(`/api/events/${encodeURIComponent(eventId)}/start?key=${encodeURIComponent(key)}`), {
-        method:"POST",
-        headers:{ "content-type":"application/json" },
-        body:"{}",
-        credentials:"include"
+        method:"POST", headers:{ "content-type":"application/json" }, body:"{}", credentials:"include"
       });
     }catch{}
   }
 
   async function postProvision(){
     return fetchJson(api(`/api/events/${encodeURIComponent(eventId)}/rtc/provision?key=${encodeURIComponent(key)}`), {
-      method:"POST",
-      headers:{ "content-type":"application/json" },
-      body:"{}",
-      credentials:"include"
+      method:"POST", headers:{ "content-type":"application/json" }, body:"{}", credentials:"include"
     });
   }
 
-  // ✅ Robustly find HLS URL regardless of backend field name
   function pickHlsUrl(pub){
     if(!pub || typeof pub !== "object") return null;
-
     const candidates = [
+      pub.playback_url,           // ✅ your backend uses this
       pub.hls_url,
       pub.hlsUrl,
-      pub.hls_playback_url,
-      pub.hlsPlaybackUrl,
-      pub.playback_url,
       pub.playbackUrl,
       pub.channel_playback_url,
       pub.channelPlaybackUrl,
-      pub.ivs_playback_url,
-      pub.ivsPlaybackUrl,
       pub?.hls?.url,
       pub?.playback?.hls,
       pub?.outputs?.hls,
-      pub?.outputs?.hls_url,
-      pub?.channel?.playback_url,
-      pub?.channel?.playbackUrl,
-      pub?.ivs?.playback_url,
-      pub?.ivs?.playbackUrl
     ];
-
     for(const u of candidates){
       if(typeof u === "string" && u.startsWith("http")) return u;
     }
     return null;
   }
 
+  // Robust token pick: handles string token or nested objects
+  function pickRtcToken(prov){
+    if(!prov || typeof prov !== "object") return null;
+
+    const candidates = [
+      prov.participantToken,
+      prov.token,
+      prov.publisher?.token,
+      prov.viewer?.token,
+      prov.subscriber?.token
+    ];
+
+    for(const c of candidates){
+      if(typeof c === "string" && c.length > 20) return c;
+      if(c && typeof c === "object"){
+        if(typeof c.token === "string") return c.token;
+        if(typeof c.value === "string") return c.value;
+      }
+    }
+    return null;
+  }
+
   async function probeOk(url){
-    try{ const r = await fetch(url, { cache:"no-store" }); return r.ok; }catch{ return false; }
+    try{
+      const r = await fetch(url, { cache:"no-store" });
+      return r.ok;
+    }catch{
+      return false;
+    }
   }
 
   // RTC watch
   let rtcStage = null;
-  function stopRTC(){ try{ rtcStage && rtcStage.leave(); }catch{} rtcStage = null; }
+  let rtcNoStreamsTimer = null;
+
+  function stopRTC(){
+    try{ rtcStage && rtcStage.leave(); }catch{}
+    rtcStage = null;
+    if(rtcNoStreamsTimer) clearTimeout(rtcNoStreamsTimer);
+    rtcNoStreamsTimer = null;
+  }
 
   async function startRTC(){
     const sdk = window.IVSBroadcastClient;
+    if(!sdk) throw new Error("IVS RTC SDK missing");
+
     const { Stage, StageEvents, SubscribeType, StageConnectionState } = sdk;
 
     setMode("RTC","good");
@@ -248,8 +265,8 @@
     setLive(false);
 
     const prov = await postProvision();
-    const token = prov?.participantToken || prov?.subscriber?.token || prov?.viewer?.token;
-    if(!token) throw new Error("No viewer token from /rtc/provision");
+    const token = pickRtcToken(prov);
+    if(!token) throw new Error("No RTC token returned from /rtc/provision");
 
     const strategy = {
       shouldSubscribeToParticipant(){ return SubscribeType.AUDIO_VIDEO; },
@@ -260,22 +277,45 @@
     rtcStage = new Stage(token, strategy);
 
     rtcStage.on(StageEvents.STAGE_CONNECTION_STATE_CHANGED, (st) => {
-      if(st === StageConnectionState.CONNECTED){
-        setState("LIVE","good","Live (RTC) — waiting for video…");
+      if(st === StageConnectionState.CONNECTING){
+        showOverlay("Connecting…","Hold tight");
+        setState("CONNECTING","warn","Connecting (RTC)…");
+      } else if(st === StageConnectionState.CONNECTED){
+        setState("LIVE","good","Connected (RTC) — waiting for broadcaster…");
+        showOverlay("Waiting for broadcaster…","RTC is connected. Video appears when the broadcaster is live.");
+        // If nothing arrives after 10s, keep message (don’t look broken)
+        if(rtcNoStreamsTimer) clearTimeout(rtcNoStreamsTimer);
+        rtcNoStreamsTimer = setTimeout(() => {
+          showOverlay("Waiting for broadcaster…","If the broadcaster is already live, hit Retry.");
+        }, 10000);
+      } else if(st === StageConnectionState.ERRORED){
+        showOverlay("Reconnecting…","RTC hiccup — retrying");
+        setState("CONNECTING","warn","Reconnecting (RTC)…");
+      } else if(st === StageConnectionState.DISCONNECTED){
+        showOverlay("Stream unavailable","RTC disconnected. Hit Retry.");
+        setState("WAITING","warn","Disconnected (RTC).");
+        setLive(false);
       }
     });
 
     rtcStage.on(StageEvents.STAGE_PARTICIPANT_STREAMS_ADDED, (_p, streams) => {
       const ms = new MediaStream();
-      for(const s of streams){ if(s?.mediaStreamTrack) ms.addTrack(s.mediaStreamTrack); }
+      for(const s of streams){
+        if(s?.mediaStreamTrack) ms.addTrack(s.mediaStreamTrack);
+      }
       videoEl.srcObject = ms;
       videoEl.play().catch(()=>{});
       hideOverlay();
       setLive(true);
       setState("LIVE","good","Live now.");
+      if(rtcNoStreamsTimer) clearTimeout(rtcNoStreamsTimer);
+      rtcNoStreamsTimer = null;
     });
 
-    await rtcStage.join();
+    // Join with timeout so we don’t hang forever
+    const joinPromise = rtcStage.join();
+    const timeoutPromise = new Promise((_, rej) => setTimeout(() => rej(new Error("RTC join timed out")), 12000));
+    await Promise.race([joinPromise, timeoutPromise]);
   }
 
   // HLS watch
@@ -311,8 +351,39 @@
       setState("LIVE","good","Live now.");
     });
 
+    hlsPlayer.addEventListener(IVSPlayer.PlayerEventType.ERROR, () => {
+      showOverlay("Reconnecting…","Recovering playback");
+      setLive(false);
+      setTimeout(() => startHLS(hlsUrl), 2000);
+    });
+
     hlsPlayer.load(hlsUrl);
     hlsPlayer.play().catch(()=>{});
+  }
+
+  function applyModeOptions(pub){
+    const rtcEnabled = pub?.rtc_enabled !== false && !!pub?.rtc_stage_arn;
+    const hlsEnabled = !!pub?.hls_enabled || !!pickHlsUrl(pub);
+
+    // Disable invalid options
+    modeSel.querySelector('option[value="rtc"]').disabled = !rtcEnabled;
+    modeSel.querySelector('option[value="hls"]').disabled = !hlsEnabled;
+
+    // Default mode: be specific
+    let defaultMode = "auto";
+    if(rtcEnabled && !hlsEnabled) defaultMode = "rtc";
+    else if(hlsEnabled && !rtcEnabled) defaultMode = "hls";
+    else defaultMode = "auto";
+
+    // URL override if valid for this event
+    let chosen = defaultMode;
+    if(["auto","rtc","hls"].includes(modeFromUrl)){
+      if(modeFromUrl === "rtc" && rtcEnabled) chosen = "rtc";
+      else if(modeFromUrl === "hls" && hlsEnabled) chosen = "hls";
+      else if(modeFromUrl === "auto") chosen = "auto";
+    }
+
+    modeSel.value = chosen;
   }
 
   let runId = 0;
@@ -328,12 +399,10 @@
     stopRTC(); stopHLS();
     videoEl.srcObject = null;
 
-    const want = (modeSel.value || "auto").toLowerCase();
-    setMode(want.toUpperCase(), null);
     setState("STARTING","warn","Checking event…");
     showOverlay("Stream starting…","Checking event details…");
 
-    // Warm /start early (idempotent)
+    // Warm /start early (idempotent) – helps HLS spin-up
     postStartNonFatal();
 
     let pub = null;
@@ -347,39 +416,56 @@
     if(my !== runId) return;
 
     diagPre.textContent = JSON.stringify(pub, null, 2);
-
     hdrSub.textContent = pub?.title ? pub.title : "Relay";
+
+    applyModeOptions(pub);
+
+    const want = (modeSel.value || "auto").toLowerCase();
+    const rtcEnabled = pub?.rtc_enabled !== false && !!pub?.rtc_stage_arn;
     const hlsUrl = pickHlsUrl(pub);
-    const rtcEnabled = pub?.rtc_enabled !== false;
+    const hlsEnabled = !!pub?.hls_enabled || !!hlsUrl;
 
     if(want === "rtc"){
-      if(!rtcEnabled){ showOverlay("RTC unavailable","Switch to HLS."); setState("ERROR","bad","RTC unavailable."); return; }
-      await startRTC(); return;
+      if(!rtcEnabled){
+        showOverlay("RTC unavailable","This event is not enabled for RTC.");
+        setState("ERROR","bad","RTC unavailable.");
+        return;
+      }
+      try{
+        await startRTC();
+      }catch(e){
+        showOverlay("RTC not ready","Hit Retry in a moment.");
+        setState("WAITING","warn", "RTC not ready.");
+      }
+      return;
     }
+
     if(want === "hls"){
-      if(!hlsUrl){
-        showOverlay("Stream starting…","Waiting for HLS output (URL not published yet)");
-        setState("WAITING","warn","Waiting for HLS URL…");
+      if(!hlsEnabled || !hlsUrl){
+        showOverlay("Stream starting…","Waiting for HLS output…");
+        setState("WAITING","warn","Waiting for HLS…");
         setTimeout(start, 2000);
         return;
       }
-      await startHLS(hlsUrl); return;
+      await startHLS(hlsUrl);
+      return;
     }
 
-    // AUTO: prefer RTC, fall back to HLS
+    // AUTO: pick best available for this event (not generic auto)
     if(rtcEnabled){
       try{ await startRTC(); return; }catch{}
     }
-    if(hlsUrl){ await startHLS(hlsUrl); return; }
+    if(hlsEnabled && hlsUrl){
+      await startHLS(hlsUrl); return;
+    }
 
     showOverlay("Stream starting…","Waiting for broadcaster…");
     setState("WAITING","warn","Waiting for stream…");
     setTimeout(start, 2000);
   }
 
-  modeSel.value = (qs.get("mode") || "auto").toLowerCase();
-  modeSel.addEventListener("change", start);
   btnRetry.onclick = start;
+  modeSel.addEventListener("change", start);
 
   start();
 })();
