@@ -110,10 +110,10 @@
   let stageToken = null;
   let startedAtMs = null;
   let timerHandle = null;
-  let ev = null;
   let readinessTimer = null;
   let readyToBroadcast = false;
   let lastHlsWarmAt = 0;
+  let lastWarmStart = null;
 
   elEventId.value = qs.get("event") || qs.get("id") || "";
   elEventKey.value = qs.get("key") || "";
@@ -210,13 +210,18 @@
     setStatus("ready");
   }
 
-  async function loadPublic(){
+  async function loadPublicOptional(){
     const eventId = elEventId.value.trim();
     const key = elEventKey.value.trim();
     if(!eventId || !key) throw new Error("Missing event or key");
-    ev = await apiGet(`/api/events/${encodeURIComponent(eventId)}/public?key=${encodeURIComponent(key)}`);
-    log("PUBLIC", ev);
-    return ev;
+    try{
+      const pub = await apiGet(`/api/events/${encodeURIComponent(eventId)}/public?key=${encodeURIComponent(key)}`);
+      log("PUBLIC", pub);
+      return pub;
+    }catch(e){
+      log("PUBLIC optional failed", String(e));
+      return null;
+    }
   }
 
   async function provisionPublishToken(){
@@ -230,18 +235,23 @@
     return prov;
   }
 
-  async function warmHlsNonFatal(){
-    if(!ev || !ev.hls_enabled) return;
+  async function warmStartNonFatal(force = false){
+    const eventId = elEventId.value.trim();
+    const key = elEventKey.value.trim();
+    if(!eventId || !key) return null;
+
     const now = Date.now();
-    if(now - lastHlsWarmAt < 3000) return;
+    if(!force && now - lastHlsWarmAt < 3000) return lastWarmStart;
     lastHlsWarmAt = now;
+
     try{
-      const eventId = elEventId.value.trim();
-      const key = elEventKey.value.trim();
       const res = await apiPost(`/api/events/${encodeURIComponent(eventId)}/start?key=${encodeURIComponent(key)}`, {});
+      lastWarmStart = res;
       log("WARM START", res);
+      return res;
     }catch(e){
       log("WARM START failed (non-fatal)", String(e));
+      return null;
     }
   }
 
@@ -266,23 +276,31 @@
   async function refreshReadiness(){
     try{
       setStatus("checking…");
-      await loadPublic();
 
-      if(ev.expired){
+      const pub = await loadPublicOptional();
+      if(pub?.expired){
         setReady(false, "no", "Event expired.", "bad");
         return;
       }
-      if(ev.status !== "paid"){
+      if(pub && pub.status && pub.status !== "paid"){
         setReady(false, "no", "Waiting for payment confirmation…", "warn");
         scheduleReadiness(2500);
         return;
       }
 
-      if(ev.hls_enabled) await warmHlsNonFatal();
+      const startRes = await warmStartNonFatal();
+      const hlsEnabled = !!(pub?.hls_enabled || startRes?.playback_url || startRes?.composition_started || startRes?.composition_arn);
 
       try{
         await provisionPublishToken();
-        setReady(true, "yes", ev.hls_enabled ? "Ready to go live. HLS is warming in the background." : "Ready to go live.", "good");
+        setReady(
+          true,
+          "yes",
+          hlsEnabled
+            ? "Ready to go live. HLS is warming in the background."
+            : "Ready to go live.",
+          "good"
+        );
         setStatus("ready");
       }catch(e){
         setReady(false, "no", "Preparing broadcaster access…", "warn");
@@ -340,6 +358,7 @@
           const eventId = elEventId.value.trim();
           const key = elEventKey.value.trim();
           const res = await apiPost(`/api/events/${encodeURIComponent(eventId)}/start?key=${encodeURIComponent(key)}`, {});
+          lastWarmStart = res;
           log("START", res);
         }catch(e){
           log("START failed (non-fatal)", String(e));
@@ -373,6 +392,7 @@
     stopTimer();
     setStatus("stopped");
     elInfo.textContent = "";
+    setReady(false, "checking…", "Rechecking event…", "warn");
     scheduleReadiness(1500);
   }
 
@@ -395,7 +415,7 @@
 
   function scheduleReload(){
     stopReadiness();
-    ev = null;
+    lastWarmStart = null;
     setReady(false, "checking…", "Rechecking event…", "warn");
     setTimeout(() => {
       refreshReadiness().catch(e => {

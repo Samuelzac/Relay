@@ -708,8 +708,11 @@ if (ev.status !== "paid") return json(env, { error: "not_paid" }, 403);
             const ev = await getEvent(client, eventId);
             if (!ev) return json(env, { error: "not_found" }, 404);
 
-            const authRes = requireExact(key, ev.secret_key, env);
-            if (authRes) return authRes;
+            // Allow either the watch secret_key or the broadcast_key to read public status.
+            // This keeps watch links working exactly as before and lets the broadcast page
+            // poll readiness without tripping a 401.
+            if ((!ev.secret_key && !ev.broadcast_key) || !key) return json(env, { error: "missing_key" }, 401);
+            if (key !== ev.secret_key && key !== ev.broadcast_key) return json(env, { error: "unauthorized" }, 401);
 
             const expired = isExpired(ev);
 
@@ -917,8 +920,11 @@ if (ev.status !== "paid") return json(env, { error: "not_paid" }, 403);
 
             if (!ev.rtc_enabled) return json(env, { error: "rtc_disabled" }, 400);
 
-            const authRes = requireExact(key, ev.secret_key, env);
-            if (authRes) return authRes;
+            // Allow either the watch secret_key or the broadcast_key to read public status.
+            // This keeps watch links working exactly as before and lets the broadcast page
+            // poll readiness without tripping a 401.
+            if ((!ev.secret_key && !ev.broadcast_key) || !key) return json(env, { error: "missing_key" }, 401);
+            if (key !== ev.secret_key && key !== ev.broadcast_key) return json(env, { error: "unauthorized" }, 401);
 
             if (!ev.rtc_stage_arn) return json(env, { error: "rtc_not_provisioned" }, 400);
 

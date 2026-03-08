@@ -375,6 +375,23 @@
         return;
       }
 
+      // Auto mode: choose best available and keep button disabled until that path is ready
+      if(ev.rtc_enabled && !ev.hls_enabled){
+        elMode.value = "rtc";
+        setModePill();
+        return refreshReadiness();
+      }
+      if(ev.hls_enabled && !ev.rtc_enabled){
+        elMode.value = "hls";
+        setModePill();
+        return refreshReadiness();
+      }
+      if(ev.rtc_enabled){
+        elMode.value = "rtc";
+        setModePill();
+        return refreshReadiness();
+      }
+
       setReadyState(false, "Choose a playback mode.", "warn");
     } catch(e){
       log("READINESS error", String(e));
