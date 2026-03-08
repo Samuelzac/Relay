@@ -121,6 +121,58 @@ function withEncoderConfigArn(endpoints: any, encoderConfigurationArn: string) {
   return { ...base, encoderConfigurationArn };
 }
 
+
+async function ensureHlsInfrastructure(client: any, env: Env, eventId: string, evIn: any) {
+  let ev = evIn;
+  if (!ev || !ev.hls_enabled) return ev;
+
+  let stageArn: string | null = (ev.rtc_stage_arn as string) || null;
+  let endpoints: any = ev.rtc_stage_endpoints ?? null;
+
+  if (!stageArn) {
+    const st = await createStage(env, `relay-${eventId}`);
+    stageArn = st.stageArn;
+    endpoints = st.endpoints || null;
+    await updateRtc(client, eventId, stageArn, endpoints);
+    ev = await getEvent(client, eventId);
+    stageArn = (ev?.rtc_stage_arn as string) || stageArn;
+    endpoints = ev?.rtc_stage_endpoints ?? endpoints;
+  }
+
+  let channelArn: string | null = (ev.ivs_channel_arn as string) || null;
+
+  if (channelArn) {
+    try {
+      const ch = await getChannel(env, channelArn);
+      await updateIvs(client, eventId, ch.channelArn, ch.ingestEndpoint, ch.playbackUrl, ev.ivs_stream_key_encrypted || null);
+    } catch (e) {
+      console.warn("ensureHlsInfrastructure: existing channel refresh failed", eventId, e);
+      channelArn = null;
+    }
+  }
+
+  if (!channelArn) {
+    const ch = await createChannel(env, `relay-${eventId}`);
+    await updateIvs(client, eventId, ch.channelArn, ch.ingestEndpoint, ch.playbackUrl, ev.ivs_stream_key_encrypted || null);
+    channelArn = ch.channelArn;
+  }
+
+  ev = await getEvent(client, eventId);
+  endpoints = ev.rtc_stage_endpoints ?? endpoints;
+
+  let encoderConfigurationArn = getEncoderConfigArnFromEndpoints(endpoints);
+  if (!encoderConfigurationArn) {
+    const enc = await createEncoderConfiguration(env, `relay-${eventId}`);
+    encoderConfigurationArn = enc?.arn || enc?.encoderConfiguration?.arn || null;
+    if (encoderConfigurationArn) {
+      endpoints = withEncoderConfigArn(endpoints, encoderConfigurationArn);
+      await updateRtcEndpoints(client, eventId, endpoints);
+    }
+  }
+
+  return await getEvent(client, eventId);
+}
+
 async function getEvent(client: any, id: string) {
   const { rows } = await client.query(
     `
@@ -361,13 +413,22 @@ export default {
             try {
               await markPaid(client, eventId);
 
-              const ev = await getEvent(client, eventId);
+              let ev = await getEvent(client, eventId);
               if ((ev?.rtc_enabled || ev?.hls_enabled) && !ev.rtc_stage_arn && ev.status === "paid" && !isExpired(ev)) {
                 try {
                   const st = await createStage(env, `relay-${eventId}`);
                   await updateRtc(client, eventId, st.stageArn, st.endpoints || null);
+                  ev = await getEvent(client, eventId);
                 } catch (e) {
                   console.error("RTC stage provision failed (webhook)", eventId, e);
+                }
+              }
+
+              if (ev?.hls_enabled && ev.status === "paid" && !isExpired(ev)) {
+                try {
+                  ev = await ensureHlsInfrastructure(client, env, eventId, ev);
+                } catch (e) {
+                  console.error("HLS pre-provision failed (webhook)", eventId, e);
                 }
               }
             } finally {

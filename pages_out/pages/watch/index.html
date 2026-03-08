@@ -17,6 +17,9 @@
     header { padding:14px 16px; border-bottom:1px solid #20232a; display:flex; gap:12px; align-items:center; justify-content:space-between; }
     .title { font-weight:700; }
     .pill { font-size:12px; padding:4px 8px; border:1px solid #2b2f3a; border-radius:999px; color:#cbd5e1; }
+    .pill.good { border-color:#1f6f4a; color:#bff7de; }
+    .pill.warn { border-color:#7a5a0a; color:#ffe3a3; }
+    .pill.bad { border-color:#7c2d38; color:#ffb4b4; }
     main { padding:14px 16px; max-width:1100px; margin:0 auto; }
     .row { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-bottom:10px; }
     button { background:#1f2937; border:1px solid #334155; color:#e5e7eb; padding:10px 12px; border-radius:10px; cursor:pointer; }
@@ -38,6 +41,7 @@
     <div class="row">
       <span id="modePill" class="pill">mode: auto</span>
       <span id="statusPill" class="pill">status: —</span>
+      <span id="readyPill" class="pill warn">ready: checking…</span>
     </div>
   </header>
 
@@ -60,11 +64,12 @@
           </select>
 
           <button id="btnLoad">Load / Refresh</button>
-          <button id="btnPlay">Play</button>
+          <button id="btnPlay" disabled>Play</button>
           <button id="btnStop">Stop</button>
         </div>
 
         <div id="errorLine" class="muted err" style="margin:6px 0 0; display:none;"></div>
+        <div id="readyInfo" class="muted" style="margin:6px 0 10px;"></div>
 
         <div id="hlsWrap" style="display:none;">
           <div class="muted" style="margin:8px 0 6px;">HLS Player</div>
@@ -104,6 +109,8 @@
   const elMode = $("mode");
   const elModePill = $("modePill");
   const elStatusPill = $("statusPill");
+  const elReadyPill = $("readyPill");
+  const elReadyInfo = $("readyInfo");
   const elLog = $("log");
   const elErr = $("errorLine");
 
@@ -119,6 +126,9 @@
   const btnClear = $("btnClear");
 
   let ev = null;
+  let readyState = { ready:false, reason:"Checking event…" };
+  let readinessTimer = null;
+  let autoSelectedMode = null;
 
   let ivsPlayer = null;
   let hlsRetryTimer = null;
@@ -138,7 +148,7 @@
 
   function log(...args){
     const line = args.map(a => typeof a === "string" ? a : JSON.stringify(a)).join(" ");
-    elLog.textContent += line + "\\n";
+    elLog.textContent += line + "\n";
     elLog.scrollTop = elLog.scrollHeight;
     console.log(...args);
   }
@@ -147,6 +157,17 @@
 
   function setStatus(text){ elStatusPill.textContent = "status: " + text; }
   function setModePill(){ elModePill.textContent = "mode: " + elMode.value; }
+  function setReadyPill(ready, text, kind){
+    elReadyPill.className = "pill " + (kind || (ready ? "good" : "warn"));
+    elReadyPill.textContent = "ready: " + text;
+  }
+
+  function setReadyState(ready, reason, kind){
+    readyState = { ready, reason };
+    btnPlay.disabled = !ready;
+    elReadyInfo.textContent = reason || "";
+    setReadyPill(ready, ready ? "yes" : "no", kind);
+  }
 
   function apiUrl(path){ return API_BASE + path; }
 
@@ -182,6 +203,28 @@
   function showRtc(){ elRtcWrap.style.display = ""; elHlsWrap.style.display = "none"; }
   function showNone(){ elRtcWrap.style.display = "none"; elHlsWrap.style.display = "none"; }
 
+  function applyModeForEvent(pub){
+    const rtcEnabled = !!pub?.rtc_enabled;
+    const hlsEnabled = !!pub?.hls_enabled;
+
+    const optRtc = elMode.querySelector('option[value="rtc"]');
+    const optHls = elMode.querySelector('option[value="hls"]');
+    if(optRtc) optRtc.disabled = !rtcEnabled;
+    if(optHls) optHls.disabled = !hlsEnabled;
+
+    if(qs.get("mode")) return;
+
+    if(elMode.value === "auto"){
+      if(hlsEnabled && !rtcEnabled) {
+        elMode.value = "hls";
+        autoSelectedMode = "hls";
+      } else if(rtcEnabled && !hlsEnabled) {
+        elMode.value = "rtc";
+        autoSelectedMode = "rtc";
+      }
+    }
+  }
+
   async function loadPublic(){
     showError("");
     const eventId = elEventId.value.trim();
@@ -197,10 +240,7 @@
     setStatus(pub.status || "ok");
     log("PUBLIC", pub);
 
-    if(elMode.value === "auto"){
-      if(pub.hls_enabled && pub.playback_url) elMode.value = "hls";
-      else if(pub.rtc_enabled) elMode.value = "rtc";
-    }
+    applyModeForEvent(pub);
     setModePill();
 
     if(elMode.value === "hls") showHls();
@@ -208,6 +248,24 @@
     else showNone();
 
     return pub;
+  }
+
+  function stopReadinessPolling(){
+    if(readinessTimer){
+      clearTimeout(readinessTimer);
+      readinessTimer = null;
+    }
+  }
+
+  function scheduleReadiness(ms = 2500){
+    stopReadinessPolling();
+    readinessTimer = setTimeout(() => {
+      readinessTimer = null;
+      refreshReadiness().catch(e => {
+        log("Readiness polling error", String(e));
+        scheduleReadiness(2500);
+      });
+    }, ms);
   }
 
   function stopHls(){
@@ -239,21 +297,90 @@
     log("START", res);
   }
 
+  async function probePlayback(url){
+    try{
+      const r = await fetch(url, { method:"GET", cache:"no-store" });
+      return r.ok;
+    }catch(e){
+      log("PLAYBACK probe failed", String(e));
+      return false;
+    }
+  }
+
   function isPlayerSupportedSafe(){
     if(!window.IVSPlayer) return false;
 
     try{
-      if(typeof IVSPlayer.isPlayerSupported === "function"){
-        return !!IVSPlayer.isPlayerSupported();
-      }
-      if(typeof IVSPlayer.isPlayerSupported === "boolean"){
-        return IVSPlayer.isPlayerSupported;
-      }
+      if(typeof IVSPlayer.isPlayerSupported === "function") return !!IVSPlayer.isPlayerSupported();
+      if(typeof IVSPlayer.isPlayerSupported === "boolean") return IVSPlayer.isPlayerSupported;
     }catch(e){
       log("IVS support check failed", String(e));
     }
 
     return typeof IVSPlayer.create === "function";
+  }
+
+  async function refreshReadiness(){
+    showError("");
+    try{
+      if(!ev) await loadPublic();
+      else ev = await loadPublic();
+
+      if(ev.expired){
+        setReadyState(false, "Event has expired.", "bad");
+        return;
+      }
+
+      if(elMode.value === "hls"){
+        if(!ev.hls_enabled){
+          setReadyState(false, "This event is not HLS-enabled.", "bad");
+          return;
+        }
+
+        await ensureStartedForHls().catch(e => log("Warm start failed", String(e)));
+        ev = await loadPublic();
+
+        if(!ev.playback_url){
+          setReadyState(false, "Preparing HLS playback URL…", "warn");
+          scheduleReadiness(2500);
+          return;
+        }
+
+        const playbackReady = await probePlayback(ev.playback_url);
+        if(!playbackReady){
+          setReadyState(false, "Preparing HLS playlist…", "warn");
+          scheduleReadiness(2500);
+          return;
+        }
+
+        setReadyState(true, "HLS is ready to watch.", "good");
+        elHlsInfo.textContent = ev.playback_url;
+        return;
+      }
+
+      if(elMode.value === "rtc"){
+        if(!ev.rtc_enabled){
+          setReadyState(false, "This event is not RTC-enabled.", "bad");
+          return;
+        }
+
+        try{
+          await rtcViewerToken(true);
+          setReadyState(true, "RTC is ready. Click Play to connect.", "good");
+        }catch(e){
+          setReadyState(false, "Preparing RTC viewer access…", "warn");
+          log("RTC readiness failed", String(e));
+          scheduleReadiness(2500);
+        }
+        return;
+      }
+
+      setReadyState(false, "Choose a playback mode.", "warn");
+    } catch(e){
+      log("READINESS error", String(e));
+      setReadyState(false, String(e), "bad");
+      scheduleReadiness(2500);
+    }
   }
 
   async function playHls(){
@@ -298,6 +425,7 @@
         try{
           await ensureStartedForHls();
           ev = await loadPublic();
+          await refreshReadiness();
         }catch(e){
           log("HLS retry failed", String(e));
         }
@@ -320,6 +448,7 @@
     ivsPlayer.addEventListener(IVSPlayer.PlayerState.PLAYING, () => {
       setStatus("playing (hls)");
       showError("");
+      setReadyState(true, "HLS is ready to watch.", "good");
     });
 
     await tryLoad("initial");
@@ -333,13 +462,13 @@
     elRtcInfo.textContent = "";
   }
 
-  async function rtcViewerToken(){
+  async function rtcViewerToken(silent = false){
     const eventId = elEventId.value.trim();
     const key = elEventKey.value.trim();
     const res = await apiPost(`/api/events/${encodeURIComponent(eventId)}/rtc/token?key=${encodeURIComponent(key)}`, {});
     stageToken = res.participantToken || res.token || res.subscriberToken || null;
     if(!stageToken) throw new Error("No participantToken returned from /rtc/token");
-    log("RTC TOKEN ok");
+    if(!silent) log("RTC TOKEN ok");
     return res;
   }
 
@@ -395,7 +524,10 @@
 
     stage.on(StageEvents.STAGE_CONNECTION_STATE_CHANGED, (state) => {
       log("RTC state", state);
-      if(state === StageConnectionState.CONNECTED) setStatus("playing (rtc)");
+      if(state === StageConnectionState.CONNECTED) {
+        setStatus("playing (rtc)");
+        elRtcInfo.textContent = "Connected. Waiting for broadcaster…";
+      }
       if(state === StageConnectionState.CONNECTING) setStatus("rtc connecting…");
       if(state === StageConnectionState.ERRORED) setStatus("rtc errored…");
       if(state === StageConnectionState.DISCONNECTED) setStatus("rtc disconnected");
@@ -413,6 +545,7 @@
       streams.forEach(s => { if(s.mediaStreamTrack) ms.addTrack(s.mediaStreamTrack); });
       videoEl.srcObject = ms;
       videoEl.play().catch(() => {});
+      elRtcInfo.textContent = "Receiving RTC media.";
     });
 
     stage.on(StageEvents.STAGE_PARTICIPANT_STREAMS_REMOVED, (participant) => {
@@ -435,8 +568,9 @@
       log("PLAY error:", String(e));
       setStatus("error");
       showError(String(e));
+      await refreshReadiness().catch(() => {});
     }finally{
-      btnPlay.disabled = false;
+      btnPlay.disabled = !readyState.ready;
     }
   }
 
@@ -449,12 +583,15 @@
 
   btnLoad.onclick = async () => {
     showError("");
+    stopReadinessPolling();
     try {
       await loadPublic();
+      await refreshReadiness();
     } catch(e){
       log("LOAD error:", String(e));
       setStatus("error");
       showError(String(e));
+      scheduleReadiness(2500);
     }
   };
 
@@ -462,17 +599,42 @@
   btnStop.onclick = onStop;
 
   elMode.onchange = () => {
+    stopReadinessPolling();
     setModePill();
     showNone();
+    setReadyState(false, "Checking selected mode…", "warn");
+    refreshReadiness().catch(e => {
+      log("Mode change readiness error", String(e));
+      scheduleReadiness(2500);
+    });
   };
+
+  function scheduleReloadFromInputs(){
+    stopReadinessPolling();
+    setReadyState(false, "Checking event…", "warn");
+    autoSelectedMode = null;
+    ev = null;
+    setTimeout(() => {
+      loadPublic().then(refreshReadiness).catch(e => {
+        log("Input change error", String(e));
+        showError(String(e));
+        scheduleReadiness(2500);
+      });
+    }, 300);
+  }
+
+  elEventId.addEventListener("input", scheduleReloadFromInputs);
+  elEventKey.addEventListener("input", scheduleReloadFromInputs);
 
   (async () => {
     try{
       await loadPublic();
+      await refreshReadiness();
     }catch(e){
       log("Initial load failed:", String(e));
       setStatus("error");
       showError(String(e));
+      scheduleReadiness(2500);
     }
   })();
 })();

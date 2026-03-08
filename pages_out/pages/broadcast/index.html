@@ -14,6 +14,9 @@
     header { padding: 14px 16px; border-bottom: 1px solid #20232a; display:flex; gap:12px; align-items:center; justify-content:space-between; }
     .title { font-weight:700; }
     .pill { font-size:12px; padding:4px 8px; border:1px solid #2b2f3a; border-radius:999px; color:#cbd5e1; }
+    .pill.good { border-color:#1f6f4a; color:#bff7de; }
+    .pill.warn { border-color:#7a5a0a; color:#ffe3a3; }
+    .pill.bad { border-color:#7c2d38; color:#ffb4b4; }
     main { padding: 14px 16px; max-width: 1100px; margin: 0 auto; }
     .row { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-bottom:10px; }
     button { background:#1f2937; border:1px solid #334155; color:#e5e7eb; padding:10px 12px; border-radius:10px; cursor:pointer; }
@@ -33,6 +36,7 @@
     <div class="title">Relay Broadcast</div>
     <div class="row">
       <span id="statusPill" class="pill">status: —</span>
+      <span id="readyPill" class="pill warn">ready: checking…</span>
       <span id="timerPill" class="pill"><span class="muted">live:</span> <span class="timer" id="timer">00:00</span></span>
     </div>
   </header>
@@ -54,10 +58,11 @@
           <select id="mic"></select>
 
           <button id="btnPreview">Preview</button>
-          <button id="btnGoLive">Go Live</button>
+          <button id="btnGoLive" disabled>Go Live</button>
           <button id="btnStop">Stop</button>
         </div>
 
+        <div id="readyInfo" class="muted" style="margin:0 0 8px;"></div>
         <video id="preview" playsinline autoplay muted></video>
         <div class="muted" id="info" style="margin-top:6px;"></div>
       </div>
@@ -84,6 +89,8 @@
   const elEventId = $("eventId");
   const elEventKey = $("eventKey");
   const elStatus = $("statusPill");
+  const elReady = $("readyPill");
+  const elReadyInfo = $("readyInfo");
   const elTimer = $("timer");
   const elLog = $("log");
   const elInfo = $("info");
@@ -98,12 +105,15 @@
 
   const videoEl = $("preview");
 
-  // state
   let localStream = null;
   let stage = null;
   let stageToken = null;
   let startedAtMs = null;
   let timerHandle = null;
+  let ev = null;
+  let readinessTimer = null;
+  let readyToBroadcast = false;
+  let lastHlsWarmAt = 0;
 
   elEventId.value = qs.get("event") || qs.get("id") || "";
   elEventKey.value = qs.get("key") || "";
@@ -117,11 +127,18 @@
   btnClear.onclick = () => { elLog.textContent = ""; };
 
   function setStatus(t){ elStatus.textContent = "status: " + t; }
+  function setReady(ready, text, detail, kind){
+    readyToBroadcast = ready;
+    btnGoLive.disabled = !ready;
+    elReady.className = "pill " + (kind || (ready ? "good" : "warn"));
+    elReady.textContent = "ready: " + text;
+    elReadyInfo.textContent = detail || "";
+  }
 
   function apiUrl(path){ return API_BASE + path; }
 
   async function apiGet(path){
-    const r = await fetch(apiUrl(path), { method:"GET", credentials:"include" });
+    const r = await fetch(apiUrl(path), { method:"GET", credentials:"include", cache:"no-store" });
     const t = await r.text();
     let j=null; try{ j = t ? JSON.parse(t) : null; }catch{}
     if(!r.ok) throw new Error(`GET ${path} -> ${r.status} ${t}`);
@@ -193,16 +210,90 @@
     setStatus("ready");
   }
 
+  async function loadPublic(){
+    const eventId = elEventId.value.trim();
+    const key = elEventKey.value.trim();
+    if(!eventId || !key) throw new Error("Missing event or key");
+    ev = await apiGet(`/api/events/${encodeURIComponent(eventId)}/public?key=${encodeURIComponent(key)}`);
+    log("PUBLIC", ev);
+    return ev;
+  }
+
   async function provisionPublishToken(){
     const eventId = elEventId.value.trim();
     const key = elEventKey.value.trim();
     if(!eventId || !key) throw new Error("Missing event or key");
 
-    // IMPORTANT: broadcaster should use per-event broadcast_key
     const prov = await apiPost(`/api/events/${encodeURIComponent(eventId)}/rtc/provision?key=${encodeURIComponent(key)}`, {});
     stageToken = prov?.participantToken || prov?.publisher?.token;
     if(!stageToken) throw new Error("No publisher token returned from /rtc/provision");
     return prov;
+  }
+
+  async function warmHlsNonFatal(){
+    if(!ev || !ev.hls_enabled) return;
+    const now = Date.now();
+    if(now - lastHlsWarmAt < 3000) return;
+    lastHlsWarmAt = now;
+    try{
+      const eventId = elEventId.value.trim();
+      const key = elEventKey.value.trim();
+      const res = await apiPost(`/api/events/${encodeURIComponent(eventId)}/start?key=${encodeURIComponent(key)}`, {});
+      log("WARM START", res);
+    }catch(e){
+      log("WARM START failed (non-fatal)", String(e));
+    }
+  }
+
+  function stopReadiness(){
+    if(readinessTimer){
+      clearTimeout(readinessTimer);
+      readinessTimer = null;
+    }
+  }
+
+  function scheduleReadiness(ms = 2500){
+    stopReadiness();
+    readinessTimer = setTimeout(() => {
+      readinessTimer = null;
+      refreshReadiness().catch(e => {
+        log("READINESS polling error", String(e));
+        scheduleReadiness(2500);
+      });
+    }, ms);
+  }
+
+  async function refreshReadiness(){
+    try{
+      setStatus("checking…");
+      await loadPublic();
+
+      if(ev.expired){
+        setReady(false, "no", "Event expired.", "bad");
+        return;
+      }
+      if(ev.status !== "paid"){
+        setReady(false, "no", "Waiting for payment confirmation…", "warn");
+        scheduleReadiness(2500);
+        return;
+      }
+
+      if(ev.hls_enabled) await warmHlsNonFatal();
+
+      try{
+        await provisionPublishToken();
+        setReady(true, "yes", ev.hls_enabled ? "Ready to go live. HLS is warming in the background." : "Ready to go live.", "good");
+        setStatus("ready");
+      }catch(e){
+        setReady(false, "no", "Preparing broadcaster access…", "warn");
+        log("READINESS provision failed", String(e));
+        scheduleReadiness(2500);
+      }
+    }catch(e){
+      setStatus("error");
+      setReady(false, "no", String(e), "bad");
+      scheduleReadiness(2500);
+    }
   }
 
   async function goLive(){
@@ -210,6 +301,11 @@
     if(!sdk) throw new Error("IVS Web Broadcast SDK not loaded.");
 
     const { Stage, StageEvents, SubscribeType, LocalStageStream, StageConnectionState } = sdk;
+
+    if(!readyToBroadcast){
+      await refreshReadiness();
+      if(!readyToBroadcast) throw new Error("Broadcast path is still preparing.");
+    }
 
     if(!localStream) await preview();
     await provisionPublishToken();
@@ -231,7 +327,7 @@
         return out;
       },
       shouldPublishParticipant() { return true; },
-      shouldSubscribeToParticipant() { return SubscribeType.NONE; } // broadcaster doesn't need to subscribe
+      shouldSubscribeToParticipant() { return SubscribeType.NONE; }
     };
 
     stage = new Stage(stageToken, strategy);
@@ -240,7 +336,6 @@
       log("RTC state", state);
       if(state === StageConnectionState.CONNECTED){
         setStatus("live");
-        // Call /start for the event (idempotent). This also starts HLS if enabled.
         try{
           const eventId = elEventId.value.trim();
           const key = elEventKey.value.trim();
@@ -253,7 +348,11 @@
       }
       if(state === StageConnectionState.CONNECTING) setStatus("connecting…");
       if(state === StageConnectionState.ERRORED) setStatus("reconnecting…");
-      if(state === StageConnectionState.DISCONNECTED) setStatus("disconnected");
+      if(state === StageConnectionState.DISCONNECTED) {
+        setStatus("disconnected");
+        setReady(false, "no", "Connection lost. Rechecking broadcast readiness…", "warn");
+        scheduleReadiness(2500);
+      }
     });
 
     setStatus("joining…");
@@ -274,6 +373,7 @@
     stopTimer();
     setStatus("stopped");
     elInfo.textContent = "";
+    scheduleReadiness(1500);
   }
 
   btnPreview.onclick = async () => {
@@ -285,7 +385,7 @@
   btnGoLive.onclick = async () => {
     try{ btnGoLive.disabled=true; await goLive(); }
     catch(e){ log("GoLive error", String(e)); setStatus("error"); }
-    finally{ btnGoLive.disabled=false; }
+    finally{ btnGoLive.disabled=!readyToBroadcast; }
   };
 
   btnStop.onclick = async () => {
@@ -293,18 +393,31 @@
     catch(e){ log("Stop error", String(e)); }
   };
 
-  // init: ask permissions then list devices
+  function scheduleReload(){
+    stopReadiness();
+    ev = null;
+    setReady(false, "checking…", "Rechecking event…", "warn");
+    setTimeout(() => {
+      refreshReadiness().catch(e => {
+        log("Input change readiness error", String(e));
+        scheduleReadiness(2500);
+      });
+    }, 300);
+  }
+  elEventId.addEventListener("input", scheduleReload);
+  elEventKey.addEventListener("input", scheduleReload);
+
   (async () => {
     try{
       setStatus("init…");
-      // permission prompt so labels show
       const s = await navigator.mediaDevices.getUserMedia({ video:true, audio:true });
       s.getTracks().forEach(t=>t.stop());
       await listDevices();
-      setStatus("ready");
+      await refreshReadiness();
     }catch(e){
       log("Init error", String(e));
       setStatus("needs permissions");
+      setReady(false, "no", "Allow camera/microphone permissions, then reload.", "bad");
     }
   })();
 })();
