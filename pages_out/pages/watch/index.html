@@ -91,7 +91,6 @@
 
 <script>
 (() => {
-  // If you're serving the HTML from Pages, keep API on the Worker.
   const API_BASE =
     (location.origin.includes("pages.dev") || location.origin.includes("localhost"))
       ? "https://stream-platform-api.kiwismurph.workers.dev"
@@ -119,15 +118,12 @@
   const btnStop = $("btnStop");
   const btnClear = $("btnClear");
 
-  // state
   let ev = null;
 
-  // HLS state
   let ivsPlayer = null;
   let hlsRetryTimer = null;
   let lastStartAt = 0;
 
-  // RTC state
   let stage = null;
   let stageToken = null;
 
@@ -142,7 +138,7 @@
 
   function log(...args){
     const line = args.map(a => typeof a === "string" ? a : JSON.stringify(a)).join(" ");
-    elLog.textContent += line + "\n";
+    elLog.textContent += line + "\\n";
     elLog.scrollTop = elLog.scrollHeight;
     console.log(...args);
   }
@@ -170,7 +166,7 @@
   }
 
   async function apiGet(path){
-    return fetchJson(path, { method:"GET", credentials:"include" });
+    return fetchJson(path, { method:"GET", credentials:"include", cache:"no-store" });
   }
 
   async function apiPost(path, body){
@@ -214,11 +210,11 @@
     return pub;
   }
 
-  // ----------------
-  // HLS (IVS Player)
-  // ----------------
   function stopHls(){
-    if(hlsRetryTimer){ clearTimeout(hlsRetryTimer); hlsRetryTimer = null; }
+    if(hlsRetryTimer){
+      clearTimeout(hlsRetryTimer);
+      hlsRetryTimer = null;
+    }
     if(ivsPlayer){
       try { ivsPlayer.pause(); } catch {}
       try { ivsPlayer.delete(); } catch {}
@@ -233,7 +229,7 @@
 
   async function ensureStartedForHls(){
     const now = Date.now();
-    if(now - lastStartAt < 2500) return; // prevent /start spam
+    if(now - lastStartAt < 2500) return;
     lastStartAt = now;
 
     const eventId = elEventId.value.trim();
@@ -241,6 +237,23 @@
 
     const res = await apiPost(`/api/events/${encodeURIComponent(eventId)}/start?key=${encodeURIComponent(key)}`, {});
     log("START", res);
+  }
+
+  function isPlayerSupportedSafe(){
+    if(!window.IVSPlayer) return false;
+
+    try{
+      if(typeof IVSPlayer.isPlayerSupported === "function"){
+        return !!IVSPlayer.isPlayerSupported();
+      }
+      if(typeof IVSPlayer.isPlayerSupported === "boolean"){
+        return IVSPlayer.isPlayerSupported;
+      }
+    }catch(e){
+      log("IVS support check failed", String(e));
+    }
+
+    return typeof IVSPlayer.create === "function";
   }
 
   async function playHls(){
@@ -256,7 +269,7 @@
     elHlsInfo.textContent = playbackUrl;
 
     const videoEl = $("hlsVideo");
-    if(!window.IVSPlayer || !IVSPlayer.isPlayerSupported || !IVSPlayer.isPlayerSupported()){
+    if(!isPlayerSupportedSafe()){
       throw new Error("IVS Player not supported in this browser.");
     }
 
@@ -271,7 +284,7 @@
       log(`HLS load (${label})`, urlNow);
       try{
         ivsPlayer.load(urlNow);
-        ivsPlayer.play();
+        await ivsPlayer.play();
         setStatus("playing (hls)");
       }catch(e){
         log("HLS load/play threw", String(e));
@@ -283,7 +296,7 @@
       hlsRetryTimer = setTimeout(async () => {
         hlsRetryTimer = null;
         try{
-          await ensureStartedForHls(); // safe/idempotent
+          await ensureStartedForHls();
           ev = await loadPublic();
         }catch(e){
           log("HLS retry failed", String(e));
@@ -304,12 +317,14 @@
       scheduleRetry("ended-retry");
     });
 
+    ivsPlayer.addEventListener(IVSPlayer.PlayerState.PLAYING, () => {
+      setStatus("playing (hls)");
+      showError("");
+    });
+
     await tryLoad("initial");
   }
 
-  // -----------------------
-  // RTC (Stage subscribe)
-  // -----------------------
   function stopRtc(){
     try { stage && stage.leave(); } catch {}
     stage = null;
@@ -319,7 +334,6 @@
   }
 
   async function rtcViewerToken(){
-    // IMPORTANT: viewer uses /rtc/token (NOT /rtc/provision)
     const eventId = elEventId.value.trim();
     const key = elEventKey.value.trim();
     const res = await apiPost(`/api/events/${encodeURIComponent(eventId)}/rtc/token?key=${encodeURIComponent(key)}`, {});
@@ -347,6 +361,7 @@
     v.autoplay = true;
     v.playsInline = true;
     v.controls = false;
+    v.muted = false;
 
     wrap.appendChild(cap);
     wrap.appendChild(v);
@@ -397,6 +412,7 @@
       const ms = new MediaStream();
       streams.forEach(s => { if(s.mediaStreamTrack) ms.addTrack(s.mediaStreamTrack); });
       videoEl.srcObject = ms;
+      videoEl.play().catch(() => {});
     });
 
     stage.on(StageEvents.STAGE_PARTICIPANT_STREAMS_REMOVED, (participant) => {
@@ -408,9 +424,6 @@
     elRtcInfo.textContent = "Connected. Waiting for broadcaster…";
   }
 
-  // ------------
-  // UI actions
-  // ------------
   async function onPlay(){
     showError("");
     try{
@@ -436,19 +449,31 @@
 
   btnLoad.onclick = async () => {
     showError("");
-    try { await loadPublic(); }
-    catch(e){ log("LOAD error:", String(e)); setStatus("error"); showError(String(e)); }
+    try {
+      await loadPublic();
+    } catch(e){
+      log("LOAD error:", String(e));
+      setStatus("error");
+      showError(String(e));
+    }
   };
 
   btnPlay.onclick = onPlay;
   btnStop.onclick = onStop;
 
-  elMode.onchange = () => { setModePill(); showNone(); };
+  elMode.onchange = () => {
+    setModePill();
+    showNone();
+  };
 
-  // auto-load once
   (async () => {
-    try{ await loadPublic(); }
-    catch(e){ log("Initial load failed:", String(e)); setStatus("error"); showError(String(e)); }
+    try{
+      await loadPublic();
+    }catch(e){
+      log("Initial load failed:", String(e));
+      setStatus("error");
+      showError(String(e));
+    }
   })();
 })();
 </script>
