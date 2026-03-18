@@ -2,80 +2,343 @@
 <html>
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
   <title>Relay Broadcast</title>
 
-  <!-- Amazon IVS Real-Time Web Broadcast SDK (Stages / WebRTC) -->
   <script src="https://web-broadcast.live-video.net/1.17.0/amazon-ivs-web-broadcast.js"></script>
 
   <style>
-    :root { color-scheme: dark; }
-    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; background: #0b0c10; color: #e8e8e8; margin: 0; }
-    header { padding: 14px 16px; border-bottom: 1px solid #20232a; display:flex; gap:12px; align-items:center; justify-content:space-between; }
-    .title { font-weight:700; }
-    .pill { font-size:12px; padding:4px 8px; border:1px solid #2b2f3a; border-radius:999px; color:#cbd5e1; }
-    .pill.good { border-color:#1f6f4a; color:#bff7de; }
-    .pill.warn { border-color:#7a5a0a; color:#ffe3a3; }
-    .pill.bad { border-color:#7c2d38; color:#ffb4b4; }
-    main { padding: 14px 16px; max-width: 1100px; margin: 0 auto; }
-    .row { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-bottom:10px; }
-    button { background:#1f2937; border:1px solid #334155; color:#e5e7eb; padding:10px 12px; border-radius:10px; cursor:pointer; }
-    button:disabled { opacity:0.5; cursor:not-allowed; }
-    select, input { background:#0f172a; border:1px solid #334155; color:#e5e7eb; padding:9px 10px; border-radius:10px; }
-    .card { border:1px solid #20232a; border-radius:14px; padding:12px; background:#0f1117; }
-    video { width:100%; background:#000; border-radius:12px; border:1px solid #20232a; }
-    .grid { display:grid; gap:12px; grid-template-columns: 1fr; }
-    @media (min-width: 900px){ .grid { grid-template-columns: 2fr 1fr; } }
-    .log { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:12px; white-space:pre-wrap; background:#0b1220; border:1px solid #202a3a; border-radius:12px; padding:10px; max-height: 240px; overflow:auto; }
-    .muted { color:#a3a3a3; }
-    .timer { font-variant-numeric: tabular-nums; font-weight:700; }
+    :root{
+      color-scheme: dark;
+      --bg:#000;
+      --panel:rgba(18,18,18,.74);
+      --panel-2:rgba(255,255,255,.08);
+      --border:rgba(255,255,255,.14);
+      --text:#fff;
+      --muted:rgba(255,255,255,.74);
+      --good:#34d399;
+      --warn:#fbbf24;
+      --bad:#ff8a80;
+      --btn:#1976d2;
+      --btnStop:#b42318;
+      --shadow:0 10px 30px rgba(0,0,0,.35);
+    }
+
+    *{box-sizing:border-box}
+    html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
+    body{min-height:100svh; overflow:hidden}
+
+    .shell{
+      position:relative;
+      min-height:100svh;
+      display:grid;
+      grid-template-rows:auto 1fr auto;
+      background:#000;
+    }
+
+    .preview-wrap{
+      position:absolute;
+      inset:0;
+      background:#000;
+    }
+
+    video{
+      width:100%;
+      height:100%;
+      object-fit:cover;
+      display:block;
+      background:#000;
+    }
+
+    .scrim-top{
+      position:absolute;
+      inset:0 0 auto 0;
+      height:160px;
+      background:linear-gradient(to bottom, rgba(0,0,0,.72), rgba(0,0,0,0));
+      pointer-events:none;
+      z-index:1;
+    }
+
+    .scrim-bottom{
+      position:absolute;
+      inset:auto 0 0 0;
+      height:220px;
+      background:linear-gradient(to top, rgba(0,0,0,.78), rgba(0,0,0,0));
+      pointer-events:none;
+      z-index:1;
+    }
+
+    .topbar{
+      position:relative;
+      z-index:2;
+      padding:calc(12px + env(safe-area-inset-top)) 14px 10px 14px;
+      display:flex;
+      justify-content:space-between;
+      align-items:flex-start;
+      gap:12px;
+    }
+
+    .title-block{
+      display:flex;
+      flex-direction:column;
+      gap:6px;
+      min-width:0;
+    }
+
+    .title{
+      font-size:20px;
+      font-weight:800;
+      letter-spacing:.2px;
+    }
+
+    .subtitle{
+      color:var(--muted);
+      font-size:13px;
+      max-width:min(70vw,560px);
+    }
+
+    .status-row{
+      display:flex;
+      gap:8px;
+      flex-wrap:wrap;
+      justify-content:flex-end;
+    }
+
+    .pill{
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      min-height:32px;
+      padding:6px 10px;
+      border-radius:999px;
+      background:rgba(0,0,0,.42);
+      border:1px solid var(--border);
+      backdrop-filter: blur(10px);
+      font-size:12px;
+      white-space:nowrap;
+    }
+
+    .dot{
+      width:8px;height:8px;border-radius:999px;background:#8a8a8a;
+    }
+
+    .pill.good .dot{background:var(--good)}
+    .pill.warn .dot{background:var(--warn)}
+    .pill.bad .dot{background:var(--bad)}
+
+    .bottom-ui{
+      position:relative;
+      z-index:2;
+      margin-top:auto;
+      padding:12px 14px calc(16px + env(safe-area-inset-bottom)) 14px;
+      display:grid;
+      gap:12px;
+    }
+
+    .panel{
+      background:var(--panel);
+      border:1px solid var(--border);
+      border-radius:18px;
+      backdrop-filter: blur(16px);
+      box-shadow:var(--shadow);
+    }
+
+    .controls{
+      padding:14px;
+      display:grid;
+      gap:12px;
+    }
+
+    .inputs{
+      display:grid;
+      gap:10px;
+      grid-template-columns:1fr;
+    }
+
+    .input-row{
+      display:grid;
+      gap:10px;
+      grid-template-columns:1fr 1fr;
+    }
+
+    .field{
+      display:grid;
+      gap:6px;
+    }
+
+    .label{
+      font-size:12px;
+      color:var(--muted);
+    }
+
+    input,select,button{
+      font:inherit;
+    }
+
+    input,select{
+      width:100%;
+      min-height:46px;
+      border-radius:12px;
+      border:1px solid var(--border);
+      background:rgba(255,255,255,.08);
+      color:var(--text);
+      padding:10px 12px;
+      outline:none;
+    }
+
+    input::placeholder{color:rgba(255,255,255,.48)}
+
+    .actions{
+      display:grid;
+      grid-template-columns:1fr 1fr 1fr;
+      gap:10px;
+    }
+
+    button{
+      min-height:52px;
+      border-radius:14px;
+      border:0;
+      cursor:pointer;
+      font-weight:800;
+      color:#fff;
+      background:var(--panel-2);
+    }
+
+    button.primary{background:var(--btn)}
+    button.stop{background:var(--btnStop)}
+    button:disabled{opacity:.48;cursor:not-allowed}
+
+    .meta{
+      display:flex;
+      justify-content:space-between;
+      gap:12px;
+      flex-wrap:wrap;
+      color:var(--muted);
+      font-size:13px;
+    }
+
+    details{
+      overflow:hidden;
+    }
+
+    summary{
+      list-style:none;
+      cursor:pointer;
+      padding:12px 14px;
+      color:var(--muted);
+      font-size:13px;
+      border-bottom:1px solid transparent;
+    }
+
+    details[open] summary{
+      border-bottom-color:var(--border);
+    }
+
+    summary::-webkit-details-marker{display:none}
+
+    .log{
+      padding:12px 14px 14px 14px;
+      max-height:220px;
+      overflow:auto;
+      font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+      font-size:12px;
+      white-space:pre-wrap;
+      line-height:1.4;
+      color:#d7d7d7;
+      background:rgba(0,0,0,.2);
+    }
+
+    .empty-preview{
+      position:absolute;
+      inset:0;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      text-align:center;
+      padding:20px;
+      color:rgba(255,255,255,.68);
+      font-size:14px;
+      pointer-events:none;
+      z-index:0;
+    }
+
+    @media (max-width:760px){
+      .topbar{flex-direction:column; align-items:stretch}
+      .status-row{justify-content:flex-start}
+      .input-row{grid-template-columns:1fr}
+      .actions{grid-template-columns:1fr}
+      .title{font-size:18px}
+    }
   </style>
 </head>
 <body>
-  <header>
-    <div class="title">Relay Broadcast</div>
-    <div class="row">
-      <span id="statusPill" class="pill">status: —</span>
-      <span id="readyPill" class="pill warn">ready: checking…</span>
-      <span id="timerPill" class="pill"><span class="muted">live:</span> <span class="timer" id="timer">00:00</span></span>
+  <div class="shell">
+    <div class="preview-wrap">
+      <video id="preview" playsinline autoplay muted></video>
+      <div class="empty-preview" id="emptyPreview">Camera preview will appear here</div>
+      <div class="scrim-top"></div>
+      <div class="scrim-bottom"></div>
     </div>
-  </header>
 
-  <main>
-    <div class="grid">
-      <div class="card">
-        <div class="row">
-          <label class="muted">Event</label>
-          <input id="eventId" style="min-width:320px" />
-          <label class="muted">Key</label>
-          <input id="eventKey" style="min-width:320px" />
+    <div class="topbar">
+      <div class="title-block">
+        <div class="title">Relay Broadcast</div>
+        <div class="subtitle" id="readyInfo">Checking broadcaster access…</div>
+      </div>
+
+      <div class="status-row">
+        <span id="statusPill" class="pill"><span class="dot"></span><span>status: —</span></span>
+        <span id="readyPill" class="pill warn"><span class="dot"></span><span>ready: checking…</span></span>
+        <span id="timerPill" class="pill"><span class="dot"></span><span>live: <span id="timer">00:00</span></span></span>
+      </div>
+    </div>
+
+    <div></div>
+
+    <div class="bottom-ui">
+      <div class="panel controls">
+        <div class="inputs">
+          <div class="input-row">
+            <div class="field">
+              <label class="label" for="eventId">Event</label>
+              <input id="eventId" />
+            </div>
+            <div class="field">
+              <label class="label" for="eventKey">Key</label>
+              <input id="eventKey" />
+            </div>
+          </div>
+
+          <div class="input-row">
+            <div class="field">
+              <label class="label" for="camera">Camera</label>
+              <select id="camera"></select>
+            </div>
+            <div class="field">
+              <label class="label" for="mic">Mic</label>
+              <select id="mic"></select>
+            </div>
+          </div>
         </div>
 
-        <div class="row">
-          <label class="muted">Camera</label>
-          <select id="camera"></select>
-          <label class="muted">Mic</label>
-          <select id="mic"></select>
-
+        <div class="actions">
           <button id="btnPreview">Preview</button>
-          <button id="btnGoLive" disabled>Go Live</button>
-          <button id="btnStop">Stop</button>
+          <button id="btnGoLive" class="primary" disabled>Go Live</button>
+          <button id="btnStop" class="stop">Stop</button>
         </div>
 
-        <div id="readyInfo" class="muted" style="margin:0 0 8px;"></div>
-        <video id="preview" playsinline autoplay muted></video>
-        <div class="muted" id="info" style="margin-top:6px;"></div>
+        <div class="meta">
+          <div id="info">Waiting for preview…</div>
+          <div id="liveHint">HLS warms automatically in the background when enabled.</div>
+        </div>
       </div>
 
-      <div class="card">
-        <div class="row" style="justify-content:space-between;">
-          <div class="muted">Logs</div>
-          <button id="btnClear" style="padding:8px 10px;">Clear</button>
-        </div>
+      <details class="panel">
+        <summary>Logs</summary>
         <div id="log" class="log"></div>
-      </div>
+      </details>
     </div>
-  </main>
+  </div>
 
 <script>
 (() => {
@@ -94,16 +357,14 @@
   const elTimer = $("timer");
   const elLog = $("log");
   const elInfo = $("info");
-
+  const elLiveHint = $("liveHint");
   const elCam = $("camera");
   const elMic = $("mic");
-
   const btnPreview = $("btnPreview");
   const btnGoLive = $("btnGoLive");
   const btnStop = $("btnStop");
-  const btnClear = $("btnClear");
-
   const videoEl = $("preview");
+  const emptyPreview = $("emptyPreview");
 
   let localStream = null;
   let stage = null;
@@ -114,6 +375,7 @@
   let readyToBroadcast = false;
   let lastHlsWarmAt = 0;
   let lastWarmStart = null;
+  let currentPublic = null;
 
   elEventId.value = qs.get("event") || qs.get("id") || "";
   elEventKey.value = qs.get("key") || "";
@@ -124,14 +386,17 @@
     elLog.scrollTop = elLog.scrollHeight;
     console.log(...args);
   }
-  btnClear.onclick = () => { elLog.textContent = ""; };
 
-  function setStatus(t){ elStatus.textContent = "status: " + t; }
+  function setStatus(t, kind){
+    elStatus.className = `pill ${kind || ""}`.trim();
+    elStatus.querySelector("span:last-child").textContent = "status: " + t;
+  }
+
   function setReady(ready, text, detail, kind){
     readyToBroadcast = ready;
     btnGoLive.disabled = !ready;
-    elReady.className = "pill " + (kind || (ready ? "good" : "warn"));
-    elReady.textContent = "ready: " + text;
+    elReady.className = `pill ${kind || (ready ? "good" : "warn")}`.trim();
+    elReady.querySelector("span:last-child").textContent = "ready: " + text;
     elReadyInfo.textContent = detail || "";
   }
 
@@ -140,10 +405,11 @@
   async function apiGet(path){
     const r = await fetch(apiUrl(path), { method:"GET", credentials:"include", cache:"no-store" });
     const t = await r.text();
-    let j=null; try{ j = t ? JSON.parse(t) : null; }catch{}
+    let j = null; try { j = t ? JSON.parse(t) : null; } catch {}
     if(!r.ok) throw new Error(`GET ${path} -> ${r.status} ${t}`);
     return j;
   }
+
   async function apiPost(path, body){
     const r = await fetch(apiUrl(path), {
       method:"POST",
@@ -152,7 +418,7 @@
       credentials:"include"
     });
     const t = await r.text();
-    let j=null; try{ j = t ? JSON.parse(t) : null; }catch{}
+    let j = null; try { j = t ? JSON.parse(t) : null; } catch {}
     if(!r.ok) throw new Error(`POST ${path} -> ${r.status} ${t}`);
     return j;
   }
@@ -194,20 +460,20 @@
       audio: micId ? { deviceId: { exact: micId } } : true
     };
 
-    const stream = await navigator.mediaDevices.getUserMedia(constraints);
-    return stream;
+    return navigator.mediaDevices.getUserMedia(constraints);
   }
 
   async function preview(){
-    setStatus("previewing…");
+    setStatus("previewing…", "warn");
     if(localStream){
-      localStream.getTracks().forEach(t=>t.stop());
+      localStream.getTracks().forEach(t => t.stop());
       localStream = null;
     }
     localStream = await getLocalMedia();
     videoEl.srcObject = localStream;
+    emptyPreview.style.display = "none";
     elInfo.textContent = "Preview ready.";
-    setStatus("ready");
+    setStatus("ready", readyToBroadcast ? "good" : "warn");
   }
 
   async function loadPublicOptional(){
@@ -216,6 +482,7 @@
     if(!eventId || !key) throw new Error("Missing event or key");
     try{
       const pub = await apiGet(`/api/events/${encodeURIComponent(eventId)}/public?key=${encodeURIComponent(key)}`);
+      currentPublic = pub;
       log("PUBLIC", pub);
       return pub;
     }catch(e){
@@ -275,21 +542,31 @@
 
   async function refreshReadiness(){
     try{
-      setStatus("checking…");
+      setStatus("checking…", "warn");
 
       const pub = await loadPublicOptional();
       if(pub?.expired){
         setReady(false, "no", "Event expired.", "bad");
+        setStatus("expired", "bad");
         return;
       }
       if(pub && pub.status && pub.status !== "paid"){
         setReady(false, "no", "Waiting for payment confirmation…", "warn");
+        setStatus("payment", "warn");
         scheduleReadiness(2500);
         return;
       }
 
       const startRes = await warmStartNonFatal();
       const hlsEnabled = !!(pub?.hls_enabled || startRes?.playback_url || startRes?.composition_started || startRes?.composition_arn);
+
+      if(hlsEnabled){
+        elLiveHint.textContent = startRes?.composition_started
+          ? "HLS composition is up."
+          : "HLS is warming automatically in the background.";
+      } else {
+        elLiveHint.textContent = "RTC-only event.";
+      }
 
       try{
         await provisionPublishToken();
@@ -301,14 +578,15 @@
             : "Ready to go live.",
           "good"
         );
-        setStatus("ready");
+        setStatus("ready", "good");
       }catch(e){
         setReady(false, "no", "Preparing broadcaster access…", "warn");
         log("READINESS provision failed", String(e));
+        setStatus("preparing", "warn");
         scheduleReadiness(2500);
       }
     }catch(e){
-      setStatus("error");
+      setStatus("error", "bad");
       setReady(false, "no", String(e), "bad");
       scheduleReadiness(2500);
     }
@@ -331,13 +609,11 @@
     const tracks = localStream.getTracks();
     const audioTrack = tracks.find(t => t.kind === "audio");
     const videoTrack = tracks.find(t => t.kind === "video");
-
     if(!videoTrack) throw new Error("No video track available.");
 
     const strategy = {
       audioTrack: audioTrack ? new LocalStageStream(audioTrack) : null,
       videoTrack: new LocalStageStream(videoTrack),
-
       stageStreamsToPublish() {
         const out = [];
         if(this.audioTrack) out.push(this.audioTrack);
@@ -352,8 +628,10 @@
 
     stage.on(StageEvents.STAGE_CONNECTION_STATE_CHANGED, async (state) => {
       log("RTC state", state);
+
       if(state === StageConnectionState.CONNECTED){
-        setStatus("live");
+        setStatus("live", "good");
+        setReady(true, "live", "You are live.", "good");
         try{
           const eventId = elEventId.value.trim();
           const key = elEventKey.value.trim();
@@ -363,18 +641,22 @@
         }catch(e){
           log("START failed (non-fatal)", String(e));
         }
-        if(!startedAtMs){ startedAtMs = Date.now(); startTimer(); }
+        if(!startedAtMs){
+          startedAtMs = Date.now();
+          startTimer();
+        }
       }
-      if(state === StageConnectionState.CONNECTING) setStatus("connecting…");
-      if(state === StageConnectionState.ERRORED) setStatus("reconnecting…");
-      if(state === StageConnectionState.DISCONNECTED) {
-        setStatus("disconnected");
+
+      if(state === StageConnectionState.CONNECTING) setStatus("connecting…", "warn");
+      if(state === StageConnectionState.ERRORED) setStatus("reconnecting…", "warn");
+      if(state === StageConnectionState.DISCONNECTED){
+        setStatus("disconnected", "bad");
         setReady(false, "no", "Connection lost. Rechecking broadcast readiness…", "warn");
         scheduleReadiness(2500);
       }
     });
 
-    setStatus("joining…");
+    setStatus("joining…", "warn");
     await stage.join();
     elInfo.textContent = "Publishing to stage.";
   }
@@ -384,28 +666,41 @@
     stage = null;
 
     if(localStream){
-      localStream.getTracks().forEach(t=>t.stop());
+      localStream.getTracks().forEach(t => t.stop());
       localStream = null;
     }
     videoEl.srcObject = null;
+    emptyPreview.style.display = "";
 
     stopTimer();
-    setStatus("stopped");
-    elInfo.textContent = "";
+    setStatus("stopped", "warn");
+    elInfo.textContent = "Stopped.";
     setReady(false, "checking…", "Rechecking event…", "warn");
     scheduleReadiness(1500);
   }
 
   btnPreview.onclick = async () => {
-    try{ btnPreview.disabled=true; await preview(); }
-    catch(e){ log("Preview error", String(e)); setStatus("error"); }
-    finally{ btnPreview.disabled=false; }
+    try{
+      btnPreview.disabled = true;
+      await preview();
+    } catch(e){
+      log("Preview error", String(e));
+      setStatus("error", "bad");
+    } finally {
+      btnPreview.disabled = false;
+    }
   };
 
   btnGoLive.onclick = async () => {
-    try{ btnGoLive.disabled=true; await goLive(); }
-    catch(e){ log("GoLive error", String(e)); setStatus("error"); }
-    finally{ btnGoLive.disabled=!readyToBroadcast; }
+    try{
+      btnGoLive.disabled = true;
+      await goLive();
+    } catch(e){
+      log("GoLive error", String(e));
+      setStatus("error", "bad");
+    } finally {
+      btnGoLive.disabled = !readyToBroadcast;
+    }
   };
 
   btnStop.onclick = async () => {
@@ -416,7 +711,9 @@
   function scheduleReload(){
     stopReadiness();
     lastWarmStart = null;
+    currentPublic = null;
     setReady(false, "checking…", "Rechecking event…", "warn");
+    setStatus("checking…", "warn");
     setTimeout(() => {
       refreshReadiness().catch(e => {
         log("Input change readiness error", String(e));
@@ -424,19 +721,20 @@
       });
     }, 300);
   }
+
   elEventId.addEventListener("input", scheduleReload);
   elEventKey.addEventListener("input", scheduleReload);
 
   (async () => {
     try{
-      setStatus("init…");
+      setStatus("init…", "warn");
       const s = await navigator.mediaDevices.getUserMedia({ video:true, audio:true });
-      s.getTracks().forEach(t=>t.stop());
+      s.getTracks().forEach(t => t.stop());
       await listDevices();
       await refreshReadiness();
-    }catch(e){
+    } catch(e){
       log("Init error", String(e));
-      setStatus("needs permissions");
+      setStatus("needs permissions", "bad");
       setReady(false, "no", "Allow camera/microphone permissions, then reload.", "bad");
     }
   })();
