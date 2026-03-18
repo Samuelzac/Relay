@@ -5,51 +5,116 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Relay — Success</title>
   <style>
-    html,body{margin:0;padding:0;background:#000;color:#fff;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
-    .wrap{max-width:760px;margin:0 auto;padding:16px}
-    .card{margin-top:12px;padding:14px;border-radius:12px;background:rgba(255,255,255,.08)}
+    :root{
+      color-scheme: dark;
+      --bg:#000;
+      --card:rgba(255,255,255,.08);
+      --card2:rgba(255,255,255,.05);
+      --text:#fff;
+      --muted:rgba(255,255,255,.78);
+      --soft:rgba(255,255,255,.6);
+      --good:#34d399;
+      --warn:#fbbf24;
+      --bad:#ff8a80;
+      --border:rgba(255,255,255,.12);
+      --btn:#1976d2;
+      --btn2:rgba(255,255,255,.14);
+    }
+    html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+    .wrap{max-width:820px;margin:0 auto;padding:16px}
+    h2{margin:8px 0 0}
+    .card{margin-top:12px;padding:16px;border-radius:16px;background:var(--card);border:1px solid var(--border)}
     .row{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
-    a.btn,button{display:inline-block;padding:12px 14px;border-radius:10px;border:0;background:#1976d2;color:#fff;text-decoration:none;cursor:pointer}
-    a.secondary,button.secondary{background:rgba(255,255,255,.14)}
-    .muted{opacity:.82;font-size:13px;line-height:1.35}
-    .bad{color:#ff8a80}
-    code{word-break:break-all;display:block;background:rgba(255,255,255,.06);padding:10px;border-radius:10px}
-    .tiny{font-size:12px;opacity:.75}
+    .stack{display:grid;gap:12px}
+    .btn,button{
+      display:inline-flex;align-items:center;justify-content:center;gap:8px;
+      min-height:48px;padding:12px 16px;border-radius:12px;border:0;background:var(--btn);
+      color:#fff;text-decoration:none;cursor:pointer;font-weight:700
+    }
+    .btn.secondary,button.secondary{background:var(--btn2)}
+    .btn[aria-disabled="true"],button:disabled{
+      opacity:.5;cursor:not-allowed;pointer-events:none;filter:grayscale(.15)
+    }
+    .muted{color:var(--muted);font-size:13px;line-height:1.45}
+    .tiny{font-size:12px;color:var(--soft)}
+    .bad{color:var(--bad)}
+    .good{color:var(--good)}
+    .warn{color:var(--warn)}
+    code{
+      word-break:break-all;display:block;background:var(--card2);padding:10px 12px;
+      border-radius:12px;border:1px solid var(--border)
+    }
+    .pill{
+      display:inline-flex;align-items:center;gap:8px;padding:6px 10px;border-radius:999px;
+      border:1px solid var(--border);background:var(--card2);font-size:12px
+    }
+    .dot{width:8px;height:8px;border-radius:999px;background:#888}
+    .pill.good .dot{background:var(--good)}
+    .pill.warn .dot{background:var(--warn)}
+    .pill.bad .dot{background:var(--bad)}
+    .grid{display:grid;gap:12px;grid-template-columns:1fr}
+    @media (min-width:780px){ .grid{grid-template-columns:1fr 1fr; } }
+    .linkBlock{margin-top:12px}
   </style>
 </head>
 <body>
   <div class="wrap">
     <h2>Payment successful</h2>
-    <div class="card">
+
+    <div class="card stack">
       <div id="msg" class="muted">Loading your event…</div>
 
-      <div id="out" style="margin-top:12px; display:none;">
-        <div class="row">
-          <a id="watchBtn" class="btn" href="#" target="_blank" rel="noopener">Watch link</a>
-          <a id="broadcastBtn" class="btn secondary" href="#" target="_blank" rel="noopener">Broadcast link (phone)</a>
+      <div id="out" style="display:none;">
+        <div class="grid">
+          <div class="card" style="margin-top:0;">
+            <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap;">
+              <strong>Broadcast</strong>
+              <span id="broadcastState" class="pill warn"><span class="dot"></span><span>Checking…</span></span>
+            </div>
+            <div class="muted" id="broadcastInfo" style="margin-top:10px;">Checking broadcaster access…</div>
+            <div class="row">
+              <a id="broadcastBtn" class="btn secondary" href="#" target="_blank" rel="noopener" aria-disabled="true">Broadcast</a>
+            </div>
+          </div>
+
+          <div class="card" style="margin-top:0;">
+            <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap;">
+              <strong>Watch</strong>
+              <span id="watchState" class="pill warn"><span class="dot"></span><span>Checking…</span></span>
+            </div>
+            <div class="muted" id="watchInfo" style="margin-top:10px;">Preparing viewer access…</div>
+            <div class="row">
+              <a id="watchBtn" class="btn" href="#" target="_blank" rel="noopener" aria-disabled="true">Watch</a>
+            </div>
+          </div>
         </div>
 
-        <div style="margin-top:12px;">
-          <div class="muted">Watch link (share this):</div>
+        <div class="linkBlock">
+          <div class="muted">Watch link</div>
           <code id="watchUrl"></code>
         </div>
 
-        <div style="margin-top:12px;">
-          <div class="muted">Broadcast link (keep private):</div>
+        <div class="linkBlock">
+          <div class="muted">Broadcast link</div>
           <code id="broadcastUrl"></code>
         </div>
 
-        <div style="margin-top:12px;" class="muted">
-          Tip: open the Broadcast link on your phone → tap “Go Live”.
-        </div>
+        <details style="margin-top:12px;">
+          <summary class="tiny" style="cursor:pointer;">Show event details</summary>
+          <div style="margin-top:12px;">
+            <div class="tiny">Event</div>
+            <code id="eventIdCode"></code>
+            <div class="tiny" style="margin-top:10px;">Success token</div>
+            <code id="tokenCode"></code>
+          </div>
+        </details>
       </div>
 
-      <div id="debug" class="tiny" style="margin-top:12px; display:none;"></div>
+      <div id="debug" class="tiny" style="display:none;"></div>
     </div>
   </div>
 
 <script>
-  // Default API base (can be overridden by ?api=https://... if needed)
   const DEFAULT_API_BASE = "https://stream-platform-api.kiwismurph.workers.dev";
 
   const msg = document.getElementById("msg");
@@ -59,6 +124,18 @@
   const watchUrlEl = document.getElementById("watchUrl");
   const broadcastUrlEl = document.getElementById("broadcastUrl");
   const debugEl = document.getElementById("debug");
+  const watchState = document.getElementById("watchState");
+  const broadcastState = document.getElementById("broadcastState");
+  const watchInfo = document.getElementById("watchInfo");
+  const broadcastInfo = document.getElementById("broadcastInfo");
+  const eventIdCode = document.getElementById("eventIdCode");
+  const tokenCode = document.getElementById("tokenCode");
+
+  let readinessTimer = null;
+  let linksPayload = null;
+  let watchParts = null;
+  let broadcastParts = null;
+  let hlsWarmLock = false;
 
   function setErr(e, extra) {
     msg.innerHTML = `<span class="bad">${e}</span>`;
@@ -76,16 +153,193 @@
     return "";
   }
 
+  function setPill(el, kind, text){
+    el.className = `pill ${kind || ""}`.trim();
+    el.querySelector("span:last-child").textContent = text;
+  }
+
+  function setLinkReady(el, ready){
+    el.setAttribute("aria-disabled", ready ? "false" : "true");
+  }
+
+  async function fetchJson(url, init){
+    const r = await fetch(url, init);
+    const t = await r.text();
+    let j = null;
+    try { j = t ? JSON.parse(t) : null; } catch {}
+    if(!r.ok){
+      const err = (j && (j.error || j.message)) ? (j.error || j.message) : (t || `HTTP ${r.status}`);
+      const e = new Error(String(err));
+      e.status = r.status;
+      e.body = j ?? t;
+      throw e;
+    }
+    return j;
+  }
+
+  function parseLinkParts(link){
+    const u = new URL(link);
+    const p = new URLSearchParams(u.search);
+    return {
+      url: link,
+      eventId: p.get("event") || p.get("id") || "",
+      key: p.get("key") || "",
+    };
+  }
+
+  async function pollBroadcastReadiness(apiBase){
+    if (!broadcastParts?.eventId || !broadcastParts?.key) {
+      setPill(broadcastState, "bad", "Unavailable");
+      broadcastInfo.textContent = "Missing broadcast link details.";
+      setLinkReady(broadcastBtn, false);
+      return false;
+    }
+
+    try {
+      await fetchJson(`${apiBase}/api/events/${encodeURIComponent(broadcastParts.eventId)}/rtc/provision?key=${encodeURIComponent(broadcastParts.key)}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "{}",
+        credentials: "include"
+      });
+      setPill(broadcastState, "good", "Ready");
+      broadcastInfo.textContent = "Broadcaster access is ready.";
+      setLinkReady(broadcastBtn, true);
+      return true;
+    } catch (e) {
+      setPill(broadcastState, "warn", "Preparing");
+      broadcastInfo.textContent = "Preparing broadcaster access…";
+      setLinkReady(broadcastBtn, false);
+      return false;
+    }
+  }
+
+  async function warmHls(apiBase){
+    if (hlsWarmLock || !watchParts?.eventId || !watchParts?.key) return;
+    hlsWarmLock = true;
+    try {
+      await fetchJson(`${apiBase}/api/events/${encodeURIComponent(watchParts.eventId)}/start?key=${encodeURIComponent(watchParts.key)}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "{}",
+        credentials: "include"
+      });
+    } catch {}
+    finally {
+      setTimeout(() => { hlsWarmLock = false; }, 3500);
+    }
+  }
+
+  async function probePlayback(url){
+    try{
+      const r = await fetch(url, { method: "GET", cache: "no-store" });
+      return r.ok;
+    }catch{
+      return false;
+    }
+  }
+
+  async function pollWatchReadiness(apiBase){
+    if (!watchParts?.eventId || !watchParts?.key) {
+      setPill(watchState, "bad", "Unavailable");
+      watchInfo.textContent = "Missing watch link details.";
+      setLinkReady(watchBtn, false);
+      return false;
+    }
+
+    try {
+      const pub = await fetchJson(`${apiBase}/api/events/${encodeURIComponent(watchParts.eventId)}/public?key=${encodeURIComponent(watchParts.key)}`, {
+        method: "GET",
+        credentials: "include",
+        cache: "no-store"
+      });
+
+      if (pub.expired) {
+        setPill(watchState, "bad", "Expired");
+        watchInfo.textContent = "This event has expired.";
+        setLinkReady(watchBtn, false);
+        return false;
+      }
+
+      if (pub.hls_enabled) {
+        await warmHls(apiBase);
+        if (!pub.playback_url) {
+          setPill(watchState, "warn", "Preparing");
+          watchInfo.textContent = "Preparing watch stream…";
+          setLinkReady(watchBtn, false);
+          return false;
+        }
+
+        const playbackReady = await probePlayback(pub.playback_url);
+        if (!playbackReady) {
+          setPill(watchState, "warn", "Preparing");
+          watchInfo.textContent = "Preparing watch stream…";
+          setLinkReady(watchBtn, false);
+          return false;
+        }
+
+        setPill(watchState, "good", "Ready");
+        watchInfo.textContent = "Watch stream is ready.";
+        setLinkReady(watchBtn, true);
+        return true;
+      }
+
+      if (pub.rtc_enabled) {
+        try {
+          await fetchJson(`${apiBase}/api/events/${encodeURIComponent(watchParts.eventId)}/rtc/token?key=${encodeURIComponent(watchParts.key)}`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: "{}",
+            credentials: "include"
+          });
+          setPill(watchState, "good", "Ready");
+          watchInfo.textContent = "Viewer access is ready.";
+          setLinkReady(watchBtn, true);
+          return true;
+        } catch {
+          setPill(watchState, "warn", "Preparing");
+          watchInfo.textContent = "Preparing viewer access…";
+          setLinkReady(watchBtn, false);
+          return false;
+        }
+      }
+
+      setPill(watchState, "bad", "Unavailable");
+      watchInfo.textContent = "No viewer mode is enabled for this event.";
+      setLinkReady(watchBtn, false);
+      return false;
+    } catch (e) {
+      setPill(watchState, "warn", "Preparing");
+      watchInfo.textContent = "Preparing viewer access…";
+      setLinkReady(watchBtn, false);
+      return false;
+    }
+  }
+
+  function scheduleReadiness(apiBase){
+    clearTimeout(readinessTimer);
+    readinessTimer = setTimeout(async () => {
+      const [bReady, wReady] = await Promise.all([
+        pollBroadcastReadiness(apiBase),
+        pollWatchReadiness(apiBase)
+      ]);
+
+      msg.textContent = (bReady && wReady)
+        ? "Your links are ready."
+        : "Your event is paid. Stream access is still warming up.";
+      scheduleReadiness(apiBase);
+    }, 3500);
+  }
+
   (async () => {
     const params = new URLSearchParams(location.search);
 
-    // Support all common variants:
-    // Worker currently sends: ?event=<id>&st=<token>
-    // Older/other versions might send: ?id=<id>&st=<token> OR ?eventId=<id>&token=<token>
     const eventId = pickParam(params, ["event", "eventId", "id"]);
     const token  = pickParam(params, ["st", "token", "successToken"]);
-
     const apiBase = pickParam(params, ["api"]) || DEFAULT_API_BASE;
+
+    eventIdCode.textContent = eventId || "(missing)";
+    tokenCode.textContent = token || "(missing)";
 
     if (!eventId || !token) {
       setErr(
@@ -99,36 +353,40 @@
       const safeEventId = encodeURIComponent(eventId);
       const safeToken = encodeURIComponent(token);
 
-      const r = await fetch(`${apiBase}/api/events/${safeEventId}/links?st=${safeToken}`, {
+      const j = await fetchJson(`${apiBase}/api/events/${safeEventId}/links?st=${safeToken}`, {
         method: "GET",
         headers: { "accept": "application/json" },
       });
-
-      const text = await r.text();
-      let j = null;
-      try { j = JSON.parse(text); } catch { j = null; }
-
-      if (!r.ok) {
-        const err = (j && (j.error || j.message)) ? (j.error || j.message) : (text || "Request failed");
-        setErr(String(err), `API: ${apiBase}  Event: ${eventId}`);
-        return;
-      }
 
       const watchUrl = j && j.watch_url;
       const broadcastUrl = j && j.broadcast_url;
 
       if (!watchUrl || !broadcastUrl) {
-        setErr("Unexpected response from server.", `Response: ${text}`);
+        setErr("Unexpected response from server.", JSON.stringify(j));
         return;
       }
+
+      linksPayload = j;
+      watchParts = parseLinkParts(watchUrl);
+      broadcastParts = parseLinkParts(broadcastUrl);
 
       watchBtn.href = watchUrl;
       broadcastBtn.href = broadcastUrl;
       watchUrlEl.textContent = watchUrl;
       broadcastUrlEl.textContent = broadcastUrl;
 
-      msg.textContent = "Your links are ready.";
       out.style.display = "block";
+      msg.textContent = "Your event is paid. Stream access is still warming up.";
+
+      setLinkReady(watchBtn, false);
+      setLinkReady(broadcastBtn, false);
+
+      await Promise.all([
+        pollBroadcastReadiness(apiBase),
+        pollWatchReadiness(apiBase)
+      ]);
+
+      scheduleReadiness(apiBase);
     } catch (e) {
       setErr("Network error.", String(e && e.message ? e.message : e));
     }
