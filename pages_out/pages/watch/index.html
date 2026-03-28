@@ -5,10 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Relay Watch</title>
 
-  <!-- Amazon IVS Real-Time Web Broadcast SDK (Stages / WebRTC) -->
   <script src="https://web-broadcast.live-video.net/1.17.0/amazon-ivs-web-broadcast.js"></script>
-
-  <!-- Amazon IVS Player SDK (HLS) -->
   <script src="https://player.live-video.net/1.48.0/amazon-ivs-player.min.js"></script>
 
   <style>
@@ -33,6 +30,8 @@
     .log { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:12px; white-space:pre-wrap; background:#0b1220; border:1px solid #202a3a; border-radius:12px; padding:10px; max-height:240px; overflow:auto; }
     .muted { color:#a3a3a3; }
     .err { color:#ffb4b4; }
+    .state-line { display:flex; gap:8px; flex-wrap:wrap; margin:8px 0 0; }
+    .chip { padding:6px 10px; border-radius:999px; border:1px solid #334155; font-size:12px; background:#111827; }
   </style>
 </head>
 <body>
@@ -70,6 +69,7 @@
 
         <div id="errorLine" class="muted err" style="margin:6px 0 0; display:none;"></div>
         <div id="readyInfo" class="muted" style="margin:6px 0 10px;"></div>
+        <div id="stateLine" class="state-line"></div>
 
         <div id="hlsWrap" style="display:none;">
           <div class="muted" style="margin:8px 0 6px;">HLS Player</div>
@@ -113,6 +113,7 @@
   const elReadyInfo = $("readyInfo");
   const elLog = $("log");
   const elErr = $("errorLine");
+  const elStateLine = $("stateLine");
 
   const elHlsWrap = $("hlsWrap");
   const elRtcWrap = $("rtcWrap");
@@ -126,13 +127,12 @@
   const btnClear = $("btnClear");
 
   let ev = null;
-  let readyState = { ready:false, reason:"Checking event…" };
+  let readinessState = { ready:false, reason:"Checking event…" };
   let readinessTimer = null;
-  let autoSelectedMode = null;
+  let currentReadiness = null;
 
   let ivsPlayer = null;
   let hlsRetryTimer = null;
-  let lastStartAt = 0;
 
   let stage = null;
   let stageToken = null;
@@ -155,7 +155,10 @@
 
   btnClear.onclick = () => { elLog.textContent = ""; };
 
-  function setStatus(text){ elStatusPill.textContent = "status: " + text; }
+  function setStatus(text, kind){
+    elStatusPill.className = "pill " + (kind || "");
+    elStatusPill.textContent = "status: " + text;
+  }
   function setModePill(){ elModePill.textContent = "mode: " + elMode.value; }
   function setReadyPill(ready, text, kind){
     elReadyPill.className = "pill " + (kind || (ready ? "good" : "warn"));
@@ -163,10 +166,23 @@
   }
 
   function setReadyState(ready, reason, kind){
-    readyState = { ready, reason };
+    readinessState = { ready, reason };
     btnPlay.disabled = !ready;
     elReadyInfo.textContent = reason || "";
     setReadyPill(ready, ready ? "yes" : "no", kind);
+  }
+
+  function renderFlags(readiness){
+    const flags = [];
+    if (!readiness) {
+      elStateLine.innerHTML = "";
+      return;
+    }
+    if (readiness.rtc_enabled) flags.push(["RTC ready", readiness.can_watch_rtc]);
+    if (readiness.hls_enabled) flags.push(["Playback URL", readiness.playback_url_exists]);
+    if (readiness.hls_enabled) flags.push(["Composition", readiness.composition_started]);
+    flags.push(["Window open", readiness.stream_window_open]);
+    elStateLine.innerHTML = flags.map(([label, ok]) => `<span class="chip">${label}: ${ok ? "yes" : "no"}</span>`).join("");
   }
 
   function apiUrl(path){ return API_BASE + path; }
@@ -215,13 +231,8 @@
     if(qs.get("mode")) return;
 
     if(elMode.value === "auto"){
-      if(hlsEnabled && !rtcEnabled) {
-        elMode.value = "hls";
-        autoSelectedMode = "hls";
-      } else if(rtcEnabled && !hlsEnabled) {
-        elMode.value = "rtc";
-        autoSelectedMode = "rtc";
-      }
+      if(hlsEnabled) elMode.value = "hls";
+      else if(rtcEnabled) elMode.value = "rtc";
     }
   }
 
@@ -231,13 +242,13 @@
     const key = elEventKey.value.trim();
     if(!eventId || !key) throw new Error("Missing event or key");
 
-    setStatus("loading…");
+    setStatus("loading…", "warn");
     setModePill();
 
     const pub = await apiGet(`/api/events/${encodeURIComponent(eventId)}/public?key=${encodeURIComponent(key)}`);
     ev = pub;
 
-    setStatus(pub.status || "ok");
+    setStatus(pub.status || "ok", pub.expired ? "bad" : "");
     log("PUBLIC", pub);
 
     applyModeForEvent(pub);
@@ -248,6 +259,15 @@
     else showNone();
 
     return pub;
+  }
+
+  async function loadReadiness(){
+    const eventId = elEventId.value.trim();
+    const key = elEventKey.value.trim();
+    const res = await apiGet(`/api/events/${encodeURIComponent(eventId)}/readiness?key=${encodeURIComponent(key)}`);
+    currentReadiness = res?.readiness || null;
+    renderFlags(currentReadiness);
+    return res;
   }
 
   function stopReadinessPolling(){
@@ -285,18 +305,6 @@
     elHlsInfo.textContent = "";
   }
 
-  async function ensureStartedForHls(){
-    const now = Date.now();
-    if(now - lastStartAt < 2500) return;
-    lastStartAt = now;
-
-    const eventId = elEventId.value.trim();
-    const key = elEventKey.value.trim();
-
-    const res = await apiPost(`/api/events/${encodeURIComponent(eventId)}/start?key=${encodeURIComponent(key)}`, {});
-    log("START", res);
-  }
-
   async function probePlayback(url){
     try{
       const r = await fetch(url, { method:"GET", cache:"no-store" });
@@ -309,25 +317,38 @@
 
   function isPlayerSupportedSafe(){
     if(!window.IVSPlayer) return false;
-
     try{
       if(typeof IVSPlayer.isPlayerSupported === "function") return !!IVSPlayer.isPlayerSupported();
       if(typeof IVSPlayer.isPlayerSupported === "boolean") return IVSPlayer.isPlayerSupported;
     }catch(e){
       log("IVS support check failed", String(e));
     }
-
     return typeof IVSPlayer.create === "function";
   }
 
   async function refreshReadiness(){
     showError("");
     try{
-      if(!ev) await loadPublic();
-      else ev = await loadPublic();
+      ev = await loadPublic();
+      const readyRes = await loadReadiness();
+      const readiness = readyRes?.readiness || null;
 
-      if(ev.expired){
+      if(!readiness){
+        setReadyState(false, "Checking event…", "warn");
+        scheduleReadiness(2500);
+        return;
+      }
+
+      if(readiness.expired){
+        setStatus("expired", "bad");
         setReadyState(false, "Event has expired.", "bad");
+        return;
+      }
+
+      if(!readiness.paid){
+        setStatus("awaiting payment", "warn");
+        setReadyState(false, readiness.detail || "Waiting for payment confirmation.", "warn");
+        scheduleReadiness(2500);
         return;
       }
 
@@ -337,24 +358,24 @@
           return;
         }
 
-        await ensureStartedForHls().catch(e => log("Warm start failed", String(e)));
-        ev = await loadPublic();
-
-        if(!ev.playback_url){
-          setReadyState(false, "Preparing HLS playback URL…", "warn");
+        if(!readiness.playback_url_exists){
+          setStatus("waiting for stream", "warn");
+          setReadyState(false, "Waiting for stream.", "warn");
           scheduleReadiness(2500);
           return;
         }
 
-        const playbackReady = await probePlayback(ev.playback_url);
+        const playbackReady = await probePlayback(readiness.playback_url);
         if(!playbackReady){
-          setReadyState(false, "Preparing HLS playlist…", "warn");
+          setStatus(readiness.composition_started ? "stream detected" : "waiting for stream", readiness.composition_started ? "good" : "warn");
+          setReadyState(false, readiness.composition_started ? "Stream detected. Preparing playlist…" : "Waiting for stream.", readiness.composition_started ? "good" : "warn");
           scheduleReadiness(2500);
           return;
         }
 
+        setStatus("live", "good");
         setReadyState(true, "HLS is ready to watch.", "good");
-        elHlsInfo.textContent = ev.playback_url;
+        elHlsInfo.textContent = readiness.playback_url;
         return;
       }
 
@@ -364,10 +385,19 @@
           return;
         }
 
+        if(!readiness.can_watch_rtc){
+          setStatus("waiting for stream", "warn");
+          setReadyState(false, readiness.detail || "Waiting for stream.", "warn");
+          scheduleReadiness(2500);
+          return;
+        }
+
         try{
           await rtcViewerToken(true);
+          setStatus("stream detected", "good");
           setReadyState(true, "RTC is ready. Click Play to connect.", "good");
         }catch(e){
+          setStatus("preparing", "warn");
           setReadyState(false, "Preparing RTC viewer access…", "warn");
           log("RTC readiness failed", String(e));
           scheduleReadiness(2500);
@@ -375,13 +405,7 @@
         return;
       }
 
-      // Auto mode: choose best available and keep button disabled until that path is ready
-      if(ev.rtc_enabled && !ev.hls_enabled){
-        elMode.value = "rtc";
-        setModePill();
-        return refreshReadiness();
-      }
-      if(ev.hls_enabled && !ev.rtc_enabled){
+      if(ev.hls_enabled){
         elMode.value = "hls";
         setModePill();
         return refreshReadiness();
@@ -402,20 +426,15 @@
 
   async function playHls(){
     if(!ev) await loadPublic();
+    if(!currentReadiness) await loadReadiness();
     if(!ev.hls_enabled) throw new Error("This event is not HLS-enabled.");
 
-    await ensureStartedForHls();
-    await new Promise(r => setTimeout(r, 900));
-    ev = await loadPublic();
-
-    const playbackUrl = ev.playback_url;
+    const playbackUrl = currentReadiness?.playback_url || ev.playback_url;
     if(!playbackUrl) throw new Error("No playback_url returned yet.");
     elHlsInfo.textContent = playbackUrl;
 
     const videoEl = $("hlsVideo");
-    if(!isPlayerSupportedSafe()){
-      throw new Error("IVS Player not supported in this browser.");
-    }
+    if(!isPlayerSupportedSafe()) throw new Error("IVS Player not supported in this browser.");
 
     stopHls();
 
@@ -424,12 +443,12 @@
 
     const tryLoad = async (label) => {
       if(!ivsPlayer) return;
-      const urlNow = (ev && ev.playback_url) ? ev.playback_url : playbackUrl;
+      const urlNow = (currentReadiness && currentReadiness.playback_url) ? currentReadiness.playback_url : playbackUrl;
       log(`HLS load (${label})`, urlNow);
       try{
         ivsPlayer.load(urlNow);
         await ivsPlayer.play();
-        setStatus("playing (hls)");
+        setStatus("playing (hls)", "good");
       }catch(e){
         log("HLS load/play threw", String(e));
       }
@@ -440,8 +459,6 @@
       hlsRetryTimer = setTimeout(async () => {
         hlsRetryTimer = null;
         try{
-          await ensureStartedForHls();
-          ev = await loadPublic();
           await refreshReadiness();
         }catch(e){
           log("HLS retry failed", String(e));
@@ -452,18 +469,18 @@
 
     ivsPlayer.addEventListener(IVSPlayer.PlayerEventType.ERROR, (err) => {
       log("IVS ERROR", err);
-      setStatus("hls error");
+      setStatus("hls retrying", "warn");
       scheduleRetry("retry");
     });
 
     ivsPlayer.addEventListener(IVSPlayer.PlayerEventType.ENDED, () => {
       log("IVS ENDED");
-      setStatus("hls ended");
+      setStatus("hls ended", "warn");
       scheduleRetry("ended-retry");
     });
 
     ivsPlayer.addEventListener(IVSPlayer.PlayerState.PLAYING, () => {
-      setStatus("playing (hls)");
+      setStatus("live", "good");
       showError("");
       setReadyState(true, "HLS is ready to watch.", "good");
     });
@@ -542,12 +559,12 @@
     stage.on(StageEvents.STAGE_CONNECTION_STATE_CHANGED, (state) => {
       log("RTC state", state);
       if(state === StageConnectionState.CONNECTED) {
-        setStatus("playing (rtc)");
+        setStatus("live", "good");
         elRtcInfo.textContent = "Connected. Waiting for broadcaster…";
       }
-      if(state === StageConnectionState.CONNECTING) setStatus("rtc connecting…");
-      if(state === StageConnectionState.ERRORED) setStatus("rtc errored…");
-      if(state === StageConnectionState.DISCONNECTED) setStatus("rtc disconnected");
+      if(state === StageConnectionState.CONNECTING) setStatus("rtc connecting…", "warn");
+      if(state === StageConnectionState.ERRORED) setStatus("rtc errored…", "warn");
+      if(state === StageConnectionState.DISCONNECTED) setStatus("rtc disconnected", "bad");
     });
 
     stage.on(StageEvents.STAGE_PARTICIPANT_LEFT, (p) => {
@@ -583,18 +600,18 @@
       else await loadPublic();
     }catch(e){
       log("PLAY error:", String(e));
-      setStatus("error");
+      setStatus("error", "bad");
       showError(String(e));
       await refreshReadiness().catch(() => {});
     }finally{
-      btnPlay.disabled = !readyState.ready;
+      btnPlay.disabled = !readinessState.ready;
     }
   }
 
   function onStop(){
     stopHls();
     stopRtc();
-    setStatus("stopped");
+    setStatus("stopped", "warn");
     showError("");
   }
 
@@ -606,7 +623,7 @@
       await refreshReadiness();
     } catch(e){
       log("LOAD error:", String(e));
-      setStatus("error");
+      setStatus("error", "bad");
       showError(String(e));
       scheduleReadiness(2500);
     }
@@ -629,7 +646,7 @@
   function scheduleReloadFromInputs(){
     stopReadinessPolling();
     setReadyState(false, "Checking event…", "warn");
-    autoSelectedMode = null;
+    currentReadiness = null;
     ev = null;
     setTimeout(() => {
       loadPublic().then(refreshReadiness).catch(e => {
@@ -649,7 +666,7 @@
       await refreshReadiness();
     }catch(e){
       log("Initial load failed:", String(e));
-      setStatus("error");
+      setStatus("error", "bad");
       showError(String(e));
       scheduleReadiness(2500);
     }

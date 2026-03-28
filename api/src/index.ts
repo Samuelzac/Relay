@@ -1,4 +1,3 @@
-// src/index.ts
 import { getClient } from "./db";
 import { randomSecretUrlSafe, sha256Hex, encryptString, decryptString } from "./crypto";
 import { SeatsDO } from "./seats_do";
@@ -18,6 +17,32 @@ import {
 export { SeatsDO, BroadcastLockDO };
 
 type Env = any;
+type AccessRole = "viewer" | "broadcaster";
+
+type Readiness = {
+  role: AccessRole;
+  paid: boolean;
+  expired: boolean;
+  stage_exists: boolean;
+  hls_enabled: boolean;
+  rtc_enabled: boolean;
+  hls_channel_exists: boolean;
+  encoder_configuration_exists: boolean;
+  composition_started: boolean;
+  playback_url_exists: boolean;
+  whip_url_exists: boolean;
+  stream_window_open: boolean;
+  can_issue_broadcaster_token: boolean;
+  can_issue_viewer_token: boolean;
+  can_go_live: boolean;
+  can_watch_hls: boolean;
+  can_watch_rtc: boolean;
+  state: string;
+  detail: string;
+  playback_url: string | null;
+  expires_at: string | null;
+  starts_at: string | null;
+};
 
 const JSON_HEADERS = {
   "content-type": "application/json; charset=utf-8",
@@ -92,9 +117,6 @@ function isExpired(ev: any) {
   return exp.getTime() <= Date.now();
 }
 
-// --- IVS Real-Time Composition helpers (Stage -> Channel (HLS)) ---
-// We store encoderConfigurationArn + compositionArn in rtc_stage_endpoints JSON for now.
-
 function getCompositionArnFromEndpoints(endpoints: any): string | null {
   try {
     return (endpoints && (endpoints.compositionArn || endpoints.composition_arn)) || null;
@@ -106,6 +128,13 @@ function getCompositionArnFromEndpoints(endpoints: any): string | null {
 function withCompositionArn(endpoints: any, compositionArn: string) {
   const base = endpoints && typeof endpoints === "object" ? endpoints : {};
   return { ...base, compositionArn };
+}
+
+function withoutCompositionArn(endpoints: any) {
+  const base = endpoints && typeof endpoints === "object" ? { ...endpoints } : {};
+  delete (base as any).compositionArn;
+  delete (base as any).composition_arn;
+  return base;
 }
 
 function getEncoderConfigArnFromEndpoints(endpoints: any): string | null {
@@ -121,56 +150,69 @@ function withEncoderConfigArn(endpoints: any, encoderConfigurationArn: string) {
   return { ...base, encoderConfigurationArn };
 }
 
+function getSharedEncoderConfigurationArn(env: Env): string | null {
+  const v =
+    env.SHARED_ENCODER_CONFIGURATION_ARN ||
+    env.IVS_SHARED_ENCODER_CONFIGURATION_ARN ||
+    env.ENCODER_CONFIGURATION_ARN ||
+    env.IVS_ENCODER_CONFIGURATION_ARN ||
+    null;
+  return v ? String(v) : null;
+}
 
-async function ensureHlsInfrastructure(client: any, env: Env, eventId: string, evIn: any) {
-  let ev = evIn;
-  if (!ev || !ev.hls_enabled) return ev;
+function isCompositionConflictError(err: any): boolean {
+  const msg = String(err?.message || err || "");
+  return (
+    msg.includes("ConflictException") ||
+    msg.includes("already exists with the given attributes") ||
+    msg.includes("409")
+  );
+}
 
-  let stageArn: string | null = (ev.rtc_stage_arn as string) || null;
-  let endpoints: any = ev.rtc_stage_endpoints ?? null;
+function accessRoleForKey(ev: any, key: string | null): AccessRole | null {
+  if (!ev || !key) return null;
+  if (key === ev.broadcast_key) return "broadcaster";
+  if (key === ev.secret_key) return "viewer";
+  return null;
+}
 
-  if (!stageArn) {
-    const st = await createStage(env, `relay-${eventId}`);
-    stageArn = st.stageArn;
-    endpoints = st.endpoints || null;
-    await updateRtc(client, eventId, stageArn, endpoints);
-    ev = await getEvent(client, eventId);
-    stageArn = (ev?.rtc_stage_arn as string) || stageArn;
-    endpoints = ev?.rtc_stage_endpoints ?? endpoints;
-  }
-
-  let channelArn: string | null = (ev.ivs_channel_arn as string) || null;
-
-  if (channelArn) {
+async function resolveEncoderConfigurationArn(
+  client: any,
+  env: Env,
+  eventId: string,
+  endpoints: any,
+  createName: string
+): Promise<{
+  encoderConfigurationArn: string | null;
+  endpoints: any;
+  source: "shared" | "stored" | "created" | "missing";
+}> {
+  const sharedArn = getSharedEncoderConfigurationArn(env);
+  if (sharedArn) {
+    const nextEndpoints = withEncoderConfigArn(endpoints, sharedArn);
     try {
-      const ch = await getChannel(env, channelArn);
-      await updateIvs(client, eventId, ch.channelArn, ch.ingestEndpoint, ch.playbackUrl, ev.ivs_stream_key_encrypted || null);
-    } catch (e) {
-      console.warn("ensureHlsInfrastructure: existing channel refresh failed", eventId, e);
-      channelArn = null;
-    }
+      const current = getEncoderConfigArnFromEndpoints(endpoints);
+      if (current !== sharedArn) {
+        await updateRtcEndpoints(client, eventId, nextEndpoints);
+      }
+    } catch {}
+    return { encoderConfigurationArn: sharedArn, endpoints: nextEndpoints, source: "shared" };
   }
 
-  if (!channelArn) {
-    const ch = await createChannel(env, `relay-${eventId}`);
-    await updateIvs(client, eventId, ch.channelArn, ch.ingestEndpoint, ch.playbackUrl, ev.ivs_stream_key_encrypted || null);
-    channelArn = ch.channelArn;
+  const storedArn = getEncoderConfigArnFromEndpoints(endpoints);
+  if (storedArn) {
+    return { encoderConfigurationArn: storedArn, endpoints, source: "stored" };
   }
 
-  ev = await getEvent(client, eventId);
-  endpoints = ev.rtc_stage_endpoints ?? endpoints;
-
-  let encoderConfigurationArn = getEncoderConfigArnFromEndpoints(endpoints);
-  if (!encoderConfigurationArn) {
-    const enc = await createEncoderConfiguration(env, `relay-${eventId}`);
-    encoderConfigurationArn = enc?.arn || enc?.encoderConfiguration?.arn || null;
-    if (encoderConfigurationArn) {
-      endpoints = withEncoderConfigArn(endpoints, encoderConfigurationArn);
-      await updateRtcEndpoints(client, eventId, endpoints);
-    }
+  const enc = await createEncoderConfiguration(env, createName);
+  const createdArn = enc?.arn || (enc as any)?.encoderConfiguration?.arn || null;
+  if (createdArn) {
+    const nextEndpoints = withEncoderConfigArn(endpoints, createdArn);
+    await updateRtcEndpoints(client, eventId, nextEndpoints);
+    return { encoderConfigurationArn: createdArn, endpoints: nextEndpoints, source: "created" };
   }
 
-  return await getEvent(client, eventId);
+  return { encoderConfigurationArn: null, endpoints, source: "missing" };
 }
 
 async function getEvent(client: any, id: string) {
@@ -250,13 +292,297 @@ function dollarsToCents(n: any): number {
   return Math.round(v * 100);
 }
 
+async function ensureEventStartedWindow(client: any, env: Env, eventId: string, ev: any) {
+  let startedNow = false;
+  let startsAtIso = ev.starts_at ? new Date(ev.starts_at).toISOString() : null;
+  let expiresAtIso = ev.expires_at ? new Date(ev.expires_at).toISOString() : null;
+
+  if (!ev.starts_at) {
+    const now = new Date();
+    const tierHours = hoursForTier(env, Number(ev.tier));
+    const graceMin = Number(env.GRACE_MINUTES || "0");
+    const expires = new Date(now.getTime() + (tierHours * 60 + graceMin) * 60 * 1000);
+
+    await client.query(
+      `update public.events
+       set starts_at=$1, expires_at=$2
+       where id=$3 and starts_at is null`,
+      [now.toISOString(), expires.toISOString(), eventId]
+    );
+
+    startedNow = true;
+    startsAtIso = now.toISOString();
+    expiresAtIso = expires.toISOString();
+    ev = await getEvent(client, eventId);
+  }
+
+  return { ev, startedNow, startsAtIso, expiresAtIso };
+}
+
+async function ensureRtcStage(client: any, env: Env, eventId: string, evIn: any) {
+  let ev = evIn;
+  let stageArn: string | null = (ev?.rtc_stage_arn as string) || null;
+  let endpoints: any = ev?.rtc_stage_endpoints ?? null;
+
+  if (stageArn) {
+    return { ev, stageArn, endpoints, created: false };
+  }
+
+  const st = await createStage(env, `relay-${eventId}`);
+  stageArn = st.stageArn;
+  endpoints = st.endpoints || null;
+  await updateRtc(client, eventId, stageArn, endpoints);
+  ev = await getEvent(client, eventId);
+
+  return {
+    ev,
+    stageArn: (ev?.rtc_stage_arn as string) || stageArn,
+    endpoints: ev?.rtc_stage_endpoints ?? endpoints,
+    created: true,
+  };
+}
+
+async function ensureHlsChannel(client: any, env: Env, eventId: string, evIn: any) {
+  let ev = evIn;
+  if (!ev || !ev.hls_enabled) {
+    return { ev, created: false };
+  }
+
+  let channelArn: string | null = (ev.ivs_channel_arn as string) || null;
+
+  if (channelArn) {
+    try {
+      const ch = await getChannel(env, channelArn);
+      await updateIvs(client, eventId, ch.channelArn, ch.ingestEndpoint, ch.playbackUrl, ev.ivs_stream_key_encrypted || null);
+      ev = await getEvent(client, eventId);
+      return { ev, created: false };
+    } catch (e) {
+      console.warn("ensureHlsChannel: existing channel refresh failed", eventId, e);
+      channelArn = null;
+    }
+  }
+
+  const ch = await createChannel(env, `relay-${eventId}`);
+  await updateIvs(client, eventId, ch.channelArn, ch.ingestEndpoint, ch.playbackUrl, ev.ivs_stream_key_encrypted || null);
+  ev = await getEvent(client, eventId);
+  return { ev, created: true };
+}
+
+async function ensureStreamKey(client: any, env: Env, eventId: string, evIn: any) {
+  let ev = evIn;
+  if (!ev?.hls_enabled) return { ev, streamKeyPlaintext: null, created: false };
+  if (!ev.ivs_channel_arn || !ev.ivs_ingest_endpoint || !ev.ivs_playback_url) {
+    throw new Error("hls_channel_not_ready");
+  }
+
+  if (ev.ivs_stream_key_encrypted) {
+    const streamKeyPlaintext = await decryptString(ev.ivs_stream_key_encrypted, env.STREAMKEY_ENC_KEY_B64);
+    return { ev, streamKeyPlaintext, created: false };
+  }
+
+  const sk = await createStreamKey(env, ev.ivs_channel_arn);
+  const enc = await encryptString(sk.streamKeyValue, env.STREAMKEY_ENC_KEY_B64);
+  await updateIvs(client, eventId, ev.ivs_channel_arn, ev.ivs_ingest_endpoint, ev.ivs_playback_url, enc);
+  ev = await getEvent(client, eventId);
+  return { ev, streamKeyPlaintext: sk.streamKeyValue, created: true };
+}
+
+async function ensureHlsInfrastructure(client: any, env: Env, eventId: string, evIn: any) {
+  let ev = evIn;
+  if (!ev || !ev.hls_enabled) return ev;
+
+  const rtc = await ensureRtcStage(client, env, eventId, ev);
+  ev = rtc.ev;
+
+  const ch = await ensureHlsChannel(client, env, eventId, ev);
+  ev = ch.ev;
+
+  const endpoints = ev.rtc_stage_endpoints ?? rtc.endpoints;
+  const encoderResolution = await resolveEncoderConfigurationArn(client, env, eventId, endpoints, `relay-${eventId}`);
+  if (encoderResolution.source === "shared") {
+    console.log("ensureHlsInfrastructure: using shared encoder configuration", encoderResolution.encoderConfigurationArn);
+  }
+
+  return await getEvent(client, eventId);
+}
+
+async function ensureCompositionStarted(client: any, env: Env, eventId: string, evIn: any) {
+  let ev = evIn;
+  let compositionStarted = false;
+  let compositionArn: string | null = null;
+
+  if (!ev?.hls_enabled) {
+    return { ev, compositionStarted, compositionArn };
+  }
+
+  ev = await ensureHlsInfrastructure(client, env, eventId, ev);
+
+  const stageArn: string | null = (ev.rtc_stage_arn as string) || null;
+  const channelArn: string | null = (ev.ivs_channel_arn as string) || null;
+  let endpoints: any = ev.rtc_stage_endpoints ?? null;
+  const encoderConfigurationArn = getEncoderConfigArnFromEndpoints(endpoints);
+
+  compositionArn = getCompositionArnFromEndpoints(endpoints);
+  if (compositionArn) {
+    return { ev, compositionStarted: true, compositionArn };
+  }
+
+  if (!stageArn || !channelArn || !encoderConfigurationArn) {
+    console.log(
+      "ensureCompositionStarted: missing prerequisites",
+      JSON.stringify({ stageArn, channelArn, encoderConfigurationArn })
+    );
+    return { ev, compositionStarted: false, compositionArn: null };
+  }
+
+  try {
+    const idempotencyToken = `relay-${eventId}-hls`;
+    const comp = await createComposition(env, stageArn, channelArn, encoderConfigurationArn, idempotencyToken);
+    const compArn = (comp && (comp as any).arn) || (comp as any)?.composition?.arn || null;
+
+    if (compArn) {
+      compositionArn = compArn;
+      endpoints = withCompositionArn(endpoints, compositionArn);
+      await updateRtcEndpoints(client, eventId, endpoints);
+      compositionStarted = true;
+      ev = await getEvent(client, eventId);
+      return { ev, compositionStarted, compositionArn };
+    }
+  } catch (e: any) {
+    if (isCompositionConflictError(e)) {
+      compositionArn = getCompositionArnFromEndpoints(endpoints) || "existing";
+      compositionStarted = true;
+      return { ev, compositionStarted, compositionArn };
+    }
+    console.error("ensureCompositionStarted: failed", eventId, e);
+  }
+
+  return { ev, compositionStarted, compositionArn };
+}
+
+async function preProvisionPaidEvent(client: any, env: Env, eventId: string) {
+  let ev = await getEvent(client, eventId);
+  if (!ev || ev.status !== "paid" || isExpired(ev)) return ev;
+
+  if (ev.rtc_enabled || ev.hls_enabled) {
+    try {
+      ev = (await ensureRtcStage(client, env, eventId, ev)).ev;
+    } catch (e) {
+      console.error("preProvisionPaidEvent: stage failed", eventId, e);
+    }
+  }
+
+  if (ev?.hls_enabled) {
+    try {
+      ev = await ensureHlsInfrastructure(client, env, eventId, ev);
+    } catch (e) {
+      console.error("preProvisionPaidEvent: hls infra failed", eventId, e);
+    }
+  }
+
+  return await getEvent(client, eventId);
+}
+
+function buildReadiness(ev: any, role: AccessRole): Readiness {
+  const endpoints = ev?.rtc_stage_endpoints ?? null;
+  const stageExists = !!ev?.rtc_stage_arn;
+  const hlsEnabled = !!ev?.hls_enabled;
+  const rtcEnabled = !!ev?.rtc_enabled;
+  const channelExists = !!ev?.ivs_channel_arn && !!ev?.ivs_ingest_endpoint && !!ev?.ivs_playback_url;
+  const encoderExists = !!getEncoderConfigArnFromEndpoints(endpoints);
+  const compositionStarted = !!getCompositionArnFromEndpoints(endpoints);
+  const playbackUrlExists = !!ev?.ivs_playback_url;
+  const whipUrlExists = !!endpoints?.whip;
+  const paid = ev?.status === "paid";
+  const expired = isExpired(ev);
+  const streamWindowOpen = !!ev?.starts_at && !expired;
+  const canIssueBroadcasterToken = paid && !expired && stageExists && (rtcEnabled || hlsEnabled);
+  const canIssueViewerToken = paid && !expired && rtcEnabled && stageExists;
+  const canGoLive = role === "broadcaster" && canIssueBroadcasterToken;
+  const canWatchHls = paid && !expired && hlsEnabled && playbackUrlExists;
+  const canWatchRtc = paid && !expired && rtcEnabled && stageExists;
+
+  let state = "preparing";
+  let detail = "Preparing stream infrastructure.";
+
+  if (!paid) {
+    state = "awaiting_payment";
+    detail = "Waiting for payment confirmation.";
+  } else if (expired) {
+    state = "expired";
+    detail = "This event has expired.";
+  } else if (!stageExists && (rtcEnabled || hlsEnabled)) {
+    state = "preparing_stage";
+    detail = "Creating RTC stage.";
+  } else if (hlsEnabled && !channelExists) {
+    state = "preparing_hls_channel";
+    detail = "Creating HLS channel.";
+  } else if (hlsEnabled && !encoderExists) {
+    state = "preparing_encoder";
+    detail = "Resolving encoder configuration.";
+  } else if (role === "broadcaster" && canGoLive) {
+    state = streamWindowOpen ? "live_window_open" : "ready_to_go_live";
+    detail = streamWindowOpen ? "Broadcast window is open." : "Ready to go live.";
+  } else if (role === "viewer" && hlsEnabled && compositionStarted) {
+    state = "stream_detected";
+    detail = "Stream path detected. Waiting for media.";
+  } else if (role === "viewer" && (canWatchHls || canWatchRtc)) {
+    state = "waiting_for_stream";
+    detail = "Waiting for broadcaster to publish media.";
+  }
+
+  return {
+    role,
+    paid,
+    expired,
+    stage_exists: stageExists,
+    hls_enabled: hlsEnabled,
+    rtc_enabled: rtcEnabled,
+    hls_channel_exists: channelExists,
+    encoder_configuration_exists: encoderExists,
+    composition_started: compositionStarted,
+    playback_url_exists: playbackUrlExists,
+    whip_url_exists: whipUrlExists,
+    stream_window_open: streamWindowOpen,
+    can_issue_broadcaster_token: canIssueBroadcasterToken,
+    can_issue_viewer_token: canIssueViewerToken,
+    can_go_live: canGoLive,
+    can_watch_hls: canWatchHls,
+    can_watch_rtc: canWatchRtc,
+    state,
+    detail,
+    playback_url: ev?.ivs_playback_url || null,
+    expires_at: ev?.expires_at || null,
+    starts_at: ev?.starts_at || null,
+  };
+}
+
+async function maybeRefreshPaidStatus(client: any, env: Env, ev: any) {
+  if (!ev) return ev;
+  if (ev.status === "paid" || !ev.stripe_session_id) return ev;
+
+  try {
+    const stripe = stripeClient(env);
+    const sess = await stripe.checkout.sessions.retrieve(ev.stripe_session_id);
+    if (sess.payment_status === "paid") {
+      await markPaid(client, ev.id);
+      return await getEvent(client, ev.id);
+    }
+  } catch (e) {
+    console.error("maybeRefreshPaidStatus failed", ev.id, e);
+  }
+  return ev;
+}
+
 export default {
   async fetch(request: Request, env: Env) {
     const url = new URL(request.url);
     const { pathname } = url;
     const method = request.method.toUpperCase();
 
-    if (method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders(env) });
+    if (method === "OPTIONS") {
+      return new Response(null, { status: 204, headers: corsHeaders(env) });
+    }
 
     try {
       if (method === "GET" && pathname === "/") return text(env, "Relay API OK", 200);
@@ -412,25 +738,7 @@ export default {
             const client = await getClient(env);
             try {
               await markPaid(client, eventId);
-
-              let ev = await getEvent(client, eventId);
-              if ((ev?.rtc_enabled || ev?.hls_enabled) && !ev.rtc_stage_arn && ev.status === "paid" && !isExpired(ev)) {
-                try {
-                  const st = await createStage(env, `relay-${eventId}`);
-                  await updateRtc(client, eventId, st.stageArn, st.endpoints || null);
-                  ev = await getEvent(client, eventId);
-                } catch (e) {
-                  console.error("RTC stage provision failed (webhook)", eventId, e);
-                }
-              }
-
-              if (ev?.hls_enabled && ev.status === "paid" && !isExpired(ev)) {
-                try {
-                  ev = await ensureHlsInfrastructure(client, env, eventId, ev);
-                } catch (e) {
-                  console.error("HLS pre-provision failed (webhook)", eventId, e);
-                }
-              }
+              await preProvisionPaidEvent(client, env, eventId);
             } finally {
               await client.end();
             }
@@ -440,170 +748,32 @@ export default {
         return json(env, { ok: true }, 200);
       }
 
-      // POST /api/events/:id/start
-      // IMPORTANT: This route is now IDEMPOTENT.
-      // If starts_at is already set, we DO NOT early-return.
-      // We still attempt to provision HLS (stage+channel+encoder+composition) until it is working.
       {
-        const m = match(pathname, /^\/api\/events\/([^\/]+)\/start$/);
-        if (method === "POST" && m) {
+        const m = match(pathname, /^\/api\/events\/([^\/]+)\/readiness$/);
+        if (method === "GET" && m) {
           const eventId = m[0];
           const key = url.searchParams.get("key") || "";
-
           const client = await getClient(env);
           try {
             let ev = await getEvent(client, eventId);
             if (!ev) return json(env, { error: "not_found" }, 404);
 
-            // Allow either broadcast_key (broadcaster control) OR secret_key (watch link) to call /start.
-            if ((!ev.broadcast_key && !ev.secret_key) || !key) return json(env, { error: "missing_key" }, 401);
-            if (key !== ev.broadcast_key && key !== ev.secret_key) return json(env, { error: "unauthorized" }, 401);
+            const role = accessRoleForKey(ev, key);
+            if (!role) return json(env, { error: "unauthorized" }, 401);
 
-if (ev.status !== "paid") return json(env, { error: "not_paid" }, 403);
-            if (isExpired(ev)) return json(env, { error: "expired" }, 410);
-
-            console.log("START route", JSON.stringify({ eventId, hls_enabled: !!ev.hls_enabled, starts_at: ev.starts_at || null }));
-
-            // Start clock only once
-            let startedNow = false;
-            let startsAtIso = ev.starts_at ? new Date(ev.starts_at).toISOString() : null;
-            let expiresAtIso = ev.expires_at ? new Date(ev.expires_at).toISOString() : null;
-
-            if (!ev.starts_at) {
-              const now = new Date();
-              const tierHours = hoursForTier(env, Number(ev.tier));
-              const graceMin = Number(env.GRACE_MINUTES || "0");
-              const expires = new Date(now.getTime() + (tierHours * 60 + graceMin) * 60 * 1000);
-
-              await client.query(
-                `update public.events
-                 set starts_at=$1, expires_at=$2
-                 where id=$3 and starts_at is null`,
-                [now.toISOString(), expires.toISOString(), eventId]
-              );
-
-              startedNow = true;
-              startsAtIso = now.toISOString();
-              expiresAtIso = expires.toISOString();
-
-              // refresh ev
-              ev = await getEvent(client, eventId);
+            ev = await maybeRefreshPaidStatus(client, env, ev);
+            if (ev.status === "paid" && !isExpired(ev) && (ev.rtc_enabled || ev.hls_enabled)) {
+              ev = await preProvisionPaidEvent(client, env, eventId);
             }
 
-            // Provision HLS path if enabled
-            let compositionStarted = false;
-            let compositionArn: string | null = null;
-
-            if (ev.hls_enabled) {
-              console.log("START(HLS) entered", eventId);
-
-              // 1) Ensure Stage exists
-              let stageArn: string | null = (ev.rtc_stage_arn as string) || null;
-              let endpoints: any = ev.rtc_stage_endpoints ?? null;
-
-              if (!stageArn) {
-                console.log("START(HLS): creating stage...");
-                const st = await createStage(env, `relay-${eventId}`);
-                stageArn = st.stageArn;
-                endpoints = st.endpoints || null;
-                await updateRtc(client, eventId, stageArn, endpoints);
-                console.log("START(HLS): stageArn", stageArn);
-              }
-
-              // refresh after stage update
-              ev = await getEvent(client, eventId);
-              endpoints = ev.rtc_stage_endpoints ?? endpoints;
-
-              // 2) Ensure Channel exists and store playback_url
-              let channelArn: string | null = (ev.ivs_channel_arn as string) || null;
-
-              if (channelArn) {
-                try {
-                  const ch = await getChannel(env, channelArn);
-                  await updateIvs(client, eventId, ch.channelArn, ch.ingestEndpoint, ch.playbackUrl, ev.ivs_stream_key_encrypted || null);
-                  console.log("START(HLS): refreshed channel playbackUrl");
-                } catch (e) {
-                  console.warn("START(HLS): GetChannel refresh failed (will try create)", eventId, e);
-                  channelArn = null;
-                }
-              }
-
-              if (!channelArn) {
-                console.log("START(HLS): creating channel...");
-                const ch = await createChannel(env, `relay-${eventId}`);
-                await updateIvs(client, eventId, ch.channelArn, ch.ingestEndpoint, ch.playbackUrl, ev.ivs_stream_key_encrypted || null);
-                channelArn = ch.channelArn;
-                console.log("START(HLS): channelArn", channelArn);
-              }
-
-              // refresh after channel update
-              ev = await getEvent(client, eventId);
-
-              // 3) Ensure Encoder Configuration exists
-              let encoderConfigurationArn = getEncoderConfigArnFromEndpoints(endpoints);
-              if (!encoderConfigurationArn) {
-                console.log("START(HLS): creating encoder configuration...");
-                try {
-                  const enc = await createEncoderConfiguration(env, `relay-${eventId}`);
-                  encoderConfigurationArn = enc?.arn || enc?.encoderConfiguration?.arn || null;
-
-                  if (encoderConfigurationArn) {
-                    endpoints = withEncoderConfigArn(endpoints, encoderConfigurationArn);
-                    await updateRtcEndpoints(client, eventId, endpoints);
-                    console.log("START(HLS): encoderConfigurationArn", encoderConfigurationArn);
-                  } else {
-                    console.error("START(HLS): encoder config response missing arn", JSON.stringify(enc));
-                  }
-                } catch (e) {
-                  console.error("START(HLS): CreateEncoderConfiguration failed", eventId, e);
-                }
-              }
-
-              // 4) Ensure Composition is STARTED (stored ARN does NOT mean running)
-              compositionArn = getCompositionArnFromEndpoints(endpoints);
-
-              if (stageArn && channelArn && encoderConfigurationArn) {
-                console.log("START(HLS): ensuring composition started...");
-                try {
-                  // Use a stable idempotency token so retries won't create duplicate compositions.
-                  // (AWS allows replays with the same token to be treated idempotently.)
-                  const idempotencyToken = `relay-${eventId}-hls`;
-
-                  const comp = await createComposition(env, stageArn, channelArn, encoderConfigurationArn, idempotencyToken);
-
-                  const compArn = (comp && (comp as any).arn) || (comp as any)?.composition?.arn || null;
-                  if (compArn) {
-                    compositionArn = compArn;
-                    endpoints = withCompositionArn(endpoints, compositionArn);
-                    await updateRtcEndpoints(client, eventId, endpoints);
-                    compositionStarted = true;
-                    console.log("START(HLS): compositionArn", compositionArn);
-                  } else {
-                    console.error("START(HLS): StartComposition response missing arn", JSON.stringify(comp));
-                  }
-                } catch (e) {
-                  console.error("START(HLS): StartComposition failed", eventId, e);
-                }
-              } else {
-                console.log(
-                  "START(HLS): composition not started (missing prereqs)",
-                  JSON.stringify({ stageArn, channelArn, encoderConfigurationArn })
-                );
-              }
-
-}
-
-            // Re-read to return updated playback_url
-            const evOut = await getEvent(client, eventId);
-
+            const readiness = buildReadiness(ev, role);
             return json(env, {
               ok: true,
-              started: startedNow,
-              starts_at: startsAtIso,
-              expires_at: expiresAtIso,
-              playback_url: evOut.ivs_playback_url || null,
-              composition_started: compositionStarted,
-              composition_arn: compositionArn,
+              id: ev.id,
+              title: ev.title,
+              status: ev.status,
+              white_label: !!ev.white_label,
+              readiness,
             });
           } finally {
             await client.end();
@@ -611,7 +781,54 @@ if (ev.status !== "paid") return json(env, { error: "not_paid" }, 403);
         }
       }
 
-      // POST /api/events/:id/stop
+      {
+        const m = match(pathname, /^\/api\/events\/([^\/]+)\/start$/);
+        if (method === "POST" && m) {
+          const eventId = m[0];
+          const key = url.searchParams.get("key") || "";
+          const body = await request.json().catch(() => ({}));
+          const openWindow = body?.open_window !== false;
+
+          const client = await getClient(env);
+          try {
+            let ev = await getEvent(client, eventId);
+            if (!ev) return json(env, { error: "not_found" }, 404);
+
+            const role = accessRoleForKey(ev, key);
+            if (!role) return json(env, { error: "unauthorized" }, 401);
+            if (ev.status !== "paid") return json(env, { error: "not_paid" }, 403);
+            if (isExpired(ev)) return json(env, { error: "expired" }, 410);
+
+            ev = await preProvisionPaidEvent(client, env, eventId);
+
+            let startedWindow = { ev, startedNow: false, startsAtIso: ev.starts_at || null, expiresAtIso: ev.expires_at || null };
+            if (openWindow) {
+              startedWindow = await ensureEventStartedWindow(client, env, eventId, ev);
+              ev = startedWindow.ev;
+            }
+
+            const hlsResult = await ensureCompositionStarted(client, env, eventId, ev);
+            ev = hlsResult.ev;
+
+            const readiness = buildReadiness(ev, role);
+
+            return json(env, {
+              ok: true,
+              started: startedWindow.startedNow,
+              start_mode: openWindow ? "window_opened" : "warm_only",
+              starts_at: startedWindow.startsAtIso,
+              expires_at: startedWindow.expiresAtIso,
+              playback_url: ev.ivs_playback_url || null,
+              composition_started: hlsResult.compositionStarted,
+              composition_arn: hlsResult.compositionArn,
+              readiness,
+            });
+          } finally {
+            await client.end();
+          }
+        }
+      }
+
       {
         const m = match(pathname, /^\/api\/events\/([^\/]+)\/stop$/);
         if (method === "POST" && m) {
@@ -629,7 +846,7 @@ if (ev.status !== "paid") return json(env, { error: "not_paid" }, 403);
             const endpoints: any = ev.rtc_stage_endpoints ?? null;
             const compositionArn = getCompositionArnFromEndpoints(endpoints);
 
-            if (compositionArn) {
+            if (compositionArn && compositionArn !== "existing") {
               try {
                 await stopComposition(env, compositionArn);
               } catch (e) {
@@ -637,10 +854,7 @@ if (ev.status !== "paid") return json(env, { error: "not_paid" }, 403);
               }
 
               try {
-                const cleaned = { ...(endpoints || {}) };
-                delete cleaned.compositionArn;
-                delete cleaned.composition_arn;
-                await updateRtcEndpoints(client, eventId, cleaned);
+                await updateRtcEndpoints(client, eventId, withoutCompositionArn(endpoints));
               } catch (e) {
                 console.error("Failed clearing compositionArn from endpoints", eventId, e);
               }
@@ -653,7 +867,6 @@ if (ev.status !== "paid") return json(env, { error: "not_paid" }, 403);
         }
       }
 
-      // Success -> return links
       {
         const m = match(pathname, /^\/api\/events\/([^\/]+)\/links$/);
         if (method === "GET" && m) {
@@ -662,33 +875,24 @@ if (ev.status !== "paid") return json(env, { error: "not_paid" }, 403);
 
           const client = await getClient(env);
           try {
-            const ev = await getEvent(client, eventId);
+            let ev = await getEvent(client, eventId);
             if (!ev) return json(env, { error: "not_found" }, 404);
 
             const stHash = st ? await sha256Hex(st) : "";
             if (!st || stHash !== ev.success_token_hash) return json(env, { error: "unauthorized" }, 401);
 
-            if (ev.status !== "paid" && ev.stripe_session_id) {
-              try {
-                const stripe = stripeClient(env);
-                const sess = await stripe.checkout.sessions.retrieve(ev.stripe_session_id);
-                if (sess.payment_status === "paid") {
-                  await markPaid(client, eventId);
-                }
-              } catch (e) {
-                console.error("stripe verify failed", eventId, e);
-              }
+            ev = await maybeRefreshPaidStatus(client, env, ev);
+            if (ev.status === "paid" && !isExpired(ev) && (ev.rtc_enabled || ev.hls_enabled)) {
+              ev = await preProvisionPaidEvent(client, env, eventId);
             }
-
-            const ev2 = await getEvent(client, eventId);
 
             return json(env, {
               ok: true,
-              watch_url: `${env.APP_ORIGIN}/watch?event=${encodeURIComponent(eventId)}&key=${encodeURIComponent(ev2.secret_key)}`,
-              broadcast_url: `${env.APP_ORIGIN}/broadcast?event=${encodeURIComponent(eventId)}&key=${encodeURIComponent(ev2.broadcast_key)}`,
-              rtc_enabled: !!ev2.rtc_enabled,
-              hls_enabled: !!ev2.hls_enabled,
-              playback_url: ev2.ivs_playback_url || null,
+              watch_url: `${env.APP_ORIGIN}/watch?event=${encodeURIComponent(eventId)}&key=${encodeURIComponent(ev.secret_key)}`,
+              broadcast_url: `${env.APP_ORIGIN}/broadcast?event=${encodeURIComponent(eventId)}&key=${encodeURIComponent(ev.broadcast_key)}`,
+              rtc_enabled: !!ev.rtc_enabled,
+              hls_enabled: !!ev.hls_enabled,
+              playback_url: ev.ivs_playback_url || null,
             });
           } finally {
             await client.end();
@@ -696,39 +900,41 @@ if (ev.status !== "paid") return json(env, { error: "not_paid" }, 403);
         }
       }
 
-      // Public event info
       {
         const m = match(pathname, /^\/api\/events\/([^\/]+)\/public$/);
         if (method === "GET" && m) {
           const eventId = m[0];
-          const key = url.searchParams.get("key");
+          const key = url.searchParams.get("key") || "";
 
           const client = await getClient(env);
           try {
-            const ev = await getEvent(client, eventId);
+            let ev = await getEvent(client, eventId);
             if (!ev) return json(env, { error: "not_found" }, 404);
 
-            // Allow either the watch secret_key or the broadcast_key to read public status.
-            // This keeps watch links working exactly as before and lets the broadcast page
-            // poll readiness without tripping a 401.
-            if ((!ev.secret_key && !ev.broadcast_key) || !key) return json(env, { error: "missing_key" }, 401);
-            if (key !== ev.secret_key && key !== ev.broadcast_key) return json(env, { error: "unauthorized" }, 401);
+            const role = accessRoleForKey(ev, key);
+            if (!role) return json(env, { error: "unauthorized" }, 401);
 
-            const expired = isExpired(ev);
+            ev = await maybeRefreshPaidStatus(client, env, ev);
+            if (ev.status === "paid" && !isExpired(ev) && (ev.rtc_enabled || ev.hls_enabled)) {
+              ev = await preProvisionPaidEvent(client, env, eventId);
+            }
+
+            const readiness = buildReadiness(ev, role);
 
             return json(env, {
               ok: true,
               id: ev.id,
               title: ev.title,
               status: ev.status,
-              expired,
+              expired: isExpired(ev),
               starts_at: ev.starts_at || null,
               expires_at: ev.expires_at || null,
               playback_url: ev.ivs_playback_url || null,
-              rtc_stage_arn: ev.rtc_stage_arn || null,
+              rtc_stage_arn: role === "broadcaster" ? ev.rtc_stage_arn || null : null,
               rtc_enabled: !!ev.rtc_enabled,
               hls_enabled: !!ev.hls_enabled,
               white_label: !!ev.white_label,
+              readiness,
             });
           } finally {
             await client.end();
@@ -736,7 +942,6 @@ if (ev.status !== "paid") return json(env, { error: "not_paid" }, 403);
         }
       }
 
-      // SeatsDO proxy
       {
         const m = match(pathname, /^\/api\/events\/([^\/]+)\/(view-session|heartbeat|leave|stats)$/);
         if (m) {
@@ -753,7 +958,6 @@ if (ev.status !== "paid") return json(env, { error: "not_paid" }, 403);
         }
       }
 
-      // BroadcastLockDO proxy
       {
         const m = match(pathname, /^\/api\/events\/([^\/]+)\/broadcast-lock\/(acquire|release|status)$/);
         if (m) {
@@ -782,16 +986,15 @@ if (ev.status !== "paid") return json(env, { error: "not_paid" }, 403);
         }
       }
 
-      // HLS provisioning (RTMP ingest path) - kept for backwards compatibility
       {
         const m = match(pathname, /^\/api\/events\/([^\/]+)\/hls\/provision$/);
         if (method === "POST" && m) {
           const eventId = m[0];
-          const key = url.searchParams.get("key");
+          const key = url.searchParams.get("key") || "";
 
           const client = await getClient(env);
           try {
-            const ev = await getEvent(client, eventId);
+            let ev = await getEvent(client, eventId);
             if (!ev) return json(env, { error: "not_found" }, 404);
             if (ev.status !== "paid") return json(env, { error: "not_paid" }, 400);
             if (isExpired(ev)) return json(env, { error: "expired" }, 410);
@@ -800,60 +1003,17 @@ if (ev.status !== "paid") return json(env, { error: "not_paid" }, 403);
             const authRes = requireExact(key, ev.broadcast_key, env);
             if (authRes) return authRes;
 
-            if (ev.ivs_channel_arn && ev.ivs_ingest_endpoint && ev.ivs_playback_url && ev.ivs_stream_key_encrypted) {
-              const host = ingestHostFromDb(ev.ivs_ingest_endpoint);
-              const streamKey = await decryptString(ev.ivs_stream_key_encrypted, env.STREAMKEY_ENC_KEY_B64);
-              return json(env, {
-                ok: true,
-                alreadyProvisioned: true,
-                ingest: { rtmpsUrl: rtmpsUrlFromHost(host), streamKey },
-                playback: { url: ev.ivs_playback_url },
-              });
-            }
+            ev = await ensureHlsInfrastructure(client, env, eventId, ev);
+            const keyResult = await ensureStreamKey(client, env, eventId, ev);
+            ev = keyResult.ev;
 
-            if (ev.ivs_channel_arn && ev.ivs_ingest_endpoint && ev.ivs_playback_url && !ev.ivs_stream_key_encrypted) {
-              try {
-                const sk = await createStreamKey(env, ev.ivs_channel_arn);
-                const enc = await encryptString(sk.streamKeyValue, env.STREAMKEY_ENC_KEY_B64);
-
-                await updateIvs(client, eventId, ev.ivs_channel_arn, ev.ivs_ingest_endpoint, ev.ivs_playback_url, enc);
-
-                const host = ingestHostFromDb(ev.ivs_ingest_endpoint);
-                return json(env, {
-                  ok: true,
-                  alreadyProvisioned: false,
-                  ingest: { rtmpsUrl: rtmpsUrlFromHost(host), streamKey: sk.streamKeyValue },
-                  playback: { url: ev.ivs_playback_url },
-                });
-              } catch (e: any) {
-                const msg = String(e?.message || e || "");
-                if (!msg.includes("ServiceQuotaExceededException") && !msg.includes("quota exceeded")) throw e;
-              }
-            }
-
-            const oldArn = ev.ivs_channel_arn || null;
-
-            const ch = await createChannel(env, `relay-${eventId}`);
-            const sk = await createStreamKey(env, ch.channelArn);
-            const enc = await encryptString(sk.streamKeyValue, env.STREAMKEY_ENC_KEY_B64);
-
-            await updateIvs(client, eventId, ch.channelArn, ch.ingestEndpoint, ch.playbackUrl, enc);
-
-            if (oldArn && oldArn !== ch.channelArn) {
-              try {
-                await deleteIvsChannel(env, oldArn);
-              } catch (e) {
-                console.error("deleteIvsChannel failed (best-effort)", eventId, e);
-              }
-            }
-
-            const host = ingestHostFromDb(ch.ingestEndpoint);
-
+            const host = ingestHostFromDb(ev.ivs_ingest_endpoint);
             return json(env, {
               ok: true,
-              alreadyProvisioned: false,
-              ingest: { rtmpsUrl: rtmpsUrlFromHost(host), streamKey: sk.streamKeyValue },
-              playback: { url: ch.playbackUrl },
+              alreadyProvisioned: !keyResult.created,
+              ingest: { rtmpsUrl: rtmpsUrlFromHost(host), streamKey: keyResult.streamKeyPlaintext },
+              playback: { url: ev.ivs_playback_url },
+              readiness: buildReadiness(ev, "broadcaster"),
             });
           } finally {
             await client.end();
@@ -861,12 +1021,11 @@ if (ev.status !== "paid") return json(env, { error: "not_paid" }, 403);
         }
       }
 
-      // WebRTC host token mint
       {
-        const m = match(pathname, /^\/api\/events\/([^\/]+)\/rtc\/host$/);
+        const m = match(pathname, /^\/api\/events\/([^\/]+)\/rtc\/(provision|host)$/);
         if (method === "POST" && m) {
           const eventId = m[0];
-          const key = url.searchParams.get("key");
+          const key = url.searchParams.get("key") || "";
 
           const client = await getClient(env);
           try {
@@ -874,76 +1033,120 @@ if (ev.status !== "paid") return json(env, { error: "not_paid" }, 403);
             if (!ev) return json(env, { error: "not_found" }, 404);
             if (ev.status !== "paid") return json(env, { error: "not_paid" }, 400);
             if (isExpired(ev)) return json(env, { error: "expired" }, 410);
-
             if (!(ev.rtc_enabled || ev.hls_enabled)) return json(env, { error: "rtc_ingest_disabled" }, 400);
 
             const authRes = requireExact(key, ev.broadcast_key, env);
             if (authRes) return authRes;
 
-            let stageArn: string | null = ev.rtc_stage_arn as string | null;
-            let endpoints: any = ev.rtc_stage_endpoints ?? null;
+            const rtc = await ensureRtcStage(client, env, eventId, ev);
+            ev = rtc.ev;
 
-            if (!stageArn) {
-              const st = await createStage(env, `relay-${eventId}`);
-              stageArn = st.stageArn;
-              endpoints = st.endpoints || null;
+            const token = await createParticipantToken(
+              env,
+              rtc.stageArn!,
+              `host-${eventId}`,
+              ["PUBLISH", "SUBSCRIBE"],
+              3600
+            );
 
-              await updateRtc(client, eventId, stageArn, endpoints);
-
-              ev = await getEvent(client, eventId);
-              stageArn = (ev?.rtc_stage_arn as string) || stageArn;
-              endpoints = ev?.rtc_stage_endpoints ?? endpoints;
-            }
-
-            const token = await createParticipantToken(env, stageArn!, `host-${eventId}`, ["PUBLISH", "SUBSCRIBE"], 3600);
-
-            return json(env, { ok: true, stageArn, participantToken: token.token, endpoints });
+            return json(env, {
+              ok: true,
+              stageArn: rtc.stageArn,
+              participantToken: token.token,
+              endpoints: rtc.endpoints,
+              readiness: buildReadiness(ev, "broadcaster"),
+            });
           } finally {
             await client.end();
           }
         }
       }
 
-      // WebRTC viewer token mint (rtc_enabled only)
+      {
+        const m = match(pathname, /^\/api\/events\/([^\/]+)\/whip\/provision$/);
+        if (method === "POST" && m) {
+          const eventId = m[0];
+          const key = url.searchParams.get("key") || "";
+
+          const client = await getClient(env);
+          try {
+            let ev = await getEvent(client, eventId);
+            if (!ev) return json(env, { error: "not_found" }, 404);
+            if (ev.status !== "paid") return json(env, { error: "not_paid" }, 400);
+            if (isExpired(ev)) return json(env, { error: "expired" }, 410);
+            if (!(ev.rtc_enabled || ev.hls_enabled)) return json(env, { error: "rtc_ingest_disabled" }, 400);
+
+            const authRes = requireExact(key, ev.broadcast_key, env);
+            if (authRes) return authRes;
+
+            const rtc = await ensureRtcStage(client, env, eventId, ev);
+            ev = rtc.ev;
+            const whipUrl = rtc.endpoints?.whip || null;
+            if (!whipUrl) return json(env, { error: "whip_not_available", endpoints: rtc.endpoints }, 500);
+
+            const token = await createParticipantToken(
+              env,
+              rtc.stageArn!,
+              `obs-${eventId}`,
+              ["PUBLISH"],
+              3600
+            );
+
+            return json(env, {
+              ok: true,
+              publish_mode: "whip",
+              event_id: eventId,
+              whip_url: whipUrl,
+              bearer_token: token.token,
+              expires_at: ev.expires_at || null,
+              readiness: buildReadiness(ev, "broadcaster"),
+            });
+          } finally {
+            await client.end();
+          }
+        }
+      }
+
       {
         const m = match(pathname, /^\/api\/events\/([^\/]+)\/rtc\/token$/);
         if (method === "POST" && m) {
           const eventId = m[0];
-          const key = url.searchParams.get("key");
+          const key = url.searchParams.get("key") || "";
 
           const client = await getClient(env);
           try {
-            const ev = await getEvent(client, eventId);
+            let ev = await getEvent(client, eventId);
             if (!ev) return json(env, { error: "not_found" }, 404);
             if (ev.status !== "paid") return json(env, { error: "not_paid" }, 400);
             if (isExpired(ev)) return json(env, { error: "expired" }, 410);
-
             if (!ev.rtc_enabled) return json(env, { error: "rtc_disabled" }, 400);
 
-            // Allow either the watch secret_key or the broadcast_key to read public status.
-            // This keeps watch links working exactly as before and lets the broadcast page
-            // poll readiness without tripping a 401.
-            if ((!ev.secret_key && !ev.broadcast_key) || !key) return json(env, { error: "missing_key" }, 401);
-            if (key !== ev.secret_key && key !== ev.broadcast_key) return json(env, { error: "unauthorized" }, 401);
+            const authRes = requireExact(key, ev.secret_key, env);
+            if (authRes) return authRes;
 
-            if (!ev.rtc_stage_arn) return json(env, { error: "rtc_not_provisioned" }, 400);
+            const rtc = await ensureRtcStage(client, env, eventId, ev);
+            ev = rtc.ev;
 
             const token = await createParticipantToken(
               env,
-              ev.rtc_stage_arn as string,
+              rtc.stageArn as string,
               `viewer-${randomSecretUrlSafe(8)}`,
               ["SUBSCRIBE"],
               3600
             );
 
-            return json(env, { ok: true, stageArn: ev.rtc_stage_arn, participantToken: token.token });
+            return json(env, {
+              ok: true,
+              stageArn: rtc.stageArn,
+              participantToken: token.token,
+              readiness: buildReadiness(ev, "viewer"),
+            });
           } finally {
             await client.end();
           }
         }
       }
 
-      // Delete event (admin)
       {
         const m = match(pathname, /^\/api\/admin\/events\/([^\/]+)\/delete$/);
         if (method === "POST" && m) {
@@ -962,6 +1165,14 @@ if (ev.status !== "paid") return json(env, { error: "not_paid" }, 403);
             } catch (e) {
               console.error("deleteIvsChannel failed", eventId, e);
             }
+
+            try {
+              const compositionArn = getCompositionArnFromEndpoints(ev.rtc_stage_endpoints ?? null);
+              if (compositionArn && compositionArn !== "existing") await stopComposition(env, compositionArn);
+            } catch (e) {
+              console.error("stopComposition failed", eventId, e);
+            }
+
             try {
               if (ev.rtc_stage_arn) await deleteStage(env, ev.rtc_stage_arn);
             } catch (e) {
@@ -977,51 +1188,6 @@ if (ev.status !== "paid") return json(env, { error: "not_paid" }, 403);
         }
       }
 
-      // Event WebRTC ingest provisioning (broadcast page) - supports /rtc/provision and /rtc/host
-      {
-        const m = match(pathname, /^\/api\/events\/([^\/]+)\/rtc\/(provision|host)$/);
-        if (method === "POST" && m) {
-          const eventId = m[0];
-          const key = url.searchParams.get("key");
-
-          const client = await getClient(env);
-          try {
-            let ev = await getEvent(client, eventId);
-            if (!ev) return json(env, { error: "not_found" }, 404);
-
-            if (ev.status !== "paid") return json(env, { error: "not_paid" }, 400);
-            if (isExpired(ev)) return json(env, { error: "expired" }, 410);
-
-            if (!(ev.rtc_enabled || ev.hls_enabled)) return json(env, { error: "rtc_ingest_disabled" }, 400);
-
-            const authRes = requireExact(key, ev.broadcast_key, env);
-            if (authRes) return authRes;
-
-            let stageArn: string | null = ev.rtc_stage_arn as string | null;
-            let endpoints: any = ev.rtc_stage_endpoints ?? null;
-
-            if (!stageArn) {
-              const st = await createStage(env, `relay-${eventId}`);
-              stageArn = st.stageArn;
-              endpoints = st.endpoints || null;
-
-              await updateRtc(client, eventId, stageArn, endpoints);
-
-              ev = await getEvent(client, eventId);
-              stageArn = (ev?.rtc_stage_arn as string) || stageArn;
-              endpoints = ev?.rtc_stage_endpoints ?? endpoints;
-            }
-
-            const token = await createParticipantToken(env, stageArn!, `host-${eventId}`, ["PUBLISH", "SUBSCRIBE"], 3600);
-
-            return json(env, { ok: true, stageArn, participantToken: token.token, endpoints });
-          } finally {
-            await client.end();
-          }
-        }
-      }
-
-      // Fixed stream names ingest provisioning
       {
         const m = match(pathname, /^\/api\/streams\/([^\/]+)\/rtc\/provision$/);
         if (method === "POST" && m) {
@@ -1058,7 +1224,13 @@ if (ev.status !== "paid") return json(env, { error: "not_paid" }, 403);
               );
             }
 
-            const token = await createParticipantToken(env, stageArn, `host-${streamName}`, ["PUBLISH", "SUBSCRIBE"], 3600);
+            const token = await createParticipantToken(
+              env,
+              stageArn,
+              `host-${streamName}`,
+              ["PUBLISH", "SUBSCRIBE"],
+              3600
+            );
 
             return json(env, { ok: true, stageArn, participantToken: token.token, endpoints });
           } finally {
@@ -1075,7 +1247,6 @@ if (ev.status !== "paid") return json(env, { error: "not_paid" }, 403);
   },
 };
 
-// Cron trigger handler
-export async function scheduled(event: ScheduledEvent, env: any, ctx: ExecutionContext) {
+export async function scheduled(_event: ScheduledEvent, _env: any, _ctx: ExecutionContext) {
   console.log("cron tick", new Date().toISOString());
 }

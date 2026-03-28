@@ -28,247 +28,46 @@
     html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
     body{min-height:100svh; overflow:hidden}
 
-    .shell{
-      position:relative;
-      min-height:100svh;
-      display:grid;
-      grid-template-rows:auto 1fr auto;
-      background:#000;
-    }
-
-    .preview-wrap{
-      position:absolute;
-      inset:0;
-      background:#000;
-    }
-
-    video{
-      width:100%;
-      height:100%;
-      object-fit:cover;
-      display:block;
-      background:#000;
-    }
-
-    .scrim-top{
-      position:absolute;
-      inset:0 0 auto 0;
-      height:160px;
-      background:linear-gradient(to bottom, rgba(0,0,0,.72), rgba(0,0,0,0));
-      pointer-events:none;
-      z-index:1;
-    }
-
-    .scrim-bottom{
-      position:absolute;
-      inset:auto 0 0 0;
-      height:220px;
-      background:linear-gradient(to top, rgba(0,0,0,.78), rgba(0,0,0,0));
-      pointer-events:none;
-      z-index:1;
-    }
-
-    .topbar{
-      position:relative;
-      z-index:2;
-      padding:calc(12px + env(safe-area-inset-top)) 14px 10px 14px;
-      display:flex;
-      justify-content:space-between;
-      align-items:flex-start;
-      gap:12px;
-    }
-
-    .title-block{
-      display:flex;
-      flex-direction:column;
-      gap:6px;
-      min-width:0;
-    }
-
-    .title{
-      font-size:20px;
-      font-weight:800;
-      letter-spacing:.2px;
-    }
-
-    .subtitle{
-      color:var(--muted);
-      font-size:13px;
-      max-width:min(70vw,560px);
-    }
-
-    .status-row{
-      display:flex;
-      gap:8px;
-      flex-wrap:wrap;
-      justify-content:flex-end;
-    }
-
-    .pill{
-      display:inline-flex;
-      align-items:center;
-      gap:8px;
-      min-height:32px;
-      padding:6px 10px;
-      border-radius:999px;
-      background:rgba(0,0,0,.42);
-      border:1px solid var(--border);
-      backdrop-filter: blur(10px);
-      font-size:12px;
-      white-space:nowrap;
-    }
-
-    .dot{
-      width:8px;height:8px;border-radius:999px;background:#8a8a8a;
-    }
-
+    .shell{position:relative;min-height:100svh;display:grid;grid-template-rows:auto 1fr auto;background:#000}
+    .preview-wrap{position:absolute;inset:0;background:#000}
+    video{width:100%;height:100%;object-fit:cover;display:block;background:#000}
+    .scrim-top{position:absolute;inset:0 0 auto 0;height:160px;background:linear-gradient(to bottom, rgba(0,0,0,.72), rgba(0,0,0,0));pointer-events:none;z-index:1}
+    .scrim-bottom{position:absolute;inset:auto 0 0 0;height:220px;background:linear-gradient(to top, rgba(0,0,0,.78), rgba(0,0,0,0));pointer-events:none;z-index:1}
+    .topbar{position:relative;z-index:2;padding:calc(12px + env(safe-area-inset-top)) 14px 10px 14px;display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+    .title-block{display:flex;flex-direction:column;gap:6px;min-width:0}
+    .title{font-size:20px;font-weight:800;letter-spacing:.2px}
+    .subtitle{color:var(--muted);font-size:13px;max-width:min(70vw,560px)}
+    .status-row{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+    .pill{display:inline-flex;align-items:center;gap:8px;min-height:32px;padding:6px 10px;border-radius:999px;background:rgba(0,0,0,.42);border:1px solid var(--border);backdrop-filter: blur(10px);font-size:12px;white-space:nowrap}
+    .dot{width:8px;height:8px;border-radius:999px;background:#8a8a8a}
     .pill.good .dot{background:var(--good)}
     .pill.warn .dot{background:var(--warn)}
     .pill.bad .dot{background:var(--bad)}
-
-    .bottom-ui{
-      position:relative;
-      z-index:2;
-      margin-top:auto;
-      padding:12px 14px calc(16px + env(safe-area-inset-bottom)) 14px;
-      display:grid;
-      gap:12px;
-    }
-
-    .panel{
-      background:var(--panel);
-      border:1px solid var(--border);
-      border-radius:18px;
-      backdrop-filter: blur(16px);
-      box-shadow:var(--shadow);
-    }
-
-    .controls{
-      padding:14px;
-      display:grid;
-      gap:12px;
-    }
-
-    .inputs{
-      display:grid;
-      gap:10px;
-      grid-template-columns:1fr;
-    }
-
-    .input-row{
-      display:grid;
-      gap:10px;
-      grid-template-columns:1fr 1fr;
-    }
-
-    .field{
-      display:grid;
-      gap:6px;
-    }
-
-    .label{
-      font-size:12px;
-      color:var(--muted);
-    }
-
-    input,select,button{
-      font:inherit;
-    }
-
-    input,select{
-      width:100%;
-      min-height:46px;
-      border-radius:12px;
-      border:1px solid var(--border);
-      background:rgba(255,255,255,.08);
-      color:var(--text);
-      padding:10px 12px;
-      outline:none;
-    }
-
+    .bottom-ui{position:relative;z-index:2;margin-top:auto;padding:12px 14px calc(16px + env(safe-area-inset-bottom)) 14px;display:grid;gap:12px}
+    .panel{background:var(--panel);border:1px solid var(--border);border-radius:18px;backdrop-filter: blur(16px);box-shadow:var(--shadow)}
+    .controls{padding:14px;display:grid;gap:12px}
+    .inputs{display:grid;gap:10px;grid-template-columns:1fr}
+    .input-row{display:grid;gap:10px;grid-template-columns:1fr 1fr}
+    .field{display:grid;gap:6px}
+    .label{font-size:12px;color:var(--muted)}
+    input,select,button{font:inherit}
+    input,select{width:100%;min-height:46px;border-radius:12px;border:1px solid var(--border);background:rgba(255,255,255,.08);color:var(--text);padding:10px 12px;outline:none}
     input::placeholder{color:rgba(255,255,255,.48)}
-
-    .actions{
-      display:grid;
-      grid-template-columns:1fr 1fr 1fr;
-      gap:10px;
-    }
-
-    button{
-      min-height:52px;
-      border-radius:14px;
-      border:0;
-      cursor:pointer;
-      font-weight:800;
-      color:#fff;
-      background:var(--panel-2);
-    }
-
+    .actions{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+    button{min-height:52px;border-radius:14px;border:0;cursor:pointer;font-weight:800;color:#fff;background:var(--panel-2)}
     button.primary{background:var(--btn)}
     button.stop{background:var(--btnStop)}
     button:disabled{opacity:.48;cursor:not-allowed}
-
-    .meta{
-      display:flex;
-      justify-content:space-between;
-      gap:12px;
-      flex-wrap:wrap;
-      color:var(--muted);
-      font-size:13px;
-    }
-
-    details{
-      overflow:hidden;
-    }
-
-    summary{
-      list-style:none;
-      cursor:pointer;
-      padding:12px 14px;
-      color:var(--muted);
-      font-size:13px;
-      border-bottom:1px solid transparent;
-    }
-
-    details[open] summary{
-      border-bottom-color:var(--border);
-    }
-
+    .meta{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;color:var(--muted);font-size:13px}
+    .state-line{display:flex;gap:8px;flex-wrap:wrap}
+    .chip{padding:6px 10px;border-radius:999px;border:1px solid var(--border);font-size:12px;background:rgba(255,255,255,.06)}
+    details{overflow:hidden}
+    summary{list-style:none;cursor:pointer;padding:12px 14px;color:var(--muted);font-size:13px;border-bottom:1px solid transparent}
+    details[open] summary{border-bottom-color:var(--border)}
     summary::-webkit-details-marker{display:none}
-
-    .log{
-      padding:12px 14px 14px 14px;
-      max-height:220px;
-      overflow:auto;
-      font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
-      font-size:12px;
-      white-space:pre-wrap;
-      line-height:1.4;
-      color:#d7d7d7;
-      background:rgba(0,0,0,.2);
-    }
-
-    .empty-preview{
-      position:absolute;
-      inset:0;
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      text-align:center;
-      padding:20px;
-      color:rgba(255,255,255,.68);
-      font-size:14px;
-      pointer-events:none;
-      z-index:0;
-    }
-
-    @media (max-width:760px){
-      .topbar{flex-direction:column; align-items:stretch}
-      .status-row{justify-content:flex-start}
-      .input-row{grid-template-columns:1fr}
-      .actions{grid-template-columns:1fr}
-      .title{font-size:18px}
-    }
+    .log{padding:12px 14px 14px 14px;max-height:220px;overflow:auto;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;white-space:pre-wrap;line-height:1.4;color:#d7d7d7;background:rgba(0,0,0,.2)}
+    .empty-preview{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:20px;color:rgba(255,255,255,.68);font-size:14px;pointer-events:none;z-index:0}
+    @media (max-width:760px){.topbar{flex-direction:column;align-items:stretch}.status-row{justify-content:flex-start}.input-row{grid-template-columns:1fr}.actions{grid-template-columns:1fr}.title{font-size:18px}}
   </style>
 </head>
 <body>
@@ -329,8 +128,10 @@
 
         <div class="meta">
           <div id="info">Waiting for preview…</div>
-          <div id="liveHint">HLS warms automatically in the background when enabled.</div>
+          <div id="liveHint">Preparing stream path…</div>
         </div>
+
+        <div class="state-line" id="stateLine"></div>
       </div>
 
       <details class="panel">
@@ -360,6 +161,7 @@
   const elLiveHint = $("liveHint");
   const elCam = $("camera");
   const elMic = $("mic");
+  const elStateLine = $("stateLine");
   const btnPreview = $("btnPreview");
   const btnGoLive = $("btnGoLive");
   const btnStop = $("btnStop");
@@ -373,9 +175,9 @@
   let timerHandle = null;
   let readinessTimer = null;
   let readyToBroadcast = false;
-  let lastHlsWarmAt = 0;
-  let lastWarmStart = null;
   let currentPublic = null;
+  let currentReadiness = null;
+  let currentReadinessState = "checking";
 
   elEventId.value = qs.get("event") || qs.get("id") || "";
   elEventKey.value = qs.get("key") || "";
@@ -398,6 +200,22 @@
     elReady.className = `pill ${kind || (ready ? "good" : "warn")}`.trim();
     elReady.querySelector("span:last-child").textContent = "ready: " + text;
     elReadyInfo.textContent = detail || "";
+  }
+
+  function renderFlags(readiness){
+    const flags = [];
+    if (!readiness) {
+      elStateLine.innerHTML = "";
+      return;
+    }
+    flags.push(["Stage", readiness.stage_exists]);
+    if (readiness.hls_enabled) flags.push(["HLS channel", readiness.hls_channel_exists]);
+    if (readiness.hls_enabled) flags.push(["Encoder", readiness.encoder_configuration_exists]);
+    if (readiness.hls_enabled) flags.push(["Composition", readiness.composition_started]);
+    if (readiness.hls_enabled) flags.push(["Playback URL", readiness.playback_url_exists]);
+    if (readiness.whip_url_exists) flags.push(["WHIP", readiness.whip_url_exists]);
+
+    elStateLine.innerHTML = flags.map(([label, ok]) => `<span class="chip">${label}: ${ok ? "yes" : "no"}</span>`).join("");
   }
 
   function apiUrl(path){ return API_BASE + path; }
@@ -473,7 +291,7 @@
     videoEl.srcObject = localStream;
     emptyPreview.style.display = "none";
     elInfo.textContent = "Preview ready.";
-    setStatus("ready", readyToBroadcast ? "good" : "warn");
+    setStatus("preview ready", "good");
   }
 
   async function loadPublicOptional(){
@@ -483,12 +301,22 @@
     try{
       const pub = await apiGet(`/api/events/${encodeURIComponent(eventId)}/public?key=${encodeURIComponent(key)}`);
       currentPublic = pub;
-      log("PUBLIC", pub);
       return pub;
     }catch(e){
       log("PUBLIC optional failed", String(e));
       return null;
     }
+  }
+
+  async function fetchReadiness(){
+    const eventId = elEventId.value.trim();
+    const key = elEventKey.value.trim();
+    if(!eventId || !key) throw new Error("Missing event or key");
+    const res = await apiGet(`/api/events/${encodeURIComponent(eventId)}/readiness?key=${encodeURIComponent(key)}`);
+    currentReadiness = res?.readiness || null;
+    currentReadinessState = currentReadiness?.state || "checking";
+    renderFlags(currentReadiness);
+    return res;
   }
 
   async function provisionPublishToken(){
@@ -500,26 +328,6 @@
     stageToken = prov?.participantToken || prov?.publisher?.token;
     if(!stageToken) throw new Error("No publisher token returned from /rtc/provision");
     return prov;
-  }
-
-  async function warmStartNonFatal(force = false){
-    const eventId = elEventId.value.trim();
-    const key = elEventKey.value.trim();
-    if(!eventId || !key) return null;
-
-    const now = Date.now();
-    if(!force && now - lastHlsWarmAt < 3000) return lastWarmStart;
-    lastHlsWarmAt = now;
-
-    try{
-      const res = await apiPost(`/api/events/${encodeURIComponent(eventId)}/start?key=${encodeURIComponent(key)}`, {});
-      lastWarmStart = res;
-      log("WARM START", res);
-      return res;
-    }catch(e){
-      log("WARM START failed (non-fatal)", String(e));
-      return null;
-    }
   }
 
   function stopReadiness(){
@@ -540,49 +348,62 @@
     }, ms);
   }
 
+  function applyReadinessUi(readiness){
+    if(!readiness){
+      setStatus("checking…", "warn");
+      setReady(false, "no", "Checking stream readiness…", "warn");
+      return;
+    }
+
+    const state = readiness.state || "checking";
+
+    if(readiness.expired){
+      setStatus("expired", "bad");
+      setReady(false, "no", readiness.detail || "Event expired.", "bad");
+      elLiveHint.textContent = "This event has expired.";
+      return;
+    }
+
+    if(!readiness.paid){
+      setStatus("awaiting payment", "warn");
+      setReady(false, "no", readiness.detail || "Waiting for payment confirmation…", "warn");
+      elLiveHint.textContent = "Infrastructure will pre-provision once payment is confirmed.";
+      return;
+    }
+
+    if(state === "preparing_stage" || state === "preparing_hls_channel" || state === "preparing_encoder"){
+      setStatus("preparing stream", "warn");
+      setReady(false, "no", readiness.detail || "Preparing stream…", "warn");
+      elLiveHint.textContent = readiness.hls_enabled ? "HLS infrastructure is being prepared in advance." : "RTC infrastructure is being prepared in advance.";
+      return;
+    }
+
+    if(readiness.can_go_live){
+      setStatus(readiness.stream_window_open ? "live window open" : "ready to go live", "good");
+      setReady(true, "yes", readiness.detail || "Ready to go live.", "good");
+      elLiveHint.textContent = readiness.hls_enabled
+        ? (readiness.composition_started ? "HLS composition is running." : "HLS will start as soon as you go live.")
+        : "RTC is ready.";
+      return;
+    }
+
+    setStatus("checking…", "warn");
+    setReady(false, "no", readiness.detail || "Checking stream readiness…", "warn");
+  }
+
   async function refreshReadiness(){
     try{
-      setStatus("checking…", "warn");
-
       const pub = await loadPublicOptional();
       if(pub?.expired){
-        setReady(false, "no", "Event expired.", "bad");
         setStatus("expired", "bad");
-        return;
-      }
-      if(pub && pub.status && pub.status !== "paid"){
-        setReady(false, "no", "Waiting for payment confirmation…", "warn");
-        setStatus("payment", "warn");
-        scheduleReadiness(2500);
+        setReady(false, "no", "Event expired.", "bad");
         return;
       }
 
-      const startRes = await warmStartNonFatal();
-      const hlsEnabled = !!(pub?.hls_enabled || startRes?.playback_url || startRes?.composition_started || startRes?.composition_arn);
+      const readyRes = await fetchReadiness();
+      applyReadinessUi(readyRes?.readiness || null);
 
-      if(hlsEnabled){
-        elLiveHint.textContent = startRes?.composition_started
-          ? "HLS composition is up."
-          : "HLS is warming automatically in the background.";
-      } else {
-        elLiveHint.textContent = "RTC-only event.";
-      }
-
-      try{
-        await provisionPublishToken();
-        setReady(
-          true,
-          "yes",
-          hlsEnabled
-            ? "Ready to go live. HLS is warming in the background."
-            : "Ready to go live.",
-          "good"
-        );
-        setStatus("ready", "good");
-      }catch(e){
-        setReady(false, "no", "Preparing broadcaster access…", "warn");
-        log("READINESS provision failed", String(e));
-        setStatus("preparing", "warn");
+      if(currentReadiness && !currentReadiness.can_go_live && !currentReadiness.expired){
         scheduleReadiness(2500);
       }
     }catch(e){
@@ -592,16 +413,23 @@
     }
   }
 
+  async function startForBroadcast(){
+    const eventId = elEventId.value.trim();
+    const key = elEventKey.value.trim();
+    const res = await apiPost(`/api/events/${encodeURIComponent(eventId)}/start?key=${encodeURIComponent(key)}`, { open_window: true });
+    currentReadiness = res?.readiness || currentReadiness;
+    renderFlags(currentReadiness);
+    return res;
+  }
+
   async function goLive(){
     const sdk = window.IVSBroadcastClient;
     if(!sdk) throw new Error("IVS Web Broadcast SDK not loaded.");
 
     const { Stage, StageEvents, SubscribeType, LocalStageStream, StageConnectionState } = sdk;
 
-    if(!readyToBroadcast){
-      await refreshReadiness();
-      if(!readyToBroadcast) throw new Error("Broadcast path is still preparing.");
-    }
+    await refreshReadiness();
+    if(!readyToBroadcast) throw new Error("Broadcast path is still preparing.");
 
     if(!localStream) await preview();
     await provisionPublishToken();
@@ -630,17 +458,16 @@
       log("RTC state", state);
 
       if(state === StageConnectionState.CONNECTED){
-        setStatus("live", "good");
-        setReady(true, "live", "You are live.", "good");
+        setStatus("connecting live…", "warn");
+        setReady(true, "connecting", "Publisher connected. Opening live stream…", "warn");
         try{
-          const eventId = elEventId.value.trim();
-          const key = elEventKey.value.trim();
-          const res = await apiPost(`/api/events/${encodeURIComponent(eventId)}/start?key=${encodeURIComponent(key)}`, {});
-          lastWarmStart = res;
+          const res = await startForBroadcast();
           log("START", res);
         }catch(e){
           log("START failed (non-fatal)", String(e));
         }
+        setStatus("live", "good");
+        setReady(true, "live", "You are live.", "good");
         if(!startedAtMs){
           startedAtMs = Date.now();
           startTimer();
@@ -710,8 +537,8 @@
 
   function scheduleReload(){
     stopReadiness();
-    lastWarmStart = null;
     currentPublic = null;
+    currentReadiness = null;
     setReady(false, "checking…", "Rechecking event…", "warn");
     setStatus("checking…", "warn");
     setTimeout(() => {
