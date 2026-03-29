@@ -13,7 +13,6 @@
       color-scheme: dark;
       --bg:#0b0c10;
       --panel:#0f1117;
-      --panel2:#111827;
       --border:#20232a;
       --border2:#334155;
       --text:#e8e8e8;
@@ -26,239 +25,56 @@
     }
 
     *{box-sizing:border-box}
-    body{
-      margin:0;
-      background:var(--bg);
-      color:var(--text);
-      font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
-    }
-
+    body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
     header{
-      position:sticky;
-      top:0;
-      z-index:20;
-      padding:14px 16px;
-      border-bottom:1px solid var(--border);
-      background:rgba(11,12,16,.95);
-      backdrop-filter: blur(10px);
-      display:flex;
-      gap:12px;
-      align-items:center;
-      justify-content:space-between;
+      position:sticky;top:0;z-index:20;padding:14px 16px;border-bottom:1px solid var(--border);
+      background:rgba(11,12,16,.95);backdrop-filter: blur(10px);display:flex;gap:12px;align-items:center;justify-content:space-between
     }
-
     .title{font-weight:700;letter-spacing:.2px}
-    .top-right{
-      display:flex;
-      gap:8px;
-      align-items:center;
-      flex-wrap:wrap;
-      justify-content:flex-end;
-    }
-
-    .pill{
-      font-size:12px;
-      padding:6px 10px;
-      border:1px solid var(--border2);
-      border-radius:999px;
-      color:#cbd5e1;
-      background:#0f172a;
-      white-space:nowrap;
-    }
+    .top-right{display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+    .pill{font-size:12px;padding:6px 10px;border:1px solid var(--border2);border-radius:999px;color:#cbd5e1;background:#0f172a;white-space:nowrap}
     .pill.good{border-color:var(--good);color:#bff7de}
     .pill.warn{border-color:var(--warn);color:#ffe3a3}
     .pill.bad{border-color:var(--bad);color:#ffb4b4}
-
-    .icon-btn, button.action{
-      border:1px solid var(--border2);
-      background:var(--btn);
-      color:var(--text);
-      cursor:pointer;
-    }
-
-    .icon-btn{
-      width:38px;
-      height:38px;
-      border-radius:10px;
-      font-size:18px;
-      line-height:1;
-    }
-
-    main{
-      max-width:1100px;
-      margin:0 auto;
-      padding:14px 16px 24px;
-    }
-
-    .card{
-      border:1px solid var(--border);
-      border-radius:16px;
-      background:var(--panel);
-      box-shadow:var(--shadow);
-      padding:12px;
-    }
-
-    .controls{
-      display:flex;
-      gap:10px;
-      flex-wrap:wrap;
-      align-items:center;
-      justify-content:space-between;
-      margin-bottom:12px;
-    }
-
-    .left-controls,.right-controls{
-      display:flex;
-      gap:10px;
-      flex-wrap:wrap;
-      align-items:center;
-    }
-
+    .icon-btn, button.action{border:1px solid var(--border2);background:var(--btn);color:var(--text);cursor:pointer}
+    .icon-btn{width:38px;height:38px;border-radius:10px;font-size:18px;line-height:1}
+    main{max-width:1100px;margin:0 auto;padding:14px 16px 24px}
+    .card{border:1px solid var(--border);border-radius:16px;background:var(--panel);box-shadow:var(--shadow);padding:12px}
+    .controls{display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between;margin-bottom:12px}
+    .left-controls,.right-controls{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
     select,button,input{font:inherit}
-    select,input{
-      background:#0f172a;
-      border:1px solid var(--border2);
-      color:var(--text);
-      padding:10px 12px;
-      border-radius:10px;
-    }
-
-    button.action{
-      padding:10px 14px;
-      border-radius:10px;
-    }
-
-    button.action:disabled{
-      opacity:.55;
-      cursor:not-allowed;
-    }
-
-    .player-wrap{
-      position:relative;
-      width:100%;
-      min-height:360px;
-      background:#000;
-      border:1px solid var(--border);
-      border-radius:14px;
-      overflow:hidden;
-    }
-
-    video.main-video{
-      width:100%;
-      min-height:360px;
-      display:block;
-      background:#000;
-      object-fit:contain;
-    }
-
+    select,input{background:#0f172a;border:1px solid var(--border2);color:var(--text);padding:10px 12px;border-radius:10px}
+    button.action{padding:10px 14px;border-radius:10px}
+    button.action:disabled{opacity:.55;cursor:not-allowed}
+    .player-wrap{position:relative;width:100%;min-height:360px;background:#000;border:1px solid var(--border);border-radius:14px;overflow:hidden}
+    video.main-video{width:100%;min-height:360px;display:block;background:#000;object-fit:contain}
     #rtcWrap{display:none}
-    .videos{
-      display:grid;
-      gap:10px;
-      grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));
-      padding:10px;
-      min-height:300px;
+    .rtc-shell{position:relative;width:100%;min-height:360px;background:#000}
+    .rtc-label{
+      position:absolute;top:10px;left:10px;z-index:3;
+      background:rgba(0,0,0,.55);border:1px solid rgba(255,255,255,.14);
+      color:#e5e7eb;font-size:12px;padding:6px 10px;border-radius:999px;display:none
     }
-
-    .rtc-tile{
-      border:1px solid var(--border);
-      border-radius:12px;
-      padding:8px;
-      background:#0b1220;
+    .rtc-empty{
+      position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+      text-align:center;color:var(--muted);font-size:14px;padding:20px;pointer-events:none;z-index:2
     }
-
-    .rtc-cap{
-      color:var(--muted);
-      font-size:12px;
-      margin-bottom:6px;
-    }
-
-    .status-line{
-      margin-top:10px;
-      min-height:20px;
-      color:var(--muted);
-      font-size:13px;
-    }
-
-    .error-line{
-      color:#ffb4b4;
-      margin-top:8px;
-      min-height:18px;
-      font-size:13px;
-      white-space:pre-wrap;
-    }
-
-    .drawer{
-      position:fixed;
-      top:0;
-      right:0;
-      width:min(92vw, 380px);
-      height:100svh;
-      background:#0d1118;
-      border-left:1px solid var(--border);
-      box-shadow:-10px 0 30px rgba(0,0,0,.35);
-      transform:translateX(100%);
-      transition:transform .22s ease;
-      z-index:40;
-      display:flex;
-      flex-direction:column;
-    }
-
+    .status-line{margin-top:10px;min-height:20px;color:var(--muted);font-size:13px}
+    .error-line{color:#ffb4b4;margin-top:8px;min-height:18px;font-size:13px;white-space:pre-wrap}
+    .drawer{position:fixed;top:0;right:0;width:min(92vw,380px);height:100svh;background:#0d1118;border-left:1px solid var(--border);box-shadow:-10px 0 30px rgba(0,0,0,.35);transform:translateX(100%);transition:transform .22s ease;z-index:40;display:flex;flex-direction:column}
     .drawer.open{transform:translateX(0)}
-
-    .drawer-head{
-      padding:14px 14px 10px;
-      border-bottom:1px solid var(--border);
-      display:flex;
-      justify-content:space-between;
-      align-items:center;
-      gap:10px;
-    }
-
-    .drawer-body{
-      padding:14px;
-      overflow:auto;
-      display:grid;
-      gap:14px;
-    }
-
+    .drawer-head{padding:14px 14px 10px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:10px}
+    .drawer-body{padding:14px;overflow:auto;display:grid;gap:14px}
     .field{display:grid;gap:6px}
     .label{font-size:12px;color:var(--muted)}
-
-    .log{
-      font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
-      font-size:12px;
-      white-space:pre-wrap;
-      background:#0b1220;
-      border:1px solid #202a3a;
-      border-radius:12px;
-      padding:10px;
-      min-height:180px;
-      max-height:42svh;
-      overflow:auto;
-    }
-
-    .overlay{
-      position:fixed;
-      inset:0;
-      background:rgba(0,0,0,.45);
-      opacity:0;
-      pointer-events:none;
-      transition:opacity .2s ease;
-      z-index:30;
-    }
-
-    .overlay.open{
-      opacity:1;
-      pointer-events:auto;
-    }
-
+    .log{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;white-space:pre-wrap;background:#0b1220;border:1px solid #202a3a;border-radius:12px;padding:10px;min-height:180px;max-height:42svh;overflow:auto}
+    .overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);opacity:0;pointer-events:none;transition:opacity .2s ease;z-index:30}
+    .overlay.open{opacity:1;pointer-events:auto}
     @media (max-width:760px){
       header{align-items:flex-start}
       .left-controls,.right-controls{width:100%}
       .left-controls > *, .right-controls > *{flex:1 1 auto}
-      .player-wrap, video.main-video{min-height:240px}
-      .videos{min-height:240px;grid-template-columns:1fr}
+      .player-wrap,.rtc-shell,video.main-video{min-height:240px}
     }
   </style>
 </head>
@@ -295,7 +111,11 @@
       </div>
 
       <div id="rtcWrap" class="player-wrap">
-        <div id="rtcVideos" class="videos"></div>
+        <div class="rtc-shell">
+          <div id="rtcLabel" class="rtc-label"></div>
+          <div id="rtcEmpty" class="rtc-empty">Waiting for broadcaster…</div>
+          <video id="rtcVideo" class="main-video" playsinline autoplay muted controls></video>
+        </div>
       </div>
 
       <div id="statusLine" class="status-line"></div>
@@ -315,12 +135,10 @@
         <div class="label">Event ID</div>
         <input id="eventId" />
       </div>
-
       <div class="field">
         <div class="label">Key</div>
         <input id="eventKey" />
       </div>
-
       <div class="field">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
           <div class="label">Logs</div>
@@ -333,10 +151,9 @@
 
 <script>
 (() => {
-  const API_BASE =
-    (location.origin.includes("pages.dev") || location.origin.includes("localhost"))
-      ? "https://stream-platform-api.kiwismurph.workers.dev"
-      : location.origin;
+  const API_BASE = (location.origin.includes("pages.dev") || location.origin.includes("localhost"))
+    ? "https://stream-platform-api.kiwismurph.workers.dev"
+    : location.origin;
 
   const qs = new URLSearchParams(location.search);
   const $ = (id) => document.getElementById(id);
@@ -350,12 +167,12 @@
   const elStatusLine = $("statusLine");
   const elError = $("errorLine");
   const elLog = $("log");
-
   const elHlsWrap = $("hlsWrap");
   const elRtcWrap = $("rtcWrap");
-  const elRtcVideos = $("rtcVideos");
+  const elRtcVideo = $("rtcVideo");
+  const elRtcEmpty = $("rtcEmpty");
+  const elRtcLabel = $("rtcLabel");
   const elHlsVideo = $("hlsVideo");
-
   const btnLoad = $("btnLoad");
   const btnPlay = $("btnPlay");
   const btnStop = $("btnStop");
@@ -369,90 +186,40 @@
   let readinessState = { ready:false, reason:"Checking event…" };
   let readinessTimer = null;
   let currentReadiness = null;
-
   let ivsPlayer = null;
   let hlsRetryTimer = null;
-
   let stage = null;
   let stageToken = null;
+  let activePlayback = null;
 
   elEventId.value = qs.get("event") || qs.get("id") || "";
   elEventKey.value = qs.get("key") || "";
   elMode.value = (qs.get("mode") || "auto").toLowerCase();
 
-  function openDrawer(){
-    drawer.classList.add("open");
-    overlay.classList.add("open");
-    drawer.setAttribute("aria-hidden", "false");
-  }
-
-  function closeDrawer(){
-    drawer.classList.remove("open");
-    overlay.classList.remove("open");
-    drawer.setAttribute("aria-hidden", "true");
-  }
-
-  function showError(msg){
-    elError.textContent = msg || "";
-  }
-
-  function log(...args){
-    const line = args.map(a => typeof a === "string" ? a : JSON.stringify(a)).join(" ");
-    elLog.textContent += line + "\n";
-    elLog.scrollTop = elLog.scrollHeight;
-    console.log(...args);
-  }
-
-  function setStatus(text, kind){
-    elStatusPill.className = "pill " + (kind || "");
-    elStatusPill.textContent = "status: " + text;
-  }
-
-  function setModePill(){
-    elModePill.textContent = "mode: " + elMode.value;
-  }
-
-  function setReadyPill(ready, text, kind){
-    elReadyPill.className = "pill " + (kind || (ready ? "good" : "warn"));
-    elReadyPill.textContent = "ready: " + text;
-  }
-
-  function setReadyState(ready, reason, kind){
-    readinessState = { ready, reason };
-    btnPlay.disabled = !ready;
-    elStatusLine.textContent = reason || "";
-    setReadyPill(ready, ready ? "yes" : "no", kind);
-  }
-
+  function openDrawer(){ drawer.classList.add("open"); overlay.classList.add("open"); drawer.setAttribute("aria-hidden","false"); }
+  function closeDrawer(){ drawer.classList.remove("open"); overlay.classList.remove("open"); drawer.setAttribute("aria-hidden","true"); }
+  function showError(msg){ elError.textContent = msg || ""; }
+  function log(...args){ const line = args.map(a => typeof a === "string" ? a : JSON.stringify(a)).join(" "); elLog.textContent += line + "\\n"; elLog.scrollTop = elLog.scrollHeight; console.log(...args); }
+  function setStatus(text, kind){ elStatusPill.className = "pill " + (kind || ""); elStatusPill.textContent = "status: " + text; }
+  function setModePill(){ elModePill.textContent = "mode: " + elMode.value; }
+  function setReadyPill(ready, text, kind){ elReadyPill.className = "pill " + (kind || (ready ? "good" : "warn")); elReadyPill.textContent = "ready: " + text; }
+  function setReadyState(ready, reason, kind){ readinessState = { ready, reason }; btnPlay.disabled = !ready; elStatusLine.textContent = reason || ""; setReadyPill(ready, ready ? "yes" : "no", kind); }
   function apiUrl(path){ return API_BASE + path; }
 
   async function fetchJson(path, init){
     const r = await fetch(apiUrl(path), init);
     const t = await r.text();
-    let j = null;
-    try { j = t ? JSON.parse(t) : null; } catch {}
+    let j = null; try { j = t ? JSON.parse(t) : null; } catch {}
     if(!r.ok){
       const msg = typeof j === "object" && j ? JSON.stringify(j) : t;
       const err = new Error(`${r.status} ${msg}`);
-      err.status = r.status;
-      err.body = j ?? t;
-      throw err;
+      err.status = r.status; err.body = j ?? t; throw err;
     }
     return j;
   }
 
-  async function apiGet(path){
-    return fetchJson(path, { method:"GET", credentials:"include", cache:"no-store" });
-  }
-
-  async function apiPost(path, body){
-    return fetchJson(path, {
-      method:"POST",
-      headers:{ "content-type":"application/json" },
-      body: body ? JSON.stringify(body) : "{}",
-      credentials:"include"
-    });
-  }
+  async function apiGet(path){ return fetchJson(path, { method:"GET", credentials:"include", cache:"no-store" }); }
+  async function apiPost(path, body){ return fetchJson(path, { method:"POST", headers:{ "content-type":"application/json" }, body: body ? JSON.stringify(body) : "{}", credentials:"include" }); }
 
   function showHls(){ elHlsWrap.style.display = ""; elRtcWrap.style.display = "none"; }
   function showRtc(){ elRtcWrap.style.display = ""; elHlsWrap.style.display = "none"; }
@@ -461,14 +228,11 @@
   function applyModeForEvent(pub){
     const rtcEnabled = !!pub?.rtc_enabled;
     const hlsEnabled = !!pub?.hls_enabled;
-
     const optRtc = elMode.querySelector('option[value="rtc"]');
     const optHls = elMode.querySelector('option[value="hls"]');
     if(optRtc) optRtc.disabled = !rtcEnabled;
     if(optHls) optHls.disabled = !hlsEnabled;
-
     if(qs.get("mode")) return;
-
     if(elMode.value === "auto"){
       if(hlsEnabled) elMode.value = "hls";
       else if(rtcEnabled) elMode.value = "rtc";
@@ -480,23 +244,19 @@
     const eventId = elEventId.value.trim();
     const key = elEventKey.value.trim();
     if(!eventId || !key) throw new Error("Missing event or key");
-
     setStatus("loading…", "warn");
     setModePill();
-
     const pub = await apiGet(`/api/events/${encodeURIComponent(eventId)}/public?key=${encodeURIComponent(key)}`);
     ev = pub;
-
     setStatus(pub.status || "ok", pub.expired ? "bad" : "");
     log("PUBLIC", pub);
-
     applyModeForEvent(pub);
     setModePill();
-
-    if(elMode.value === "hls") showHls();
-    else if(elMode.value === "rtc") showRtc();
-    else showNone();
-
+    if(!activePlayback){
+      if(elMode.value === "hls") showHls();
+      else if(elMode.value === "rtc") showRtc();
+      else showNone();
+    }
     return pub;
   }
 
@@ -508,34 +268,19 @@
     return res;
   }
 
-  function stopReadinessPolling(){
-    if(readinessTimer){
-      clearTimeout(readinessTimer);
-      readinessTimer = null;
-    }
-  }
-
+  function stopReadinessPolling(){ if(readinessTimer){ clearTimeout(readinessTimer); readinessTimer = null; } }
   function scheduleReadiness(ms = 2500){
+    if(activePlayback === "rtc") return;
     stopReadinessPolling();
     readinessTimer = setTimeout(() => {
       readinessTimer = null;
-      refreshReadiness().catch(e => {
-        log("Readiness polling error", String(e));
-        scheduleReadiness(2500);
-      });
+      refreshReadiness().catch(e => { log("Readiness polling error", String(e)); scheduleReadiness(2500); });
     }, ms);
   }
 
   function stopHls(){
-    if(hlsRetryTimer){
-      clearTimeout(hlsRetryTimer);
-      hlsRetryTimer = null;
-    }
-    if(ivsPlayer){
-      try { ivsPlayer.pause(); } catch {}
-      try { ivsPlayer.delete(); } catch {}
-      ivsPlayer = null;
-    }
+    if(hlsRetryTimer){ clearTimeout(hlsRetryTimer); hlsRetryTimer = null; }
+    if(ivsPlayer){ try { ivsPlayer.pause(); } catch {} try { ivsPlayer.delete(); } catch {} ivsPlayer = null; }
     elHlsVideo.srcObject = null;
     elHlsVideo.removeAttribute("src");
     elHlsVideo.load();
@@ -545,17 +290,10 @@
     try { stage && stage.leave(); } catch {}
     stage = null;
     stageToken = null;
-    elRtcVideos.innerHTML = "";
-  }
-
-  async function probePlayback(url){
-    try{
-      const r = await fetch(url, { method:"GET", cache:"no-store" });
-      return r.ok;
-    }catch(e){
-      log("PLAYBACK probe failed", String(e));
-      return false;
-    }
+    elRtcVideo.srcObject = null;
+    elRtcLabel.style.display = "none";
+    elRtcLabel.textContent = "";
+    elRtcEmpty.style.display = "";
   }
 
   function isPlayerSupportedSafe(){
@@ -563,44 +301,30 @@
     try{
       if(typeof IVSPlayer.isPlayerSupported === "function") return !!IVSPlayer.isPlayerSupported();
       if(typeof IVSPlayer.isPlayerSupported === "boolean") return IVSPlayer.isPlayerSupported;
-    }catch(e){
-      log("IVS support check failed", String(e));
-    }
+    }catch(e){ log("IVS support check failed", String(e)); }
     return typeof IVSPlayer.create === "function";
   }
 
+  async function probePlayback(url){
+    try{ const r = await fetch(url, { method:"GET", cache:"no-store" }); return r.ok; }
+    catch(e){ log("PLAYBACK probe failed", String(e)); return false; }
+  }
+
   async function refreshReadiness(){
+    if(activePlayback === "rtc") return;
+
     showError("");
     try{
       ev = await loadPublic();
       const readyRes = await loadReadiness();
       const readiness = readyRes?.readiness || null;
 
-      if(!readiness){
-        setReadyState(false, "Checking event…", "warn");
-        scheduleReadiness(2500);
-        return;
-      }
-
-      if(readiness.expired){
-        setStatus("expired", "bad");
-        setReadyState(false, "Event has expired.", "bad");
-        return;
-      }
-
-      if(!readiness.paid){
-        setStatus("awaiting payment", "warn");
-        setReadyState(false, readiness.detail || "Waiting for payment confirmation.", "warn");
-        scheduleReadiness(2500);
-        return;
-      }
+      if(!readiness){ setReadyState(false, "Checking event…", "warn"); scheduleReadiness(2500); return; }
+      if(readiness.expired){ setStatus("expired", "bad"); setReadyState(false, "Event has expired.", "bad"); return; }
+      if(!readiness.paid){ setStatus("awaiting payment", "warn"); setReadyState(false, readiness.detail || "Waiting for payment confirmation.", "warn"); scheduleReadiness(2500); return; }
 
       if(elMode.value === "hls"){
-        if(!ev.hls_enabled){
-          setReadyState(false, "This event is not HLS-enabled.", "bad");
-          return;
-        }
-
+        if(!ev.hls_enabled){ setReadyState(false, "This event is not HLS-enabled.", "bad"); return; }
         if(!readiness.playback_url_exists){
           setStatus("waiting for stream", "warn");
           setReadyState(false, "Waiting for stream.", "warn");
@@ -622,11 +346,7 @@
       }
 
       if(elMode.value === "rtc"){
-        if(!ev.rtc_enabled){
-          setReadyState(false, "This event is not RTC-enabled.", "bad");
-          return;
-        }
-
+        if(!ev.rtc_enabled){ setReadyState(false, "This event is not RTC-enabled.", "bad"); return; }
         if(!readiness.can_watch_rtc){
           setStatus("waiting for stream", "warn");
           setReadyState(false, readiness.detail || "Waiting for stream.", "warn");
@@ -647,17 +367,8 @@
         return;
       }
 
-      if(ev.hls_enabled){
-        elMode.value = "hls";
-        setModePill();
-        return refreshReadiness();
-      }
-      if(ev.rtc_enabled){
-        elMode.value = "rtc";
-        setModePill();
-        return refreshReadiness();
-      }
-
+      if(ev.hls_enabled){ elMode.value = "hls"; setModePill(); return refreshReadiness(); }
+      if(ev.rtc_enabled){ elMode.value = "rtc"; setModePill(); return refreshReadiness(); }
       setReadyState(false, "Choose a playback mode.", "warn");
     } catch(e){
       log("READINESS error", String(e));
@@ -671,14 +382,15 @@
     if(!ev) await loadPublic();
     if(!currentReadiness) await loadReadiness();
     if(!ev.hls_enabled) throw new Error("This event is not HLS-enabled.");
-
     const playbackUrl = currentReadiness?.playback_url || ev.playback_url;
     if(!playbackUrl) throw new Error("No playback_url returned yet.");
-
     if(!isPlayerSupportedSafe()) throw new Error("IVS Player not supported in this browser.");
 
-    stopHls();
+    activePlayback = "hls";
+    stopReadinessPolling();
+    showHls();
 
+    stopHls();
     ivsPlayer = IVSPlayer.create();
     ivsPlayer.attachHTMLVideoElement(elHlsVideo);
 
@@ -699,32 +411,14 @@
       if(hlsRetryTimer) return;
       hlsRetryTimer = setTimeout(async () => {
         hlsRetryTimer = null;
-        try{
-          await refreshReadiness();
-        }catch(e){
-          log("HLS retry failed", String(e));
-        }
+        try{ await loadReadiness(); } catch(e){ log("HLS retry failed", String(e)); }
         await tryLoad(why);
       }, 2500);
     };
 
-    ivsPlayer.addEventListener(IVSPlayer.PlayerEventType.ERROR, (err) => {
-      log("IVS ERROR", err);
-      setStatus("retrying", "warn");
-      scheduleRetry("retry");
-    });
-
-    ivsPlayer.addEventListener(IVSPlayer.PlayerEventType.ENDED, () => {
-      log("IVS ENDED");
-      setStatus("ended", "warn");
-      scheduleRetry("ended-retry");
-    });
-
-    ivsPlayer.addEventListener(IVSPlayer.PlayerState.PLAYING, () => {
-      setStatus("live", "good");
-      showError("");
-      setReadyState(true, "HLS is ready to watch.", "good");
-    });
+    ivsPlayer.addEventListener(IVSPlayer.PlayerEventType.ERROR, (err) => { log("IVS ERROR", err); setStatus("retrying", "warn"); scheduleRetry("retry"); });
+    ivsPlayer.addEventListener(IVSPlayer.PlayerEventType.ENDED, () => { log("IVS ENDED"); setStatus("ended", "warn"); scheduleRetry("ended-retry"); });
+    ivsPlayer.addEventListener(IVSPlayer.PlayerState.PLAYING, () => { setStatus("live", "good"); showError(""); setReadyState(true, "HLS is ready to watch.", "good"); });
 
     await tryLoad("initial");
   }
@@ -739,37 +433,6 @@
     return res;
   }
 
-  function createParticipantEl(id, label){
-    let wrap = document.getElementById("p_" + id);
-    if(wrap) return wrap.querySelector("video");
-
-    wrap = document.createElement("div");
-    wrap.id = "p_" + id;
-    wrap.className = "rtc-tile";
-
-    const cap = document.createElement("div");
-    cap.className = "rtc-cap";
-    cap.textContent = label || id;
-
-    const v = document.createElement("video");
-    v.autoplay = true;
-    v.playsInline = true;
-    v.controls = false;
-    v.muted = false;
-    v.className = "main-video";
-    v.style.minHeight = "220px";
-
-    wrap.appendChild(cap);
-    wrap.appendChild(v);
-    elRtcVideos.appendChild(wrap);
-    return v;
-  }
-
-  function removeParticipantEl(id){
-    const wrap = document.getElementById("p_" + id);
-    if(wrap) wrap.remove();
-  }
-
   async function playRtc(){
     if(!ev) await loadPublic();
     if(!ev.rtc_enabled) throw new Error("This event is not RTC-enabled.");
@@ -779,8 +442,12 @@
     const sdk = window.IVSBroadcastClient;
     if(!sdk) throw new Error("IVS Web Broadcast SDK not loaded.");
 
-    const { Stage, StageEvents, SubscribeType, StageConnectionState } = sdk;
+    activePlayback = "rtc";
+    stopReadinessPolling();
+    showRtc();
+    stopRtc();
 
+    const { Stage, StageEvents, SubscribeType, StageConnectionState } = sdk;
     const strategy = {
       shouldPublishParticipant: () => false,
       stageStreamsToPublish: () => [],
@@ -797,33 +464,47 @@
       }
       if(state === StageConnectionState.CONNECTING) setStatus("connecting", "warn");
       if(state === StageConnectionState.ERRORED) setStatus("errored", "warn");
-      if(state === StageConnectionState.DISCONNECTED) setStatus("disconnected", "bad");
+      if(state === StageConnectionState.DISCONNECTED) {
+        setStatus("disconnected", "bad");
+        activePlayback = null;
+        scheduleReadiness(1200);
+      }
     });
 
     stage.on(StageEvents.STAGE_PARTICIPANT_LEFT, (p) => {
       log("RTC left", p.id);
-      removeParticipantEl(p.id);
+      elRtcVideo.srcObject = null;
+      elRtcLabel.style.display = "none";
+      elRtcEmpty.style.display = "";
     });
 
     stage.on(StageEvents.STAGE_PARTICIPANT_STREAMS_ADDED, (participant, streams) => {
-      log("RTC streams added", participant.id, streams.map(s => s.streamType));
-      const videoEl = createParticipantEl(participant.id, participant.info?.userInfo || participant.id);
+      log("RTC streams added", participant.id, streams.map(s => ({ streamType: s.streamType, kind: s.mediaStreamTrack?.kind, id: s.mediaStreamTrack?.id })));
       const ms = new MediaStream();
       streams.forEach(s => { if(s.mediaStreamTrack) ms.addTrack(s.mediaStreamTrack); });
-      videoEl.srcObject = ms;
-      videoEl.play().catch(() => {});
+      elRtcVideo.srcObject = ms;
+      elRtcLabel.textContent = participant.info?.userInfo || participant.id || "Broadcaster";
+      elRtcLabel.style.display = "";
+      elRtcEmpty.style.display = "none";
+      elRtcVideo.play().then(() => {
+        log("RTC primary video playing");
+      }).catch((err) => {
+        log("RTC primary play blocked", String(err));
+      });
       elStatusLine.textContent = "Receiving RTC media.";
-      showRtc();
+      setStatus("live", "good");
     });
 
-    stage.on(StageEvents.STAGE_PARTICIPANT_STREAMS_REMOVED, (participant) => {
-      log("RTC streams removed", participant.id);
-      removeParticipantEl(participant.id);
+    stage.on(StageEvents.STAGE_PARTICIPANT_STREAMS_REMOVED, (participant, streams) => {
+      log("RTC streams removed", participant.id, (streams || []).map(s => s.mediaStreamTrack?.id));
+      elRtcVideo.srcObject = null;
+      elRtcLabel.style.display = "none";
+      elRtcEmpty.style.display = "";
     });
 
-    showRtc();
     await stage.join();
     elStatusLine.textContent = "Connected. Waiting for broadcaster…";
+    elRtcEmpty.style.display = "";
   }
 
   async function onPlay(){
@@ -838,6 +519,7 @@
       log("PLAY error:", String(e));
       setStatus("error", "bad");
       showError(String(e));
+      activePlayback = null;
       await refreshReadiness().catch(() => {});
     }finally{
       btnPlay.disabled = !readinessState.ready;
@@ -847,6 +529,7 @@
   function onStop(){
     stopHls();
     stopRtc();
+    activePlayback = null;
     setStatus("stopped", "warn");
     showError("");
     scheduleReadiness(1200);
@@ -854,11 +537,12 @@
 
   btnLoad.onclick = async () => {
     showError("");
+    activePlayback = null;
     stopReadinessPolling();
-    try {
+    try{
       await loadPublic();
       await refreshReadiness();
-    } catch(e){
+    }catch(e){
       log("LOAD error:", String(e));
       setStatus("error", "bad");
       showError(String(e));
@@ -874,6 +558,7 @@
   overlay.onclick = closeDrawer;
 
   elMode.onchange = () => {
+    activePlayback = null;
     stopReadinessPolling();
     setModePill();
     showNone();
@@ -885,6 +570,7 @@
   };
 
   function scheduleReloadFromInputs(){
+    activePlayback = null;
     stopReadinessPolling();
     setReadyState(false, "Checking event…", "warn");
     currentReadiness = null;
