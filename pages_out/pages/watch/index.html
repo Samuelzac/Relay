@@ -23,13 +23,9 @@
       --btn:#1f2937;
       --shadow:0 10px 30px rgba(0,0,0,.28);
     }
-
     *{box-sizing:border-box}
     body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
-    header{
-      position:sticky;top:0;z-index:20;padding:14px 16px;border-bottom:1px solid var(--border);
-      background:rgba(11,12,16,.95);backdrop-filter: blur(10px);display:flex;gap:12px;align-items:center;justify-content:space-between
-    }
+    header{position:sticky;top:0;z-index:20;padding:14px 16px;border-bottom:1px solid var(--border);background:rgba(11,12,16,.95);backdrop-filter: blur(10px);display:flex;gap:12px;align-items:center;justify-content:space-between}
     .title{font-weight:700;letter-spacing:.2px}
     .top-right{display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
     .pill{font-size:12px;padding:6px 10px;border:1px solid var(--border2);border-radius:999px;color:#cbd5e1;background:#0f172a;white-space:nowrap}
@@ -50,15 +46,8 @@
     video.main-video{width:100%;min-height:360px;display:block;background:#000;object-fit:contain}
     #rtcWrap{display:none}
     .rtc-shell{position:relative;width:100%;min-height:360px;background:#000}
-    .rtc-label{
-      position:absolute;top:10px;left:10px;z-index:3;
-      background:rgba(0,0,0,.55);border:1px solid rgba(255,255,255,.14);
-      color:#e5e7eb;font-size:12px;padding:6px 10px;border-radius:999px;display:none
-    }
-    .rtc-empty{
-      position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
-      text-align:center;color:var(--muted);font-size:14px;padding:20px;pointer-events:none;z-index:2
-    }
+    .rtc-label{position:absolute;top:10px;left:10px;z-index:3;background:rgba(0,0,0,.55);border:1px solid rgba(255,255,255,.14);color:#e5e7eb;font-size:12px;padding:6px 10px;border-radius:999px;display:none}
+    .rtc-empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;color:var(--muted);font-size:14px;padding:20px;pointer-events:none;z-index:2}
     .status-line{margin-top:10px;min-height:20px;color:var(--muted);font-size:13px}
     .error-line{color:#ffb4b4;margin-top:8px;min-height:18px;font-size:13px;white-space:pre-wrap}
     .drawer{position:fixed;top:0;right:0;width:min(92vw,380px);height:100svh;background:#0d1118;border-left:1px solid var(--border);box-shadow:-10px 0 30px rgba(0,0,0,.35);transform:translateX(100%);transition:transform .22s ease;z-index:40;display:flex;flex-direction:column}
@@ -199,12 +188,31 @@
   function openDrawer(){ drawer.classList.add("open"); overlay.classList.add("open"); drawer.setAttribute("aria-hidden","false"); }
   function closeDrawer(){ drawer.classList.remove("open"); overlay.classList.remove("open"); drawer.setAttribute("aria-hidden","true"); }
   function showError(msg){ elError.textContent = msg || ""; }
-  function log(...args){ const line = args.map(a => typeof a === "string" ? a : JSON.stringify(a)).join(" "); elLog.textContent += line + "\\n"; elLog.scrollTop = elLog.scrollHeight; console.log(...args); }
+  function log(...args){ const line = args.map(a => typeof a === "string" ? a : JSON.stringify(a)).join(" "); elLog.textContent += line + "\n"; elLog.scrollTop = elLog.scrollHeight; console.log(...args); }
   function setStatus(text, kind){ elStatusPill.className = "pill " + (kind || ""); elStatusPill.textContent = "status: " + text; }
   function setModePill(){ elModePill.textContent = "mode: " + elMode.value; }
   function setReadyPill(ready, text, kind){ elReadyPill.className = "pill " + (kind || (ready ? "good" : "warn")); elReadyPill.textContent = "ready: " + text; }
   function setReadyState(ready, reason, kind){ readinessState = { ready, reason }; btnPlay.disabled = !ready; elStatusLine.textContent = reason || ""; setReadyPill(ready, ready ? "yes" : "no", kind); }
   function apiUrl(path){ return API_BASE + path; }
+
+  function extractTokenValue(res){
+    const candidates = [
+      res?.participantToken,
+      res?.token,
+      res?.subscriberToken,
+      res?.viewerToken,
+      res?.data?.participantToken,
+      res?.data?.token,
+      res?.participantToken?.token,
+      res?.token?.token,
+      res?.subscriberToken?.token,
+      res?.viewerToken?.token
+    ];
+    for (const c of candidates){
+      if (typeof c === "string" && c.trim()) return c.trim();
+    }
+    return null;
+  }
 
   async function fetchJson(path, init){
     const r = await fetch(apiUrl(path), init);
@@ -427,9 +435,13 @@
     const eventId = elEventId.value.trim();
     const key = elEventKey.value.trim();
     const res = await apiPost(`/api/events/${encodeURIComponent(eventId)}/rtc/token?key=${encodeURIComponent(key)}`, {});
-    stageToken = res.participantToken || res.token || res.subscriberToken || null;
-    if(!stageToken) throw new Error("No participantToken returned from /rtc/token");
-    if(!silent) log("RTC TOKEN ok");
+    const tokenValue = extractTokenValue(res);
+    if(!tokenValue){
+      log("RTC token response", res);
+      throw new Error("RTC token missing or in unexpected format");
+    }
+    stageToken = tokenValue;
+    if(!silent) log("RTC TOKEN ok", `len=${stageToken.length}`);
     return res;
   }
 
