@@ -22,52 +22,139 @@
       --btn:#1976d2;
       --btnStop:#b42318;
       --shadow:0 10px 30px rgba(0,0,0,.35);
+      --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
     }
 
     *{box-sizing:border-box}
     html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
     body{min-height:100svh; overflow:hidden}
 
-    .shell{position:relative;min-height:100svh;display:grid;grid-template-rows:auto 1fr auto;background:#000}
-    .preview-wrap{position:absolute;inset:0;background:#000}
-    video{width:100%;height:100%;object-fit:cover;display:block;background:#000}
-    .scrim-top{position:absolute;inset:0 0 auto 0;height:160px;background:linear-gradient(to bottom, rgba(0,0,0,.72), rgba(0,0,0,0));pointer-events:none;z-index:1}
-    .scrim-bottom{position:absolute;inset:auto 0 0 0;height:220px;background:linear-gradient(to top, rgba(0,0,0,.78), rgba(0,0,0,0));pointer-events:none;z-index:1}
-    .topbar{position:relative;z-index:2;padding:calc(12px + env(safe-area-inset-top)) 14px 10px 14px;display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+    .shell{
+      position:relative;
+      min-height:100svh;
+      display:grid;
+      grid-template-rows:auto 1fr auto;
+      background:#000;
+    }
+
+    .preview-wrap{
+      position:absolute;
+      inset:0;
+      background:#000;
+    }
+
+    video{
+      width:100%;
+      height:100%;
+      object-fit:cover;
+      display:block;
+      background:#000;
+    }
+
+    .scrim-top{
+      position:absolute;
+      inset:0 0 auto 0;
+      height:160px;
+      background:linear-gradient(to bottom, rgba(0,0,0,.72), rgba(0,0,0,0));
+      pointer-events:none;
+      z-index:1;
+    }
+
+    .scrim-bottom{
+      position:absolute;
+      inset:auto 0 0 0;
+      height:260px;
+      background:linear-gradient(to top, rgba(0,0,0,.82), rgba(0,0,0,0));
+      pointer-events:none;
+      z-index:1;
+    }
+
+    .topbar{
+      position:relative;
+      z-index:2;
+      padding:calc(12px + env(safe-area-inset-top)) 14px 10px 14px;
+      display:flex;
+      justify-content:space-between;
+      align-items:flex-start;
+      gap:12px;
+    }
+
     .title-block{display:flex;flex-direction:column;gap:6px;min-width:0}
     .title{font-size:20px;font-weight:800;letter-spacing:.2px}
     .subtitle{color:var(--muted);font-size:13px;max-width:min(70vw,560px)}
+
     .status-row{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
-    .pill{display:inline-flex;align-items:center;gap:8px;min-height:32px;padding:6px 10px;border-radius:999px;background:rgba(0,0,0,.42);border:1px solid var(--border);backdrop-filter: blur(10px);font-size:12px;white-space:nowrap}
+
+    .pill{
+      display:inline-flex;align-items:center;gap:8px;min-height:32px;padding:6px 10px;border-radius:999px;
+      background:rgba(0,0,0,.42);border:1px solid var(--border);backdrop-filter: blur(10px);font-size:12px;white-space:nowrap;
+    }
     .dot{width:8px;height:8px;border-radius:999px;background:#8a8a8a}
     .pill.good .dot{background:var(--good)}
     .pill.warn .dot{background:var(--warn)}
     .pill.bad .dot{background:var(--bad)}
-    .bottom-ui{position:relative;z-index:2;margin-top:auto;padding:12px 14px calc(16px + env(safe-area-inset-bottom)) 14px;display:grid;gap:12px}
+
+    .bottom-ui{
+      position:relative;
+      z-index:2;
+      margin-top:auto;
+      padding:12px 14px calc(16px + env(safe-area-inset-bottom)) 14px;
+      display:grid;
+      gap:12px;
+    }
+
     .panel{background:var(--panel);border:1px solid var(--border);border-radius:18px;backdrop-filter: blur(16px);box-shadow:var(--shadow)}
     .controls{padding:14px;display:grid;gap:12px}
     .inputs{display:grid;gap:10px;grid-template-columns:1fr}
     .input-row{display:grid;gap:10px;grid-template-columns:1fr 1fr}
     .field{display:grid;gap:6px}
     .label{font-size:12px;color:var(--muted)}
-    input,select,button{font:inherit}
-    input,select{width:100%;min-height:46px;border-radius:12px;border:1px solid var(--border);background:rgba(255,255,255,.08);color:var(--text);padding:10px 12px;outline:none}
-    input::placeholder{color:rgba(255,255,255,.48)}
+
+    input,select,button,textarea{font:inherit}
+    input,select,textarea{
+      width:100%;min-height:46px;border-radius:12px;border:1px solid var(--border);
+      background:rgba(255,255,255,.08);color:var(--text);padding:10px 12px;outline:none;
+    }
+    textarea{min-height:94px;resize:vertical;font-family:var(--mono);font-size:12px;line-height:1.35}
+    input::placeholder, textarea::placeholder{color:rgba(255,255,255,.48)}
+
     .actions{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+    .obs-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+
     button{min-height:52px;border-radius:14px;border:0;cursor:pointer;font-weight:800;color:#fff;background:var(--panel-2)}
     button.primary{background:var(--btn)}
     button.stop{background:var(--btnStop)}
     button:disabled{opacity:.48;cursor:not-allowed}
+
     .meta{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;color:var(--muted);font-size:13px}
-    .state-line{display:flex;gap:8px;flex-wrap:wrap}
-    .chip{padding:6px 10px;border-radius:999px;border:1px solid var(--border);font-size:12px;background:rgba(255,255,255,.06)}
+
     details{overflow:hidden}
     summary{list-style:none;cursor:pointer;padding:12px 14px;color:var(--muted);font-size:13px;border-bottom:1px solid transparent}
     details[open] summary{border-bottom-color:var(--border)}
     summary::-webkit-details-marker{display:none}
-    .log{padding:12px 14px 14px 14px;max-height:220px;overflow:auto;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;white-space:pre-wrap;line-height:1.4;color:#d7d7d7;background:rgba(0,0,0,.2)}
-    .empty-preview{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:20px;color:rgba(255,255,255,.68);font-size:14px;pointer-events:none;z-index:0}
-    @media (max-width:760px){.topbar{flex-direction:column;align-items:stretch}.status-row{justify-content:flex-start}.input-row{grid-template-columns:1fr}.actions{grid-template-columns:1fr}.title{font-size:18px}}
+
+    .log{padding:12px 14px 14px 14px;max-height:220px;overflow:auto;font-family:var(--mono);font-size:12px;white-space:pre-wrap;line-height:1.4;color:#d7d7d7;background:rgba(0,0,0,.2)}
+
+    .obs-grid{display:grid;gap:10px;grid-template-columns:1fr 1fr}
+    .kv{display:grid;gap:6px}
+    .value{font-family:var(--mono);font-size:12px;word-break:break-all;padding:12px;border-radius:12px;border:1px solid var(--border);background:rgba(255,255,255,.06);min-height:46px}
+    .hint{color:var(--muted);font-size:12px;line-height:1.45}
+    .success{color:var(--good)}
+    .warn{color:var(--warn)}
+    .bad{color:var(--bad)}
+
+    .empty-preview{
+      position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:20px;
+      color:rgba(255,255,255,.68);font-size:14px;pointer-events:none;z-index:0;
+    }
+
+    @media (max-width:760px){
+      .topbar{flex-direction:column; align-items:stretch}
+      .status-row{justify-content:flex-start}
+      .input-row,.obs-grid,.obs-actions,.actions{grid-template-columns:1fr}
+      .title{font-size:18px}
+      body{overflow:auto}
+    }
   </style>
 </head>
 <body>
@@ -128,11 +215,50 @@
 
         <div class="meta">
           <div id="info">Waiting for preview…</div>
-          <div id="liveHint">Preparing stream path…</div>
+          <div id="liveHint">HLS warm-up may take 2–3 minutes on v1.</div>
         </div>
-
-        <div class="state-line" id="stateLine"></div>
       </div>
+
+      <details class="panel" open>
+        <summary>OBS / WHIP setup</summary>
+        <div class="controls">
+          <div class="hint">This fetches a fresh WHIP bearer token for the current event. A browser cannot fully configure OBS for you, but this gets you as close to one-click as the web allows.</div>
+
+          <div class="obs-actions">
+            <button id="btnObsToken" class="primary">Get OBS token</button>
+            <button id="btnCopyObsSummary" disabled>Copy OBS setup</button>
+          </div>
+
+          <div class="obs-grid">
+            <div class="kv">
+              <label class="label">WHIP Server</label>
+              <div id="obsServer" class="value">https://global.whip.live-video.net</div>
+              <button id="btnCopyServer" disabled>Copy server</button>
+            </div>
+            <div class="kv">
+              <label class="label">Token expiry</label>
+              <div id="obsExpiry" class="value">—</div>
+            </div>
+          </div>
+
+          <div class="kv">
+            <label class="label">Bearer token</label>
+            <textarea id="obsToken" readonly placeholder="Click “Get OBS token”"></textarea>
+            <div class="obs-actions">
+              <button id="btnCopyToken" disabled>Copy token</button>
+              <button id="btnRevealSteps">Show OBS steps</button>
+            </div>
+          </div>
+
+          <div id="obsStatus" class="hint">No token loaded yet.</div>
+          <div id="obsSteps" class="hint" style="display:none; white-space:pre-line;">In OBS:
+1. Settings → Stream
+2. Service: WHIP
+3. Server: paste the WHIP server above
+4. Bearer Token: paste the token above
+5. Apply → Start Streaming</div>
+        </div>
+      </details>
 
       <details class="panel">
         <summary>Logs</summary>
@@ -161,12 +287,22 @@
   const elLiveHint = $("liveHint");
   const elCam = $("camera");
   const elMic = $("mic");
-  const elStateLine = $("stateLine");
   const btnPreview = $("btnPreview");
   const btnGoLive = $("btnGoLive");
   const btnStop = $("btnStop");
   const videoEl = $("preview");
   const emptyPreview = $("emptyPreview");
+
+  const btnObsToken = $("btnObsToken");
+  const btnCopyServer = $("btnCopyServer");
+  const btnCopyToken = $("btnCopyToken");
+  const btnCopyObsSummary = $("btnCopyObsSummary");
+  const btnRevealSteps = $("btnRevealSteps");
+  const elObsServer = $("obsServer");
+  const elObsToken = $("obsToken");
+  const elObsExpiry = $("obsExpiry");
+  const elObsStatus = $("obsStatus");
+  const elObsSteps = $("obsSteps");
 
   let localStream = null;
   let stage = null;
@@ -176,8 +312,7 @@
   let readinessTimer = null;
   let readyToBroadcast = false;
   let currentPublic = null;
-  let currentReadiness = null;
-  let currentReadinessState = "checking";
+  let currentObs = null;
 
   elEventId.value = qs.get("event") || qs.get("id") || "";
   elEventKey.value = qs.get("key") || "";
@@ -200,22 +335,6 @@
     elReady.className = `pill ${kind || (ready ? "good" : "warn")}`.trim();
     elReady.querySelector("span:last-child").textContent = "ready: " + text;
     elReadyInfo.textContent = detail || "";
-  }
-
-  function renderFlags(readiness){
-    const flags = [];
-    if (!readiness) {
-      elStateLine.innerHTML = "";
-      return;
-    }
-    flags.push(["Stage", readiness.stage_exists]);
-    if (readiness.hls_enabled) flags.push(["HLS channel", readiness.hls_channel_exists]);
-    if (readiness.hls_enabled) flags.push(["Encoder", readiness.encoder_configuration_exists]);
-    if (readiness.hls_enabled) flags.push(["Composition", readiness.composition_started]);
-    if (readiness.hls_enabled) flags.push(["Playback URL", readiness.playback_url_exists]);
-    if (readiness.whip_url_exists) flags.push(["WHIP", readiness.whip_url_exists]);
-
-    elStateLine.innerHTML = flags.map(([label, ok]) => `<span class="chip">${label}: ${ok ? "yes" : "no"}</span>`).join("");
   }
 
   function apiUrl(path){ return API_BASE + path; }
@@ -263,7 +382,6 @@
     const devices = await navigator.mediaDevices.enumerateDevices();
     const cams = devices.filter(d => d.kind === "videoinput");
     const mics = devices.filter(d => d.kind === "audioinput");
-
     elCam.innerHTML = cams.map((d,i)=>`<option value="${d.deviceId}">${d.label || "Camera " + (i+1)}</option>`).join("");
     elMic.innerHTML = mics.map((d,i)=>`<option value="${d.deviceId}">${d.label || "Mic " + (i+1)}</option>`).join("");
   }
@@ -271,27 +389,22 @@
   async function getLocalMedia(){
     const camId = elCam.value || undefined;
     const micId = elMic.value || undefined;
-
     const constraints = {
       video: camId ? { deviceId: { exact: camId }, width:{ ideal:1280 }, height:{ ideal:720 }, frameRate:{ ideal:30 } }
                    : { width:{ ideal:1280 }, height:{ ideal:720 }, frameRate:{ ideal:30 } },
       audio: micId ? { deviceId: { exact: micId } } : true
     };
-
     return navigator.mediaDevices.getUserMedia(constraints);
   }
 
   async function preview(){
     setStatus("previewing…", "warn");
-    if(localStream){
-      localStream.getTracks().forEach(t => t.stop());
-      localStream = null;
-    }
+    if(localStream){ localStream.getTracks().forEach(t => t.stop()); }
     localStream = await getLocalMedia();
     videoEl.srcObject = localStream;
     emptyPreview.style.display = "none";
     elInfo.textContent = "Preview ready.";
-    setStatus("preview ready", "good");
+    setStatus("ready", readyToBroadcast ? "good" : "warn");
   }
 
   async function loadPublicOptional(){
@@ -308,22 +421,10 @@
     }
   }
 
-  async function fetchReadiness(){
-    const eventId = elEventId.value.trim();
-    const key = elEventKey.value.trim();
-    if(!eventId || !key) throw new Error("Missing event or key");
-    const res = await apiGet(`/api/events/${encodeURIComponent(eventId)}/readiness?key=${encodeURIComponent(key)}`);
-    currentReadiness = res?.readiness || null;
-    currentReadinessState = currentReadiness?.state || "checking";
-    renderFlags(currentReadiness);
-    return res;
-  }
-
   async function provisionPublishToken(){
     const eventId = elEventId.value.trim();
     const key = elEventKey.value.trim();
     if(!eventId || !key) throw new Error("Missing event or key");
-
     const prov = await apiPost(`/api/events/${encodeURIComponent(eventId)}/rtc/provision?key=${encodeURIComponent(key)}`, {});
     stageToken = prov?.participantToken || prov?.publisher?.token;
     if(!stageToken) throw new Error("No publisher token returned from /rtc/provision");
@@ -331,79 +432,45 @@
   }
 
   function stopReadiness(){
-    if(readinessTimer){
-      clearTimeout(readinessTimer);
-      readinessTimer = null;
-    }
+    if(readinessTimer){ clearTimeout(readinessTimer); readinessTimer = null; }
   }
 
   function scheduleReadiness(ms = 2500){
     stopReadiness();
     readinessTimer = setTimeout(() => {
       readinessTimer = null;
-      refreshReadiness().catch(e => {
-        log("READINESS polling error", String(e));
-        scheduleReadiness(2500);
-      });
+      refreshReadiness().catch(e => { log("READINESS polling error", String(e)); scheduleReadiness(2500); });
     }, ms);
-  }
-
-  function applyReadinessUi(readiness){
-    if(!readiness){
-      setStatus("checking…", "warn");
-      setReady(false, "no", "Checking stream readiness…", "warn");
-      return;
-    }
-
-    const state = readiness.state || "checking";
-
-    if(readiness.expired){
-      setStatus("expired", "bad");
-      setReady(false, "no", readiness.detail || "Event expired.", "bad");
-      elLiveHint.textContent = "This event has expired.";
-      return;
-    }
-
-    if(!readiness.paid){
-      setStatus("awaiting payment", "warn");
-      setReady(false, "no", readiness.detail || "Waiting for payment confirmation…", "warn");
-      elLiveHint.textContent = "Infrastructure will pre-provision once payment is confirmed.";
-      return;
-    }
-
-    if(state === "preparing_stage" || state === "preparing_hls_channel" || state === "preparing_encoder"){
-      setStatus("preparing stream", "warn");
-      setReady(false, "no", readiness.detail || "Preparing stream…", "warn");
-      elLiveHint.textContent = readiness.hls_enabled ? "HLS infrastructure is being prepared in advance." : "RTC infrastructure is being prepared in advance.";
-      return;
-    }
-
-    if(readiness.can_go_live){
-      setStatus(readiness.stream_window_open ? "live window open" : "ready to go live", "good");
-      setReady(true, "yes", readiness.detail || "Ready to go live.", "good");
-      elLiveHint.textContent = readiness.hls_enabled
-        ? (readiness.composition_started ? "HLS composition is running." : "HLS will start as soon as you go live.")
-        : "RTC is ready.";
-      return;
-    }
-
-    setStatus("checking…", "warn");
-    setReady(false, "no", readiness.detail || "Checking stream readiness…", "warn");
   }
 
   async function refreshReadiness(){
     try{
+      setStatus("checking…", "warn");
       const pub = await loadPublicOptional();
       if(pub?.expired){
-        setStatus("expired", "bad");
         setReady(false, "no", "Event expired.", "bad");
+        setStatus("expired", "bad");
+        return;
+      }
+      if(pub && pub.status && pub.status !== "paid"){
+        setReady(false, "no", "Waiting for payment confirmation…", "warn");
+        setStatus("payment", "warn");
+        scheduleReadiness(2500);
         return;
       }
 
-      const readyRes = await fetchReadiness();
-      applyReadinessUi(readyRes?.readiness || null);
-
-      if(currentReadiness && !currentReadiness.can_go_live && !currentReadiness.expired){
+      try{
+        await provisionPublishToken();
+        const hlsEnabled = !!pub?.hls_enabled;
+        elLiveHint.textContent = hlsEnabled
+          ? "HLS warm-up may take 2–3 minutes on v1. Browser RTC is faster."
+          : "RTC-only event.";
+        setReady(true, "yes", hlsEnabled ? "Ready to go live. HLS may still take a little time to appear on watch." : "Ready to go live.", "good");
+        setStatus("ready", "good");
+      }catch(e){
+        setReady(false, "no", "Preparing broadcaster access…", "warn");
+        log("READINESS provision failed", String(e));
+        setStatus("preparing", "warn");
         scheduleReadiness(2500);
       }
     }catch(e){
@@ -413,23 +480,15 @@
     }
   }
 
-  async function startForBroadcast(){
-    const eventId = elEventId.value.trim();
-    const key = elEventKey.value.trim();
-    const res = await apiPost(`/api/events/${encodeURIComponent(eventId)}/start?key=${encodeURIComponent(key)}`, { open_window: true });
-    currentReadiness = res?.readiness || currentReadiness;
-    renderFlags(currentReadiness);
-    return res;
-  }
-
   async function goLive(){
     const sdk = window.IVSBroadcastClient;
     if(!sdk) throw new Error("IVS Web Broadcast SDK not loaded.");
-
     const { Stage, StageEvents, SubscribeType, LocalStageStream, StageConnectionState } = sdk;
 
-    await refreshReadiness();
-    if(!readyToBroadcast) throw new Error("Broadcast path is still preparing.");
+    if(!readyToBroadcast){
+      await refreshReadiness();
+      if(!readyToBroadcast) throw new Error("Broadcast path is still preparing.");
+    }
 
     if(!localStream) await preview();
     await provisionPublishToken();
@@ -456,24 +515,19 @@
 
     stage.on(StageEvents.STAGE_CONNECTION_STATE_CHANGED, async (state) => {
       log("RTC state", state);
-
       if(state === StageConnectionState.CONNECTED){
-        setStatus("connecting live…", "warn");
-        setReady(true, "connecting", "Publisher connected. Opening live stream…", "warn");
+        setStatus("live", "good");
+        setReady(true, "live", "You are live.", "good");
         try{
-          const res = await startForBroadcast();
+          const eventId = elEventId.value.trim();
+          const key = elEventKey.value.trim();
+          const res = await apiPost(`/api/events/${encodeURIComponent(eventId)}/start?key=${encodeURIComponent(key)}`, {});
           log("START", res);
         }catch(e){
           log("START failed (non-fatal)", String(e));
         }
-        setStatus("live", "good");
-        setReady(true, "live", "You are live.", "good");
-        if(!startedAtMs){
-          startedAtMs = Date.now();
-          startTimer();
-        }
+        if(!startedAtMs){ startedAtMs = Date.now(); startTimer(); }
       }
-
       if(state === StageConnectionState.CONNECTING) setStatus("connecting…", "warn");
       if(state === StageConnectionState.ERRORED) setStatus("reconnecting…", "warn");
       if(state === StageConnectionState.DISCONNECTED){
@@ -491,14 +545,9 @@
   async function stopAll(){
     try{ stage && stage.leave(); }catch{}
     stage = null;
-
-    if(localStream){
-      localStream.getTracks().forEach(t => t.stop());
-      localStream = null;
-    }
+    if(localStream){ localStream.getTracks().forEach(t => t.stop()); localStream = null; }
     videoEl.srcObject = null;
     emptyPreview.style.display = "";
-
     stopTimer();
     setStatus("stopped", "warn");
     elInfo.textContent = "Stopped.";
@@ -506,28 +555,71 @@
     scheduleReadiness(1500);
   }
 
+  function setObsStatus(text, cls){
+    elObsStatus.className = `hint ${cls || ""}`.trim();
+    elObsStatus.textContent = text;
+  }
+
+  function formatDateTime(v){
+    if(!v) return "—";
+    const d = new Date(v);
+    if(Number.isNaN(d.getTime())) return String(v);
+    return d.toLocaleString();
+  }
+
+  function buildObsSummary(){
+    const server = currentObs?.whip_url || "https://global.whip.live-video.net";
+    const token = currentObs?.bearer_token || "";
+    return [
+      "OBS WHIP setup",
+      `Server: ${server}`,
+      `Bearer Token: ${token}`,
+      `Expires: ${formatDateTime(currentObs?.expires_at)}`
+    ].join("\n");
+  }
+
+  async function copyText(text, okText){
+    await navigator.clipboard.writeText(text);
+    setObsStatus(okText || "Copied.", "success");
+  }
+
+  async function fetchObsToken(){
+    const eventId = elEventId.value.trim();
+    const key = elEventKey.value.trim();
+    if(!eventId || !key) throw new Error("Missing event or key");
+
+    setObsStatus("Fetching fresh OBS token…", "warn");
+    const res = await apiPost(`/api/events/${encodeURIComponent(eventId)}/whip/provision?key=${encodeURIComponent(key)}`, {});
+
+    currentObs = {
+      whip_url: res?.whip_url || "https://global.whip.live-video.net",
+      bearer_token: res?.bearer_token || "",
+      expires_at: res?.expires_at || null,
+      event_id: res?.event_id || eventId
+    };
+
+    if(!currentObs.bearer_token) throw new Error("No bearer token returned from /whip/provision");
+
+    elObsServer.textContent = currentObs.whip_url;
+    elObsToken.value = currentObs.bearer_token;
+    elObsExpiry.textContent = formatDateTime(currentObs.expires_at);
+    btnCopyServer.disabled = false;
+    btnCopyToken.disabled = false;
+    btnCopyObsSummary.disabled = false;
+    setObsStatus("OBS token ready. Paste it into OBS → Settings → Stream → WHIP.", "success");
+    log("OBS token fetched", { event_id: currentObs.event_id, expires_at: currentObs.expires_at });
+  }
+
   btnPreview.onclick = async () => {
-    try{
-      btnPreview.disabled = true;
-      await preview();
-    } catch(e){
-      log("Preview error", String(e));
-      setStatus("error", "bad");
-    } finally {
-      btnPreview.disabled = false;
-    }
+    try{ btnPreview.disabled = true; await preview(); }
+    catch(e){ log("Preview error", String(e)); setStatus("error", "bad"); }
+    finally { btnPreview.disabled = false; }
   };
 
   btnGoLive.onclick = async () => {
-    try{
-      btnGoLive.disabled = true;
-      await goLive();
-    } catch(e){
-      log("GoLive error", String(e));
-      setStatus("error", "bad");
-    } finally {
-      btnGoLive.disabled = !readyToBroadcast;
-    }
+    try{ btnGoLive.disabled = true; await goLive(); }
+    catch(e){ log("GoLive error", String(e)); setStatus("error", "bad"); }
+    finally { btnGoLive.disabled = !readyToBroadcast; }
   };
 
   btnStop.onclick = async () => {
@@ -535,17 +627,47 @@
     catch(e){ log("Stop error", String(e)); }
   };
 
+  btnObsToken.onclick = async () => {
+    try{ btnObsToken.disabled = true; await fetchObsToken(); }
+    catch(e){ log("OBS token error", String(e)); setObsStatus(String(e), "bad"); }
+    finally { btnObsToken.disabled = false; }
+  };
+
+  btnCopyServer.onclick = async () => {
+    try{ await copyText(elObsServer.textContent || "", "WHIP server copied."); }
+    catch(e){ setObsStatus("Could not copy server automatically.", "bad"); }
+  };
+
+  btnCopyToken.onclick = async () => {
+    try{ await copyText(elObsToken.value || "", "Bearer token copied."); }
+    catch(e){ setObsStatus("Could not copy token automatically.", "bad"); }
+  };
+
+  btnCopyObsSummary.onclick = async () => {
+    try{ await copyText(buildObsSummary(), "OBS setup copied."); }
+    catch(e){ setObsStatus("Could not copy OBS setup automatically.", "bad"); }
+  };
+
+  btnRevealSteps.onclick = () => {
+    const isHidden = elObsSteps.style.display === "none";
+    elObsSteps.style.display = isHidden ? "" : "none";
+    btnRevealSteps.textContent = isHidden ? "Hide OBS steps" : "Show OBS steps";
+  };
+
   function scheduleReload(){
     stopReadiness();
     currentPublic = null;
-    currentReadiness = null;
+    currentObs = null;
+    elObsToken.value = "";
+    elObsExpiry.textContent = "—";
+    btnCopyServer.disabled = true;
+    btnCopyToken.disabled = true;
+    btnCopyObsSummary.disabled = true;
+    setObsStatus("No token loaded yet.", "");
     setReady(false, "checking…", "Rechecking event…", "warn");
     setStatus("checking…", "warn");
     setTimeout(() => {
-      refreshReadiness().catch(e => {
-        log("Input change readiness error", String(e));
-        scheduleReadiness(2500);
-      });
+      refreshReadiness().catch(e => { log("Input change readiness error", String(e)); scheduleReadiness(2500); });
     }, 300);
   }
 
