@@ -2,97 +2,356 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
   <title>Relay Watch</title>
 
   <script src="https://web-broadcast.live-video.net/1.17.0/amazon-ivs-web-broadcast.js"></script>
   <script src="https://player.live-video.net/1.48.0/amazon-ivs-player.min.js"></script>
 
   <style>
-    :root { color-scheme: dark; }
-    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; background:#0b0c10; color:#e8e8e8; margin:0; }
-    header { padding:14px 16px; border-bottom:1px solid #20232a; display:flex; gap:12px; align-items:center; justify-content:space-between; }
-    .title { font-weight:700; }
-    .pill { font-size:12px; padding:4px 8px; border:1px solid #2b2f3a; border-radius:999px; color:#cbd5e1; }
-    .pill.good { border-color:#1f6f4a; color:#bff7de; }
-    .pill.warn { border-color:#7a5a0a; color:#ffe3a3; }
-    .pill.bad { border-color:#7c2d38; color:#ffb4b4; }
-    main { padding:14px 16px; max-width:1100px; margin:0 auto; }
-    .row { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-bottom:10px; }
-    button { background:#1f2937; border:1px solid #334155; color:#e5e7eb; padding:10px 12px; border-radius:10px; cursor:pointer; }
-    button:disabled { opacity:0.55; cursor:not-allowed; }
-    select, input { background:#0f172a; border:1px solid #334155; color:#e5e7eb; padding:9px 10px; border-radius:10px; }
-    .card { border:1px solid #20232a; border-radius:14px; padding:12px; background:#0f1117; }
-    .grid { display:grid; gap:12px; grid-template-columns:1fr; }
-    @media (min-width:900px){ .grid { grid-template-columns:2fr 1fr; } }
-    video { width:100%; background:#000; border-radius:12px; border:1px solid #20232a; }
-    .videos { display:grid; gap:10px; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); }
-    .log { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:12px; white-space:pre-wrap; background:#0b1220; border:1px solid #202a3a; border-radius:12px; padding:10px; max-height:240px; overflow:auto; }
-    .muted { color:#a3a3a3; }
-    .err { color:#ffb4b4; }
-    .state-line { display:flex; gap:8px; flex-wrap:wrap; margin:8px 0 0; }
-    .chip { padding:6px 10px; border-radius:999px; border:1px solid #334155; font-size:12px; background:#111827; }
+    :root{
+      color-scheme: dark;
+      --bg:#0b0c10;
+      --panel:#0f1117;
+      --panel2:#111827;
+      --border:#20232a;
+      --border2:#334155;
+      --text:#e8e8e8;
+      --muted:#a3a3a3;
+      --good:#1f6f4a;
+      --warn:#7a5a0a;
+      --bad:#7c2d38;
+      --btn:#1f2937;
+      --shadow:0 10px 30px rgba(0,0,0,.28);
+    }
+
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      background:var(--bg);
+      color:var(--text);
+      font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+    }
+
+    header{
+      position:sticky;
+      top:0;
+      z-index:20;
+      padding:14px 16px;
+      border-bottom:1px solid var(--border);
+      background:rgba(11,12,16,.95);
+      backdrop-filter: blur(10px);
+      display:flex;
+      gap:12px;
+      align-items:center;
+      justify-content:space-between;
+    }
+
+    .title{
+      font-weight:700;
+      letter-spacing:.2px;
+    }
+
+    .top-right{
+      display:flex;
+      gap:8px;
+      align-items:center;
+      flex-wrap:wrap;
+      justify-content:flex-end;
+    }
+
+    .pill{
+      font-size:12px;
+      padding:6px 10px;
+      border:1px solid var(--border2);
+      border-radius:999px;
+      color:#cbd5e1;
+      background:#0f172a;
+      white-space:nowrap;
+    }
+
+    .pill.good{ border-color:var(--good); color:#bff7de; }
+    .pill.warn{ border-color:var(--warn); color:#ffe3a3; }
+    .pill.bad{ border-color:var(--bad); color:#ffb4b4; }
+
+    .icon-btn{
+      width:38px;
+      height:38px;
+      border-radius:10px;
+      border:1px solid var(--border2);
+      background:var(--btn);
+      color:var(--text);
+      cursor:pointer;
+      font-size:18px;
+      line-height:1;
+    }
+
+    main{
+      max-width:1100px;
+      margin:0 auto;
+      padding:14px 16px 24px;
+    }
+
+    .card{
+      border:1px solid var(--border);
+      border-radius:16px;
+      background:var(--panel);
+      box-shadow:var(--shadow);
+    }
+
+    .player-card{
+      padding:12px;
+    }
+
+    .controls{
+      display:flex;
+      gap:10px;
+      flex-wrap:wrap;
+      align-items:center;
+      justify-content:space-between;
+      margin-bottom:12px;
+    }
+
+    .left-controls, .right-controls{
+      display:flex;
+      gap:10px;
+      flex-wrap:wrap;
+      align-items:center;
+    }
+
+    select, button, input{
+      font:inherit;
+    }
+
+    select, input{
+      background:#0f172a;
+      border:1px solid var(--border2);
+      color:var(--text);
+      padding:10px 12px;
+      border-radius:10px;
+    }
+
+    button.action{
+      background:var(--btn);
+      border:1px solid var(--border2);
+      color:var(--text);
+      padding:10px 14px;
+      border-radius:10px;
+      cursor:pointer;
+    }
+
+    button.action:disabled{
+      opacity:.55;
+      cursor:not-allowed;
+    }
+
+    .player-wrap{
+      position:relative;
+    }
+
+    video{
+      width:100%;
+      background:#000;
+      border-radius:14px;
+      border:1px solid var(--border);
+      display:block;
+    }
+
+    #rtcWrap{ display:none; }
+    .videos{
+      display:grid;
+      gap:10px;
+      grid-template-columns:repeat(auto-fit, minmax(220px,1fr));
+    }
+
+    .rtc-tile{
+      border:1px solid var(--border);
+      border-radius:12px;
+      padding:8px;
+      background:#0b1220;
+    }
+
+    .rtc-cap{
+      color:var(--muted);
+      font-size:12px;
+      margin-bottom:6px;
+    }
+
+    .status-line{
+      margin-top:10px;
+      min-height:20px;
+      color:var(--muted);
+      font-size:13px;
+    }
+
+    .error-line{
+      color:#ffb4b4;
+      margin-top:8px;
+      min-height:18px;
+      font-size:13px;
+    }
+
+    .drawer{
+      position:fixed;
+      top:0;
+      right:0;
+      width:min(92vw, 380px);
+      height:100svh;
+      background:#0d1118;
+      border-left:1px solid var(--border);
+      box-shadow:-10px 0 30px rgba(0,0,0,.35);
+      transform:translateX(100%);
+      transition:transform .22s ease;
+      z-index:40;
+      display:flex;
+      flex-direction:column;
+    }
+
+    .drawer.open{
+      transform:translateX(0);
+    }
+
+    .drawer-head{
+      padding:14px 14px 10px;
+      border-bottom:1px solid var(--border);
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:10px;
+    }
+
+    .drawer-body{
+      padding:14px;
+      overflow:auto;
+      display:grid;
+      gap:14px;
+    }
+
+    .field{
+      display:grid;
+      gap:6px;
+    }
+
+    .label{
+      font-size:12px;
+      color:var(--muted);
+    }
+
+    .log{
+      font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+      font-size:12px;
+      white-space:pre-wrap;
+      background:#0b1220;
+      border:1px solid #202a3a;
+      border-radius:12px;
+      padding:10px;
+      min-height:180px;
+      max-height:42svh;
+      overflow:auto;
+    }
+
+    .overlay{
+      position:fixed;
+      inset:0;
+      background:rgba(0,0,0,.45);
+      opacity:0;
+      pointer-events:none;
+      transition:opacity .2s ease;
+      z-index:30;
+    }
+
+    .overlay.open{
+      opacity:1;
+      pointer-events:auto;
+    }
+
+    @media (max-width:760px){
+      .controls{
+        align-items:stretch;
+      }
+      .left-controls, .right-controls{
+        width:100%;
+      }
+      .left-controls > *, .right-controls > *{
+        flex:1 1 auto;
+      }
+      header{
+        align-items:flex-start;
+      }
+      .top-right{
+        justify-content:flex-end;
+      }
+    }
   </style>
 </head>
 <body>
   <header>
     <div class="title">Relay Watch</div>
-    <div class="row">
+    <div class="top-right">
       <span id="modePill" class="pill">mode: auto</span>
       <span id="statusPill" class="pill">status: —</span>
       <span id="readyPill" class="pill warn">ready: checking…</span>
+      <button id="menuBtn" class="icon-btn" aria-label="Open menu">☰</button>
     </div>
   </header>
 
   <main>
-    <div class="grid">
-      <div class="card">
-        <div class="row">
-          <label class="muted">Event</label>
-          <input id="eventId" style="min-width:320px" />
-          <label class="muted">Key</label>
-          <input id="eventKey" style="min-width:320px" />
-        </div>
-
-        <div class="row">
-          <label class="muted">Playback mode</label>
+    <div class="card player-card">
+      <div class="controls">
+        <div class="left-controls">
           <select id="mode">
             <option value="auto">Auto</option>
-            <option value="hls">HLS (IVS Player)</option>
-            <option value="rtc">WebRTC (Stage)</option>
+            <option value="hls">HLS</option>
+            <option value="rtc">RTC</option>
           </select>
-
-          <button id="btnLoad">Load / Refresh</button>
-          <button id="btnPlay" disabled>Play</button>
-          <button id="btnStop">Stop</button>
         </div>
-
-        <div id="errorLine" class="muted err" style="margin:6px 0 0; display:none;"></div>
-        <div id="readyInfo" class="muted" style="margin:6px 0 10px;"></div>
-        <div id="stateLine" class="state-line"></div>
-
-        <div id="hlsWrap" style="display:none;">
-          <div class="muted" style="margin:8px 0 6px;">HLS Player</div>
-          <video id="hlsVideo" playsinline controls></video>
-          <div class="muted" id="hlsInfo" style="margin-top:6px;"></div>
-        </div>
-
-        <div id="rtcWrap" style="display:none;">
-          <div class="muted" style="margin:8px 0 6px;">WebRTC Stage</div>
-          <div class="videos" id="rtcVideos"></div>
-          <div class="muted" id="rtcInfo" style="margin-top:6px;"></div>
+        <div class="right-controls">
+          <button id="btnLoad" class="action">Load / Refresh</button>
+          <button id="btnPlay" class="action" disabled>Play</button>
+          <button id="btnStop" class="action">Stop</button>
         </div>
       </div>
 
-      <div class="card">
-        <div class="row" style="justify-content:space-between;">
-          <div class="muted">Logs</div>
-          <button id="btnClear" style="padding:8px 10px;">Clear</button>
+      <div id="hlsWrap" class="player-wrap">
+        <video id="hlsVideo" playsinline controls></video>
+      </div>
+
+      <div id="rtcWrap" class="player-wrap">
+        <div id="rtcVideos" class="videos"></div>
+      </div>
+
+      <div id="statusLine" class="status-line"></div>
+      <div id="errorLine" class="error-line"></div>
+    </div>
+  </main>
+
+  <div id="overlay" class="overlay"></div>
+
+  <aside id="drawer" class="drawer" aria-hidden="true">
+    <div class="drawer-head">
+      <strong>Details</strong>
+      <button id="closeDrawerBtn" class="icon-btn" aria-label="Close menu">✕</button>
+    </div>
+    <div class="drawer-body">
+      <div class="field">
+        <div class="label">Event ID</div>
+        <input id="eventId" />
+      </div>
+
+      <div class="field">
+        <div class="label">Key</div>
+        <input id="eventKey" />
+      </div>
+
+      <div class="field">
+        <div class="row" style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
+          <div class="label">Logs</div>
+          <button id="btnClear" class="action">Clear</button>
         </div>
         <div id="log" class="log"></div>
       </div>
     </div>
-  </main>
+  </aside>
 
 <script>
 (() => {
@@ -110,30 +369,30 @@
   const elModePill = $("modePill");
   const elStatusPill = $("statusPill");
   const elReadyPill = $("readyPill");
-  const elReadyInfo = $("readyInfo");
+  const elStatusLine = $("statusLine");
+  const elError = $("errorLine");
   const elLog = $("log");
-  const elErr = $("errorLine");
-  const elStateLine = $("stateLine");
 
   const elHlsWrap = $("hlsWrap");
   const elRtcWrap = $("rtcWrap");
-  const elHlsInfo = $("hlsInfo");
-  const elRtcInfo = $("rtcInfo");
   const elRtcVideos = $("rtcVideos");
+  const elHlsVideo = $("hlsVideo");
 
   const btnLoad = $("btnLoad");
   const btnPlay = $("btnPlay");
   const btnStop = $("btnStop");
   const btnClear = $("btnClear");
+  const btnMenu = $("menuBtn");
+  const btnCloseDrawer = $("closeDrawerBtn");
+  const drawer = $("drawer");
+  const overlay = $("overlay");
 
   let ev = null;
   let readinessState = { ready:false, reason:"Checking event…" };
   let readinessTimer = null;
   let currentReadiness = null;
-
   let ivsPlayer = null;
   let hlsRetryTimer = null;
-
   let stage = null;
   let stageToken = null;
 
@@ -141,25 +400,38 @@
   elEventKey.value = qs.get("key") || "";
   elMode.value = (qs.get("mode") || "auto").toLowerCase();
 
+  function openDrawer(){
+    drawer.classList.add("open");
+    overlay.classList.add("open");
+    drawer.setAttribute("aria-hidden", "false");
+  }
+
+  function closeDrawer(){
+    drawer.classList.remove("open");
+    overlay.classList.remove("open");
+    drawer.setAttribute("aria-hidden", "true");
+  }
+
   function showError(msg){
-    elErr.style.display = msg ? "" : "none";
-    elErr.textContent = msg || "";
+    elError.textContent = msg || "";
   }
 
   function log(...args){
     const line = args.map(a => typeof a === "string" ? a : JSON.stringify(a)).join(" ");
-    elLog.textContent += line + "\n";
+    elLog.textContent += line + "\\n";
     elLog.scrollTop = elLog.scrollHeight;
     console.log(...args);
   }
-
-  btnClear.onclick = () => { elLog.textContent = ""; };
 
   function setStatus(text, kind){
     elStatusPill.className = "pill " + (kind || "");
     elStatusPill.textContent = "status: " + text;
   }
-  function setModePill(){ elModePill.textContent = "mode: " + elMode.value; }
+
+  function setModePill(){
+    elModePill.textContent = "mode: " + elMode.value;
+  }
+
   function setReadyPill(ready, text, kind){
     elReadyPill.className = "pill " + (kind || (ready ? "good" : "warn"));
     elReadyPill.textContent = "ready: " + text;
@@ -168,21 +440,8 @@
   function setReadyState(ready, reason, kind){
     readinessState = { ready, reason };
     btnPlay.disabled = !ready;
-    elReadyInfo.textContent = reason || "";
+    elStatusLine.textContent = reason || "";
     setReadyPill(ready, ready ? "yes" : "no", kind);
-  }
-
-  function renderFlags(readiness){
-    const flags = [];
-    if (!readiness) {
-      elStateLine.innerHTML = "";
-      return;
-    }
-    if (readiness.rtc_enabled) flags.push(["RTC ready", readiness.can_watch_rtc]);
-    if (readiness.hls_enabled) flags.push(["Playback URL", readiness.playback_url_exists]);
-    if (readiness.hls_enabled) flags.push(["Composition", readiness.composition_started]);
-    flags.push(["Window open", readiness.stream_window_open]);
-    elStateLine.innerHTML = flags.map(([label, ok]) => `<span class="chip">${label}: ${ok ? "yes" : "no"}</span>`).join("");
   }
 
   function apiUrl(path){ return API_BASE + path; }
@@ -215,9 +474,20 @@
     });
   }
 
-  function showHls(){ elHlsWrap.style.display = ""; elRtcWrap.style.display = "none"; }
-  function showRtc(){ elRtcWrap.style.display = ""; elHlsWrap.style.display = "none"; }
-  function showNone(){ elRtcWrap.style.display = "none"; elHlsWrap.style.display = "none"; }
+  function showHls(){
+    elHlsWrap.style.display = "";
+    elRtcWrap.style.display = "none";
+  }
+
+  function showRtc(){
+    elRtcWrap.style.display = "";
+    elHlsWrap.style.display = "none";
+  }
+
+  function showNone(){
+    elRtcWrap.style.display = "none";
+    elHlsWrap.style.display = "none";
+  }
 
   function applyModeForEvent(pub){
     const rtcEnabled = !!pub?.rtc_enabled;
@@ -266,7 +536,6 @@
     const key = elEventKey.value.trim();
     const res = await apiGet(`/api/events/${encodeURIComponent(eventId)}/readiness?key=${encodeURIComponent(key)}`);
     currentReadiness = res?.readiness || null;
-    renderFlags(currentReadiness);
     return res;
   }
 
@@ -298,11 +567,16 @@
       try { ivsPlayer.delete(); } catch {}
       ivsPlayer = null;
     }
-    const v = $("hlsVideo");
-    v.srcObject = null;
-    v.removeAttribute("src");
-    v.load();
-    elHlsInfo.textContent = "";
+    elHlsVideo.srcObject = null;
+    elHlsVideo.removeAttribute("src");
+    elHlsVideo.load();
+  }
+
+  function stopRtc(){
+    try { stage && stage.leave(); } catch {}
+    stage = null;
+    stageToken = null;
+    elRtcVideos.innerHTML = "";
   }
 
   async function probePlayback(url){
@@ -375,7 +649,6 @@
 
         setStatus("live", "good");
         setReadyState(true, "HLS is ready to watch.", "good");
-        elHlsInfo.textContent = readiness.playback_url;
         return;
       }
 
@@ -419,6 +692,7 @@
       setReadyState(false, "Choose a playback mode.", "warn");
     } catch(e){
       log("READINESS error", String(e));
+      setStatus("error", "bad");
       setReadyState(false, String(e), "bad");
       scheduleReadiness(2500);
     }
@@ -431,15 +705,12 @@
 
     const playbackUrl = currentReadiness?.playback_url || ev.playback_url;
     if(!playbackUrl) throw new Error("No playback_url returned yet.");
-    elHlsInfo.textContent = playbackUrl;
 
-    const videoEl = $("hlsVideo");
     if(!isPlayerSupportedSafe()) throw new Error("IVS Player not supported in this browser.");
 
     stopHls();
-
     ivsPlayer = IVSPlayer.create();
-    ivsPlayer.attachHTMLVideoElement(videoEl);
+    ivsPlayer.attachHTMLVideoElement(elHlsVideo);
 
     const tryLoad = async (label) => {
       if(!ivsPlayer) return;
@@ -448,7 +719,7 @@
       try{
         ivsPlayer.load(urlNow);
         await ivsPlayer.play();
-        setStatus("playing (hls)", "good");
+        setStatus("playing", "good");
       }catch(e){
         log("HLS load/play threw", String(e));
       }
@@ -469,13 +740,13 @@
 
     ivsPlayer.addEventListener(IVSPlayer.PlayerEventType.ERROR, (err) => {
       log("IVS ERROR", err);
-      setStatus("hls retrying", "warn");
+      setStatus("retrying", "warn");
       scheduleRetry("retry");
     });
 
     ivsPlayer.addEventListener(IVSPlayer.PlayerEventType.ENDED, () => {
       log("IVS ENDED");
-      setStatus("hls ended", "warn");
+      setStatus("ended", "warn");
       scheduleRetry("ended-retry");
     });
 
@@ -486,14 +757,6 @@
     });
 
     await tryLoad("initial");
-  }
-
-  function stopRtc(){
-    try { stage && stage.leave(); } catch {}
-    stage = null;
-    stageToken = null;
-    elRtcVideos.innerHTML = "";
-    elRtcInfo.textContent = "";
   }
 
   async function rtcViewerToken(silent = false){
@@ -512,12 +775,10 @@
 
     wrap = document.createElement("div");
     wrap.id = "p_" + id;
-    wrap.className = "card";
-    wrap.style.padding = "8px";
+    wrap.className = "rtc-tile";
 
     const cap = document.createElement("div");
-    cap.className = "muted";
-    cap.style.marginBottom = "6px";
+    cap.className = "rtc-cap";
     cap.textContent = label || id;
 
     const v = document.createElement("video");
@@ -560,11 +821,11 @@
       log("RTC state", state);
       if(state === StageConnectionState.CONNECTED) {
         setStatus("live", "good");
-        elRtcInfo.textContent = "Connected. Waiting for broadcaster…";
+        elStatusLine.textContent = "Connected. Waiting for broadcaster…";
       }
-      if(state === StageConnectionState.CONNECTING) setStatus("rtc connecting…", "warn");
-      if(state === StageConnectionState.ERRORED) setStatus("rtc errored…", "warn");
-      if(state === StageConnectionState.DISCONNECTED) setStatus("rtc disconnected", "bad");
+      if(state === StageConnectionState.CONNECTING) setStatus("connecting", "warn");
+      if(state === StageConnectionState.ERRORED) setStatus("errored", "warn");
+      if(state === StageConnectionState.DISCONNECTED) setStatus("disconnected", "bad");
     });
 
     stage.on(StageEvents.STAGE_PARTICIPANT_LEFT, (p) => {
@@ -579,7 +840,7 @@
       streams.forEach(s => { if(s.mediaStreamTrack) ms.addTrack(s.mediaStreamTrack); });
       videoEl.srcObject = ms;
       videoEl.play().catch(() => {});
-      elRtcInfo.textContent = "Receiving RTC media.";
+      elStatusLine.textContent = "Receiving RTC media.";
     });
 
     stage.on(StageEvents.STAGE_PARTICIPANT_STREAMS_REMOVED, (participant) => {
@@ -588,7 +849,7 @@
     });
 
     await stage.join();
-    elRtcInfo.textContent = "Connected. Waiting for broadcaster…";
+    elStatusLine.textContent = "Connected. Waiting for broadcaster…";
   }
 
   async function onPlay(){
@@ -631,6 +892,10 @@
 
   btnPlay.onclick = onPlay;
   btnStop.onclick = onStop;
+  btnClear.onclick = () => { elLog.textContent = ""; };
+  btnMenu.onclick = openDrawer;
+  btnCloseDrawer.onclick = closeDrawer;
+  overlay.onclick = closeDrawer;
 
   elMode.onchange = () => {
     stopReadinessPolling();
@@ -662,6 +927,7 @@
 
   (async () => {
     try{
+      setModePill();
       await loadPublic();
       await refreshReadiness();
     }catch(e){
