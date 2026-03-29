@@ -2,97 +2,163 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
   <title>Relay Watch</title>
 
-  <!-- Amazon IVS Real-Time Web Broadcast SDK (Stages / WebRTC) -->
   <script src="https://web-broadcast.live-video.net/1.17.0/amazon-ivs-web-broadcast.js"></script>
-
-  <!-- Amazon IVS Player SDK (HLS) -->
   <script src="https://player.live-video.net/1.48.0/amazon-ivs-player.min.js"></script>
 
   <style>
     :root { color-scheme: dark; }
-    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; background:#0b0c10; color:#e8e8e8; margin:0; }
-    header { padding:14px 16px; border-bottom:1px solid #20232a; display:flex; gap:12px; align-items:center; justify-content:space-between; }
+    body {
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      background:#0b0c10; color:#e8e8e8; margin:0;
+    }
+    header {
+      padding:14px 16px; border-bottom:1px solid #20232a; display:flex; gap:12px;
+      align-items:center; justify-content:space-between; background:#0b0c10; position:sticky; top:0; z-index:10;
+    }
     .title { font-weight:700; }
-    .pill { font-size:12px; padding:4px 8px; border:1px solid #2b2f3a; border-radius:999px; color:#cbd5e1; }
+    .pill {
+      font-size:12px; padding:4px 8px; border:1px solid #2b2f3a; border-radius:999px; color:#cbd5e1; white-space:nowrap;
+    }
     .pill.good { border-color:#1f6f4a; color:#bff7de; }
     .pill.warn { border-color:#7a5a0a; color:#ffe3a3; }
     .pill.bad { border-color:#7c2d38; color:#ffb4b4; }
-    main { padding:14px 16px; max-width:1100px; margin:0 auto; }
-    .row { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-bottom:10px; }
-    button { background:#1f2937; border:1px solid #334155; color:#e5e7eb; padding:10px 12px; border-radius:10px; cursor:pointer; }
-    button:disabled { opacity:0.55; cursor:not-allowed; }
-    select, input { background:#0f172a; border:1px solid #334155; color:#e5e7eb; padding:9px 10px; border-radius:10px; }
+    .topbar-right{
+      display:flex; gap:10px; align-items:center; flex-wrap:wrap; justify-content:flex-end;
+    }
+    main { padding:14px 16px; max-width:1200px; margin:0 auto; }
     .card { border:1px solid #20232a; border-radius:14px; padding:12px; background:#0f1117; }
-    .grid { display:grid; gap:12px; grid-template-columns:1fr; }
-    @media (min-width:900px){ .grid { grid-template-columns:2fr 1fr; } }
-    video { width:100%; background:#000; border-radius:12px; border:1px solid #20232a; }
-    .videos { display:grid; gap:10px; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); }
-    .log { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:12px; white-space:pre-wrap; background:#0b1220; border:1px solid #202a3a; border-radius:12px; padding:10px; max-height:240px; overflow:auto; }
+    .row { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-bottom:10px; }
+    button {
+      background:#1f2937; border:1px solid #334155; color:#e5e7eb; padding:10px 12px; border-radius:10px; cursor:pointer;
+    }
+    button:disabled { opacity:0.55; cursor:not-allowed; }
+    select, input {
+      background:#0f172a; border:1px solid #334155; color:#e5e7eb; padding:9px 10px; border-radius:10px;
+    }
+    .player-shell{ margin-top:8px; }
+    video {
+      width:100%; background:#000; border-radius:12px; border:1px solid #20232a;
+      min-height:70svh; max-height:78svh; object-fit:contain; display:block;
+    }
+    .videos {
+      display:grid; gap:10px; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); min-height:70svh;
+    }
+    .videos video{
+      min-height:70svh; max-height:78svh;
+    }
     .muted { color:#a3a3a3; }
     .err { color:#ffb4b4; }
+    .log {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size:12px; white-space:pre-wrap; background:#0b1220; border:1px solid #202a3a;
+      border-radius:12px; padding:10px; max-height:55svh; overflow:auto;
+    }
+    .icon-btn{
+      min-width:42px; padding:10px 12px; line-height:1;
+    }
+    .drawer{
+      position:fixed; top:0; right:0; width:min(92vw, 420px); height:100svh; background:#0d1118;
+      border-left:1px solid #20232a; box-shadow:-10px 0 30px rgba(0,0,0,.35); transform:translateX(100%);
+      transition:transform .22s ease; z-index:40; display:flex; flex-direction:column;
+    }
+    .drawer.open{ transform:translateX(0); }
+    .drawer-head{
+      padding:14px; border-bottom:1px solid #20232a; display:flex; justify-content:space-between; align-items:center; gap:10px;
+    }
+    .drawer-body{
+      padding:14px; overflow:auto; display:grid; gap:14px;
+    }
+    .overlay{
+      position:fixed; inset:0; background:rgba(0,0,0,.45); opacity:0; pointer-events:none; transition:opacity .2s ease; z-index:30;
+    }
+    .overlay.open{
+      opacity:1; pointer-events:auto;
+    }
+    @media (max-width:900px){
+      video { min-height:52svh; max-height:68svh; }
+      .videos { min-height:52svh; }
+      .videos video{ min-height:52svh; max-height:68svh; }
+    }
   </style>
 </head>
 <body>
   <header>
     <div class="title">Relay Watch</div>
-    <div class="row">
+    <div class="topbar-right">
       <span id="modePill" class="pill">mode: auto</span>
       <span id="statusPill" class="pill">status: —</span>
       <span id="readyPill" class="pill warn">ready: checking…</span>
+      <button id="menuBtn" class="icon-btn" aria-label="Open details">☰</button>
     </div>
   </header>
 
   <main>
-    <div class="grid">
-      <div class="card">
-        <div class="row">
-          <label class="muted">Event</label>
-          <input id="eventId" style="min-width:320px" />
-          <label class="muted">Key</label>
-          <input id="eventKey" style="min-width:320px" />
-        </div>
+    <div class="card">
+      <div class="row">
+        <label class="muted">Event</label>
+        <input id="eventId" style="min-width:280px" />
+        <label class="muted">Key</label>
+        <input id="eventKey" style="min-width:280px" />
+      </div>
 
-        <div class="row">
-          <label class="muted">Playback mode</label>
-          <select id="mode">
-            <option value="auto">Auto</option>
-            <option value="hls">HLS (IVS Player)</option>
-            <option value="rtc">WebRTC (Stage)</option>
-          </select>
+      <div class="row">
+        <label class="muted">Playback mode</label>
+        <select id="mode">
+          <option value="auto">Auto</option>
+          <option value="hls">HLS (IVS Player)</option>
+          <option value="rtc">WebRTC (Stage)</option>
+        </select>
 
-          <button id="btnLoad">Load / Refresh</button>
-          <button id="btnPlay" disabled>Play</button>
-          <button id="btnStop">Stop</button>
-        </div>
+        <button id="btnLoad">Load / Refresh</button>
+        <button id="btnPlay" disabled>Play</button>
+        <button id="btnStop">Stop</button>
+      </div>
 
-        <div id="errorLine" class="muted err" style="margin:6px 0 0; display:none;"></div>
-        <div id="readyInfo" class="muted" style="margin:6px 0 10px;"></div>
+      <div id="errorLine" class="muted err" style="margin:6px 0 0; display:none;"></div>
+      <div id="readyInfo" class="muted" style="margin:6px 0 10px;"></div>
 
+      <div class="player-shell">
         <div id="hlsWrap" style="display:none;">
-          <div class="muted" style="margin:8px 0 6px;">HLS Player</div>
           <video id="hlsVideo" playsinline controls></video>
           <div class="muted" id="hlsInfo" style="margin-top:6px;"></div>
         </div>
 
         <div id="rtcWrap" style="display:none;">
-          <div class="muted" style="margin:8px 0 6px;">WebRTC Stage</div>
           <div class="videos" id="rtcVideos"></div>
           <div class="muted" id="rtcInfo" style="margin-top:6px;"></div>
         </div>
       </div>
-
-      <div class="card">
-        <div class="row" style="justify-content:space-between;">
-          <div class="muted">Logs</div>
-          <button id="btnClear" style="padding:8px 10px;">Clear</button>
-        </div>
-        <div id="log" class="log"></div>
-      </div>
     </div>
   </main>
+
+  <div id="overlay" class="overlay"></div>
+
+  <aside id="drawer" class="drawer" aria-hidden="true">
+    <div class="drawer-head">
+      <strong>Details & Logs</strong>
+      <button id="closeDrawerBtn" class="icon-btn" aria-label="Close details">✕</button>
+    </div>
+    <div class="drawer-body">
+      <div>
+        <div class="muted" style="margin-bottom:6px;">Event</div>
+        <input id="drawerEventId" style="width:100%;" readonly />
+      </div>
+
+      <div>
+        <div class="muted" style="margin-bottom:6px;">Key</div>
+        <input id="drawerEventKey" style="width:100%;" readonly />
+      </div>
+
+      <div class="row" style="justify-content:space-between; margin-bottom:0;">
+        <div class="muted">Logs</div>
+        <button id="btnClear" style="padding:8px 10px;">Clear</button>
+      </div>
+      <div id="log" class="log"></div>
+    </div>
+  </aside>
 
 <script>
 (() => {
@@ -106,6 +172,8 @@
 
   const elEventId = $("eventId");
   const elEventKey = $("eventKey");
+  const elDrawerEventId = $("drawerEventId");
+  const elDrawerEventKey = $("drawerEventKey");
   const elMode = $("mode");
   const elModePill = $("modePill");
   const elStatusPill = $("statusPill");
@@ -124,6 +192,10 @@
   const btnPlay = $("btnPlay");
   const btnStop = $("btnStop");
   const btnClear = $("btnClear");
+  const btnMenu = $("menuBtn");
+  const btnCloseDrawer = $("closeDrawerBtn");
+  const drawer = $("drawer");
+  const overlay = $("overlay");
 
   let ev = null;
   let readyState = { ready:false, reason:"Checking event…" };
@@ -139,7 +211,27 @@
 
   elEventId.value = qs.get("event") || qs.get("id") || "";
   elEventKey.value = qs.get("key") || "";
+  elDrawerEventId.value = elEventId.value;
+  elDrawerEventKey.value = elEventKey.value;
   elMode.value = (qs.get("mode") || "auto").toLowerCase();
+
+  function syncDrawerFields(){
+    elDrawerEventId.value = elEventId.value;
+    elDrawerEventKey.value = elEventKey.value;
+  }
+
+  function openDrawer(){
+    syncDrawerFields();
+    drawer.classList.add("open");
+    overlay.classList.add("open");
+    drawer.setAttribute("aria-hidden", "false");
+  }
+
+  function closeDrawer(){
+    drawer.classList.remove("open");
+    overlay.classList.remove("open");
+    drawer.setAttribute("aria-hidden", "true");
+  }
 
   function showError(msg){
     elErr.style.display = msg ? "" : "none";
@@ -375,7 +467,6 @@
         return;
       }
 
-      // Auto mode: choose best available and keep button disabled until that path is ready
       if(ev.rtc_enabled && !ev.hls_enabled){
         elMode.value = "rtc";
         setModePill();
@@ -614,6 +705,9 @@
 
   btnPlay.onclick = onPlay;
   btnStop.onclick = onStop;
+  btnMenu.onclick = openDrawer;
+  btnCloseDrawer.onclick = closeDrawer;
+  overlay.onclick = closeDrawer;
 
   elMode.onchange = () => {
     stopReadinessPolling();
@@ -627,6 +721,7 @@
   };
 
   function scheduleReloadFromInputs(){
+    syncDrawerFields();
     stopReadinessPolling();
     setReadyState(false, "Checking event…", "warn");
     autoSelectedMode = null;
@@ -645,6 +740,7 @@
 
   (async () => {
     try{
+      syncDrawerFields();
       await loadPublic();
       await refreshReadiness();
     }catch(e){
