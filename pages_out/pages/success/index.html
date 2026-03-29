@@ -5,60 +5,425 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Relay — Success</title>
   <style>
-    body{background:#000;color:#fff;font-family:system-ui;margin:0;padding:0}
-    .wrap{max-width:820px;margin:0 auto;padding:16px}
-    .card{margin-top:12px;padding:16px;border-radius:12px;background:rgba(255,255,255,.08)}
-    .btn{display:inline-block;padding:12px 16px;background:#1976d2;border-radius:10px;color:#fff;text-decoration:none;margin-top:10px;cursor:pointer}
-    .secondary{background:rgba(255,255,255,.2)}
-    .muted{opacity:.8;font-size:13px}
-    code{display:block;background:#111;padding:10px;border-radius:8px;margin-top:6px}
+    :root{
+      color-scheme:dark;
+      --bg:#000;
+      --card:rgba(255,255,255,.08);
+      --card2:rgba(255,255,255,.05);
+      --text:#fff;
+      --muted:rgba(255,255,255,.78);
+      --soft:rgba(255,255,255,.6);
+      --good:#34d399;
+      --warn:#fbbf24;
+      --bad:#ff8a80;
+      --border:rgba(255,255,255,.12);
+      --btn:#1976d2;
+      --btn2:rgba(255,255,255,.16);
+    }
+    html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+    .wrap{max-width:900px;margin:0 auto;padding:16px}
+    h2{margin:8px 0 0}
+    .card{margin-top:12px;padding:16px;border-radius:14px;background:var(--card);border:1px solid var(--border)}
+    .grid{display:grid;gap:12px;grid-template-columns:1fr}
+    @media (min-width:780px){ .grid{grid-template-columns:1fr 1fr; } }
+    .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+    .btn,button{
+      display:inline-flex;align-items:center;justify-content:center;gap:8px;
+      min-height:46px;padding:12px 16px;border-radius:10px;border:0;background:var(--btn);
+      color:#fff;text-decoration:none;cursor:pointer;font-weight:700
+    }
+    .btn.secondary,button.secondary{background:var(--btn2)}
+    button:disabled,.btn[aria-disabled="true"]{opacity:.55;cursor:not-allowed;pointer-events:none}
+    .muted{color:var(--muted);font-size:13px;line-height:1.45}
+    .tiny{font-size:12px;color:var(--soft)}
+    .good{color:var(--good)}
+    .warn{color:var(--warn)}
+    .bad{color:var(--bad)}
+    code{
+      word-break:break-all;display:block;background:var(--card2);padding:10px 12px;
+      border-radius:10px;border:1px solid var(--border);margin-top:6px
+    }
+    .pill{
+      display:inline-flex;align-items:center;gap:8px;padding:6px 10px;border-radius:999px;
+      border:1px solid var(--border);background:var(--card2);font-size:12px
+    }
+    .dot{width:8px;height:8px;border-radius:999px;background:#888}
+    .pill.good .dot{background:var(--good)}
+    .pill.warn .dot{background:var(--warn)}
+    .pill.bad .dot{background:var(--bad)}
+    details{margin-top:12px}
+    summary{cursor:pointer}
   </style>
 </head>
 <body>
 <div class="wrap">
-<h2>Payment successful</h2>
+  <h2>Payment successful</h2>
 
-<div class="card">
-<p><b>⚠️ It may take 1–2 minutes before your stream is ready to broadcast or watch.</b></p>
-<p class="muted">Your stream is being prepared in the background.</p>
-</div>
+  <div class="card">
+    <div id="topMsg"><b>Loading your event…</b></div>
+    <div class="muted" id="subMsg" style="margin-top:8px;">Checking stream readiness.</div>
+  </div>
 
-<div class="card">
-<h3>Stream with OBS (Recommended)</h3>
-<button class="btn" onclick="getToken()">Get OBS Token</button>
+  <div class="grid">
+    <div class="card">
+      <div class="row" style="justify-content:space-between;">
+        <strong>Broadcast</strong>
+        <span id="broadcastState" class="pill warn"><span class="dot"></span><span>Checking…</span></span>
+      </div>
+      <div class="muted" id="broadcastInfo" style="margin-top:10px;">Checking broadcaster access…</div>
+      <div class="row">
+        <a id="broadcastBtn" class="btn secondary" href="#" target="_blank" rel="noopener" aria-disabled="true">Open Broadcast Page</a>
+      </div>
+    </div>
 
-<div id="obs" style="display:none;margin-top:10px;">
-<div class="muted">Server</div>
-<code id="server"></code>
+    <div class="card">
+      <div class="row" style="justify-content:space-between;">
+        <strong>Watch</strong>
+        <span id="watchState" class="pill warn"><span class="dot"></span><span>Checking…</span></span>
+      </div>
+      <div class="muted" id="watchInfo" style="margin-top:10px;">Checking viewer access…</div>
+      <div class="row">
+        <a id="watchBtn" class="btn" href="#" target="_blank" rel="noopener" aria-disabled="true">Open Watch Page</a>
+      </div>
+    </div>
+  </div>
 
-<div class="muted">Bearer Token</div>
-<code id="token"></code>
+  <div class="card">
+    <div class="row" style="justify-content:space-between;">
+      <strong>Stream with OBS (Recommended)</strong>
+      <span id="obsState" class="pill warn"><span class="dot"></span><span>Waiting</span></span>
+    </div>
+    <div class="muted" id="obsInfo" style="margin-top:10px;">Get a WHIP token when broadcaster access is ready.</div>
+    <div class="row">
+      <button id="getObsBtn" class="btn secondary" disabled>Get OBS Token</button>
+      <button id="copySetupBtn" class="btn secondary" disabled>Copy OBS Setup</button>
+    </div>
 
-<button class="btn secondary" onclick="copyAll()">Copy OBS Setup</button>
+    <div id="obsBox" style="display:none;margin-top:12px;">
+      <div class="tiny">Server</div>
+      <code id="serverCode"></code>
 
-<p class="muted">In OBS → Settings → Stream → Service: WHIP</p>
-</div>
-</div>
+      <div class="tiny" style="margin-top:10px;">Bearer token</div>
+      <code id="tokenCode"></code>
+
+      <div class="tiny" id="expiresText" style="margin-top:10px;"></div>
+
+      <details>
+        <summary class="tiny">Show OBS steps</summary>
+        <div class="muted" style="margin-top:10px;">
+          In OBS, go to <b>Settings → Stream</b>.<br>
+          Set <b>Service</b> to <b>WHIP</b>.<br>
+          Paste the server URL and bearer token from above.<br>
+          Then start streaming.
+        </div>
+      </details>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="tiny">Watch link</div>
+    <code id="watchUrlCode"></code>
+
+    <div class="tiny" style="margin-top:10px;">Broadcast link</div>
+    <code id="broadcastUrlCode"></code>
+  </div>
+
+  <details class="card">
+    <summary class="tiny">Show event details</summary>
+    <div style="margin-top:12px;">
+      <div class="tiny">Event</div>
+      <code id="eventCode"></code>
+      <div class="tiny" style="margin-top:10px;">Success token</div>
+      <code id="successCode"></code>
+    </div>
+  </details>
 </div>
 
 <script>
-const params = new URLSearchParams(location.search);
-const eventId = params.get("event");
-const key = params.get("key") || "";
+(() => {
+  const API_BASE = "https://stream-platform-api.kiwismurph.workers.dev";
+  const params = new URLSearchParams(location.search);
 
-async function getToken(){
-  const res = await fetch(`https://stream-platform-api.kiwismurph.workers.dev/api/events/${eventId}/whip/provision?key=${key}`, {method:"POST"});
-  const data = await res.json();
+  const eventId = params.get("event") || params.get("eventId") || params.get("id") || "";
+  const successToken = params.get("st") || params.get("token") || params.get("successToken") || "";
 
-  document.getElementById("obs").style.display = "block";
-  document.getElementById("server").textContent = data.whip_url || "https://global.whip.live-video.net";
-  document.getElementById("token").textContent = data.bearer_token;
-}
+  const topMsg = document.getElementById("topMsg");
+  const subMsg = document.getElementById("subMsg");
 
-function copyAll(){
-  const text = "Server: https://global.whip.live-video.net\nToken: " + document.getElementById("token").textContent;
-  navigator.clipboard.writeText(text);
-}
+  const broadcastState = document.getElementById("broadcastState");
+  const broadcastInfo = document.getElementById("broadcastInfo");
+  const watchState = document.getElementById("watchState");
+  const watchInfo = document.getElementById("watchInfo");
+  const obsState = document.getElementById("obsState");
+  const obsInfo = document.getElementById("obsInfo");
+
+  const broadcastBtn = document.getElementById("broadcastBtn");
+  const watchBtn = document.getElementById("watchBtn");
+  const getObsBtn = document.getElementById("getObsBtn");
+  const copySetupBtn = document.getElementById("copySetupBtn");
+
+  const watchUrlCode = document.getElementById("watchUrlCode");
+  const broadcastUrlCode = document.getElementById("broadcastUrlCode");
+  const eventCode = document.getElementById("eventCode");
+  const successCode = document.getElementById("successCode");
+
+  const obsBox = document.getElementById("obsBox");
+  const serverCode = document.getElementById("serverCode");
+  const tokenCode = document.getElementById("tokenCode");
+  const expiresText = document.getElementById("expiresText");
+
+  let watchParts = null;
+  let broadcastParts = null;
+  let readinessTimer = null;
+
+  function setPill(el, kind, text){
+    el.className = `pill ${kind}`.trim();
+    el.querySelector("span:last-child").textContent = text;
+  }
+
+  function setLinkReady(el, ready){
+    el.setAttribute("aria-disabled", ready ? "false" : "true");
+  }
+
+  function parseLinkParts(link){
+    const u = new URL(link);
+    const p = new URLSearchParams(u.search);
+    return {
+      url: link,
+      eventId: p.get("event") || p.get("id") || "",
+      key: p.get("key") || ""
+    };
+  }
+
+  async function fetchJson(url, init){
+    const r = await fetch(url, init);
+    const t = await r.text();
+    let j = null;
+    try { j = t ? JSON.parse(t) : null; } catch {}
+    if (!r.ok) {
+      throw new Error((j && (j.error || j.message)) || t || `HTTP ${r.status}`);
+    }
+    return j;
+  }
+
+  async function getLinks(){
+    return fetchJson(`${API_BASE}/api/events/${encodeURIComponent(eventId)}/links?st=${encodeURIComponent(successToken)}`, {
+      method: "GET",
+      headers: { "accept": "application/json" }
+    });
+  }
+
+  async function probePlayback(url){
+    try{
+      const r = await fetch(url, { method:"GET", cache:"no-store" });
+      return r.ok;
+    }catch{
+      return false;
+    }
+  }
+
+  async function pollBroadcastReadiness(){
+    if (!broadcastParts?.eventId || !broadcastParts?.key) return false;
+
+    try{
+      await fetchJson(`${API_BASE}/api/events/${encodeURIComponent(broadcastParts.eventId)}/rtc/provision?key=${encodeURIComponent(broadcastParts.key)}`, {
+        method: "POST",
+        headers: { "content-type":"application/json" },
+        body: "{}",
+        credentials: "include"
+      });
+      setPill(broadcastState, "good", "Ready");
+      broadcastInfo.textContent = "Broadcaster access is ready.";
+      setLinkReady(broadcastBtn, true);
+      getObsBtn.disabled = false;
+      setPill(obsState, "good", "Ready");
+      obsInfo.textContent = "You can get an OBS token now.";
+      return true;
+    }catch{
+      setPill(broadcastState, "warn", "Preparing");
+      broadcastInfo.textContent = "It may take 1–2 minutes before broadcasting is ready.";
+      setLinkReady(broadcastBtn, false);
+      getObsBtn.disabled = true;
+      setPill(obsState, "warn", "Preparing");
+      obsInfo.textContent = "Waiting for broadcaster access to finish warming up.";
+      return false;
+    }
+  }
+
+  async function pollWatchReadiness(){
+    if (!watchParts?.eventId || !watchParts?.key) return false;
+
+    try{
+      const pub = await fetchJson(`${API_BASE}/api/events/${encodeURIComponent(watchParts.eventId)}/public?key=${encodeURIComponent(watchParts.key)}`, {
+        method: "GET",
+        credentials: "include",
+        cache: "no-store"
+      });
+
+      if (pub.expired) {
+        setPill(watchState, "bad", "Expired");
+        watchInfo.textContent = "This event has expired.";
+        setLinkReady(watchBtn, false);
+        return false;
+      }
+
+      if (pub.hls_enabled) {
+        if (!pub.playback_url) {
+          setPill(watchState, "warn", "Preparing");
+          watchInfo.textContent = "It may take 1–2 minutes before watch playback is ready.";
+          setLinkReady(watchBtn, false);
+          return false;
+        }
+
+        const playbackReady = await probePlayback(pub.playback_url);
+        if (!playbackReady) {
+          setPill(watchState, "warn", "Preparing");
+          watchInfo.textContent = "It may take 1–2 minutes before watch playback is ready.";
+          setLinkReady(watchBtn, false);
+          return false;
+        }
+
+        setPill(watchState, "good", "Ready");
+        watchInfo.textContent = "Watch playback is ready.";
+        setLinkReady(watchBtn, true);
+        return true;
+      }
+
+      if (pub.rtc_enabled) {
+        setPill(watchState, "good", "Ready");
+        watchInfo.textContent = "Watch access is ready.";
+        setLinkReady(watchBtn, true);
+        return true;
+      }
+
+      setPill(watchState, "bad", "Unavailable");
+      watchInfo.textContent = "No watch mode is enabled for this event.";
+      setLinkReady(watchBtn, false);
+      return false;
+    }catch{
+      setPill(watchState, "warn", "Preparing");
+      watchInfo.textContent = "It may take 1–2 minutes before watch playback is ready.";
+      setLinkReady(watchBtn, false);
+      return false;
+    }
+  }
+
+  function updateTopMessage(bReady, wReady){
+    if (bReady && wReady) {
+      topMsg.innerHTML = "<b>Your stream links are ready.</b>";
+      subMsg.textContent = "Broadcast, watch, and OBS token access are ready.";
+      return;
+    }
+
+    if (bReady || wReady) {
+      topMsg.innerHTML = "<b>Your event is warming up.</b>";
+      subMsg.textContent = "Some parts are ready now. The rest may take 1–2 minutes.";
+      return;
+    }
+
+    topMsg.innerHTML = "<b>⚠️ It may take 1–2 minutes before your stream is ready to broadcast or watch.</b>";
+    subMsg.textContent = "Your stream is being prepared in the background.";
+  }
+
+  async function refreshReadiness(){
+    const [bReady, wReady] = await Promise.all([
+      pollBroadcastReadiness(),
+      pollWatchReadiness()
+    ]);
+    updateTopMessage(bReady, wReady);
+  }
+
+  function scheduleReadiness(){
+    clearTimeout(readinessTimer);
+    readinessTimer = setTimeout(async () => {
+      await refreshReadiness();
+      scheduleReadiness();
+    }, 3500);
+  }
+
+  async function getObsToken(){
+    if (!broadcastParts?.eventId || !broadcastParts?.key) return;
+
+    getObsBtn.disabled = true;
+    obsInfo.textContent = "Requesting OBS token…";
+
+    try{
+      const j = await fetchJson(`${API_BASE}/api/events/${encodeURIComponent(broadcastParts.eventId)}/whip/provision?key=${encodeURIComponent(broadcastParts.key)}`, {
+        method: "POST",
+        headers: { "content-type":"application/json" },
+        body: "{}",
+        credentials: "include"
+      });
+
+      const server = j.whip_url || "https://global.whip.live-video.net";
+      const token = j.bearer_token || "";
+
+      serverCode.textContent = server;
+      tokenCode.textContent = token;
+      expiresText.textContent = j.expires_at ? `Token expires: ${j.expires_at}` : "";
+      obsBox.style.display = "";
+      copySetupBtn.disabled = !token;
+
+      setPill(obsState, "good", "Token ready");
+      obsInfo.textContent = "OBS token generated.";
+    }catch(e){
+      setPill(obsState, "bad", "Error");
+      obsInfo.textContent = e.message || "Could not generate OBS token.";
+    }finally{
+      getObsBtn.disabled = false;
+    }
+  }
+
+  async function copySetup(){
+    const server = serverCode.textContent || "https://global.whip.live-video.net";
+    const token = tokenCode.textContent || "";
+    const text = `Server: ${server}\nBearer Token: ${token}`;
+    try{
+      await navigator.clipboard.writeText(text);
+      obsInfo.textContent = "OBS setup copied.";
+    }catch{
+      obsInfo.textContent = "Could not copy automatically. Copy it manually below.";
+    }
+  }
+
+  document.getElementById("getObsBtn").addEventListener("click", getObsToken);
+  document.getElementById("copySetupBtn").addEventListener("click", copySetup);
+
+  (async () => {
+    eventCode.textContent = eventId || "(missing)";
+    successCode.textContent = successToken || "(missing)";
+
+    if (!eventId || !successToken) {
+      topMsg.innerHTML = '<b class="bad">Missing event or success token.</b>';
+      subMsg.textContent = "Open this page from the normal Relay success flow.";
+      return;
+    }
+
+    try{
+      const links = await getLinks();
+      const watchUrl = links.watch_url || "";
+      const broadcastUrl = links.broadcast_url || "";
+
+      watchUrlCode.textContent = watchUrl || "(missing)";
+      broadcastUrlCode.textContent = broadcastUrl || "(missing)";
+
+      watchParts = watchUrl ? parseLinkParts(watchUrl) : null;
+      broadcastParts = broadcastUrl ? parseLinkParts(broadcastUrl) : null;
+
+      if (watchUrl) watchBtn.href = watchUrl;
+      if (broadcastUrl) broadcastBtn.href = broadcastUrl;
+
+      setLinkReady(watchBtn, false);
+      setLinkReady(broadcastBtn, false);
+
+      await refreshReadiness();
+      scheduleReadiness();
+    }catch(e){
+      topMsg.innerHTML = '<b class="bad">Could not load event links.</b>';
+      subMsg.textContent = e.message || "Please refresh the page.";
+    }
+  })();
+})();
 </script>
 
 </body>
