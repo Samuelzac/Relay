@@ -279,11 +279,6 @@
   function clearRtcTiles(){ rtcParticipantStreams.clear(); elRtcVideos.innerHTML = ""; updateRtcEmptyState(); }
   function stopRtc(){ try { stage && stage.leave(); } catch {} stage = null; stageToken = null; clearRtcTiles(); }
 
-  async function probePlayback(url){
-    try{ const r = await fetch(url, { method:"GET", cache:"no-store" }); return r.ok; }
-    catch(e){ log("PLAYBACK probe failed", String(e)); return false; }
-  }
-
   function isPlayerSupportedSafe(){
     if(!window.IVSPlayer) return false;
     try{
@@ -291,6 +286,11 @@
       if(typeof IVSPlayer.isPlayerSupported === "boolean") return IVSPlayer.isPlayerSupported;
     }catch(e){ log("IVS support check failed", String(e)); }
     return typeof IVSPlayer.create === "function";
+  }
+
+  async function probePlayback(url){
+    try{ const r = await fetch(url, { method:"GET", cache:"no-store" }); return r.ok; }
+    catch(e){ log("PLAYBACK probe failed", String(e)); return false; }
   }
 
   async function refreshReadiness(){
@@ -306,15 +306,29 @@
 
       if(elMode.value === "hls"){
         if(!ev.hls_enabled){ setReadyState(false, "This event is not HLS-enabled.", "bad"); return; }
-        if(!readiness.playback_url_exists){ setStatus("waiting for stream", "warn"); setReadyState(false, "Waiting for stream.", "warn"); scheduleReadiness(2500); return; }
-        const playbackReady = await probePlayback(readiness.playback_url);
-        if(!playbackReady){
-          setStatus(readiness.composition_started ? "stream detected" : "waiting for stream", readiness.composition_started ? "good" : "warn");
-          setReadyState(false, readiness.composition_started ? "Stream detected. Preparing playlist…" : "Waiting for stream.", readiness.composition_started ? "good" : "warn");
-          scheduleReadiness(2500); return;
+        if(!readiness.playback_url_exists){
+          setStatus("waiting for stream", "warn");
+          setReadyState(false, "Waiting for stream.", "warn");
+          scheduleReadiness(2500);
+          return;
         }
-        setStatus("live", "good");
-        setReadyState(true, "HLS is ready to watch.", "good");
+
+        if(readiness.composition_started){
+          setStatus("stream detected", "good");
+          setReadyState(true, "Stream detected. Click Play.", "good");
+          return;
+        }
+
+        const playbackReady = await probePlayback(readiness.playback_url);
+        if(playbackReady){
+          setStatus("live", "good");
+          setReadyState(true, "HLS is ready to watch.", "good");
+          return;
+        }
+
+        setStatus("waiting for stream", "warn");
+        setReadyState(false, "Waiting for stream.", "warn");
+        scheduleReadiness(2500);
         return;
       }
 
@@ -361,8 +375,13 @@
       if(!ivsPlayer) return;
       const urlNow = (currentReadiness && currentReadiness.playback_url) ? currentReadiness.playback_url : playbackUrl;
       log(`HLS load (${label})`, urlNow);
-      try{ ivsPlayer.load(urlNow); await ivsPlayer.play(); setStatus("playing", "good"); }
-      catch(e){ log("HLS load/play threw", String(e)); }
+      try{
+        ivsPlayer.load(urlNow);
+        await ivsPlayer.play();
+        setStatus("playing", "good");
+      }catch(e){
+        log("HLS load/play threw", String(e));
+      }
     };
 
     const scheduleRetry = (why) => {
