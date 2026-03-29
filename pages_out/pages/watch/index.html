@@ -185,6 +185,7 @@
   let hlsRetryTimer = null;
   let stage = null;
   let stageToken = null;
+  let activePlaybackMode = null;
   const rtcParticipantStreams = new Map();
 
   elEventId.value = qs.get("event") || qs.get("id") || "";
@@ -194,7 +195,7 @@
   function openDrawer(){ drawer.classList.add("open"); overlay.classList.add("open"); drawer.setAttribute("aria-hidden","false"); }
   function closeDrawer(){ drawer.classList.remove("open"); overlay.classList.remove("open"); drawer.setAttribute("aria-hidden","true"); }
   function showError(msg){ elError.textContent = msg || ""; }
-  function log(...args){ const line = args.map(a => typeof a === "string" ? a : JSON.stringify(a)).join(" "); elLog.textContent += line + "\\n"; elLog.scrollTop = elLog.scrollHeight; console.log(...args); }
+  function log(...args){ const line = args.map(a => typeof a === "string" ? a : JSON.stringify(a)).join(" "); elLog.textContent += line + "\n"; elLog.scrollTop = elLog.scrollHeight; console.log(...args); }
   function setStatus(text, kind){ elStatusPill.className = "pill " + (kind || ""); elStatusPill.textContent = "status: " + text; }
   function setModePill(){ elModePill.textContent = "mode: " + elMode.value; }
   function setReadyPill(ready, text, kind){ elReadyPill.className = "pill " + (kind || (ready ? "good" : "warn")); elReadyPill.textContent = "ready: " + text; }
@@ -246,7 +247,9 @@
     log("PUBLIC", pub);
     applyModeForEvent(pub);
     setModePill();
-    if(elMode.value === "hls") showHls(); else if(elMode.value === "rtc") showRtc(); else showNone();
+    if(activePlaybackMode !== "rtc" && activePlaybackMode !== "hls"){
+      if(elMode.value === "hls") showHls(); else if(elMode.value === "rtc") showRtc(); else showNone();
+    }
     return pub;
   }
 
@@ -260,6 +263,7 @@
 
   function stopReadinessPolling(){ if(readinessTimer){ clearTimeout(readinessTimer); readinessTimer = null; } }
   function scheduleReadiness(ms = 2500){
+    if(activePlaybackMode === "rtc") return;
     stopReadinessPolling();
     readinessTimer = setTimeout(() => {
       readinessTimer = null;
@@ -294,6 +298,10 @@
   }
 
   async function refreshReadiness(){
+    if(activePlaybackMode === "rtc"){
+      return;
+    }
+
     showError("");
     try{
       ev = await loadPublic();
@@ -367,6 +375,10 @@
     if(!playbackUrl) throw new Error("No playback_url returned yet.");
     if(!isPlayerSupportedSafe()) throw new Error("IVS Player not supported in this browser.");
 
+    activePlaybackMode = "hls";
+    stopReadinessPolling();
+    showHls();
+
     stopHls();
     ivsPlayer = IVSPlayer.create();
     ivsPlayer.attachHTMLVideoElement(elHlsVideo);
@@ -388,7 +400,10 @@
       if(hlsRetryTimer) return;
       hlsRetryTimer = setTimeout(async () => {
         hlsRetryTimer = null;
-        try{ await refreshReadiness(); } catch(e){ log("HLS retry failed", String(e)); }
+        try{
+          const readyRes = await loadReadiness();
+          currentReadiness = readyRes?.readiness || currentReadiness;
+        }catch(e){ log("HLS retry failed", String(e)); }
         await tryLoad(why);
       }, 2500);
     };
@@ -494,6 +509,9 @@
     const sdk = window.IVSBroadcastClient;
     if(!sdk) throw new Error("IVS Web Broadcast SDK not loaded.");
 
+    activePlaybackMode = "rtc";
+    stopReadinessPolling();
+    showRtc();
     stopRtc();
 
     const { Stage, StageEvents, SubscribeType, StageConnectionState } = sdk;
@@ -510,7 +528,11 @@
       if(state === StageConnectionState.CONNECTED) { setStatus("live", "good"); elStatusLine.textContent = "Connected. Waiting for broadcaster…"; }
       if(state === StageConnectionState.CONNECTING) setStatus("connecting", "warn");
       if(state === StageConnectionState.ERRORED) setStatus("errored", "warn");
-      if(state === StageConnectionState.DISCONNECTED) setStatus("disconnected", "bad");
+      if(state === StageConnectionState.DISCONNECTED) {
+        setStatus("disconnected", "bad");
+        activePlaybackMode = null;
+        scheduleReadiness(1200);
+      }
     });
 
     stage.on(StageEvents.STAGE_PARTICIPANT_LEFT, (p) => {
@@ -546,16 +568,25 @@
       log("PLAY error:", String(e));
       setStatus("error", "bad");
       showError(String(e));
+      activePlaybackMode = null;
       await refreshReadiness().catch(() => {});
     }finally{
       btnPlay.disabled = !readinessState.ready;
     }
   }
 
-  function onStop(){ stopHls(); stopRtc(); setStatus("stopped", "warn"); showError(""); }
+  function onStop(){
+    stopHls();
+    stopRtc();
+    activePlaybackMode = null;
+    setStatus("stopped", "warn");
+    showError("");
+    scheduleReadiness(500);
+  }
 
   btnLoad.onclick = async () => {
     showError("");
+    activePlaybackMode = null;
     stopReadinessPolling();
     try{ await loadPublic(); await refreshReadiness(); }
     catch(e){ log("LOAD error:", String(e)); setStatus("error", "bad"); showError(String(e)); scheduleReadiness(2500); }
@@ -569,6 +600,7 @@
   overlay.onclick = closeDrawer;
 
   elMode.onchange = () => {
+    activePlaybackMode = null;
     stopReadinessPolling();
     setModePill();
     showNone();
@@ -577,6 +609,7 @@
   };
 
   function scheduleReloadFromInputs(){
+    activePlaybackMode = null;
     stopReadinessPolling();
     setReadyState(false, "Checking event…", "warn");
     currentReadiness = null; ev = null;
