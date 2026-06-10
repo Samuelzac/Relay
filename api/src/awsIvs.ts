@@ -11,6 +11,8 @@ export type IvsChannelInfo = {
   channelArn: string;
   ingestEndpoint: string; // host only (no scheme)
   playbackUrl: string;
+  streamKeyArn?: string | null;
+  streamKeyValue?: string | null;
 };
 
 export type IvsStreamKeyInfo = {
@@ -73,8 +75,6 @@ async function awsRestJsonCall<T>(
 }
 
 export async function createChannel(env: any, name: string): Promise<IvsChannelInfo> {
-  // NOTE: AWS returns an associated StreamKey too, but Relay's HLS path uses:
-  // WebRTC ingest -> Realtime Composition -> IVS Channel (no RTMP ingest needed).
   const resp = await awsRestJsonCall<any>(env, "/CreateChannel", {
     name,
     type: "STANDARD",
@@ -84,6 +84,7 @@ export async function createChannel(env: any, name: string): Promise<IvsChannelI
   });
 
   const ch = resp?.channel;
+  const sk = resp?.streamKey;
   if (!ch?.arn || !ch?.ingestEndpoint || !ch?.playbackUrl) {
     throw new Error(`Unexpected CreateChannel response: ${JSON.stringify(resp)}`);
   }
@@ -92,6 +93,8 @@ export async function createChannel(env: any, name: string): Promise<IvsChannelI
     channelArn: ch.arn,
     ingestEndpoint: ch.ingestEndpoint,
     playbackUrl: ch.playbackUrl,
+    streamKeyArn: sk?.arn || null,
+    streamKeyValue: sk?.value || null,
   };
 }
 

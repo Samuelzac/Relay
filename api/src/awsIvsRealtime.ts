@@ -163,13 +163,17 @@ export async function createParticipantToken(
   env: any,
   stageArn: string,
   userId: string,
-  capabilities: TokenCapability[]
+  capabilities: TokenCapability[],
+  duration?: number
 ): Promise<ParticipantToken> {
-  const resp = await callRt<any>(env, "/CreateParticipantToken", {
+  const payload: any = {
     stageArn,
     userId,
     capabilities,
-  });
+  };
+  if (duration) payload.duration = duration;
+
+  const resp = await callRt<any>(env, "/CreateParticipantToken", payload);
 
   const tok = resp?.participantToken;
   if (!tok?.token || !tok?.participantId) {
@@ -203,6 +207,11 @@ export async function createEncoderConfiguration(env: any, name: string): Promis
   const enc = resp?.encoderConfiguration;
   if (!enc?.arn) throw new Error(`Unexpected CreateEncoderConfiguration response: ${JSON.stringify(resp)}`);
   return { arn: enc.arn, name: enc.name };
+}
+
+export async function deleteEncoderConfiguration(env: any, encoderConfigurationArn: string): Promise<void> {
+  if (!encoderConfigurationArn) return;
+  await callRt<any>(env, "/DeleteEncoderConfiguration", { arn: encoderConfigurationArn });
 }
 
 /**

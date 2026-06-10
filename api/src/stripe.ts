@@ -9,7 +9,7 @@ export type StreamModeInput = StreamMode | "webrtc";
 
 export function stripeClient(env: any) {
   return new Stripe(env.STRIPE_SECRET_KEY, {
-    apiVersion: "2024-06-20",
+    apiVersion: "2024-06-20" as any,
     httpClient: Stripe.createFetchHttpClient(),
   });
 }
@@ -27,6 +27,8 @@ export function normalizeMode(mode: any): StreamMode {
 }
 
 export function basePriceForTier(env: any, tier: number) {
+  if (tier === 1) return Number(env.HLS_1H_PRICE_NZD ?? env.STANDARD_PRICE_NZD);
+  if (tier === 2) return Number(env.WEBRTC_2H_PRICE_NZD ?? env.STANDARD_PRICE_NZD);
   if (tier === 3) return Number(env.STANDARD_PRICE_NZD);
   if (tier === 8) return Number(env.EXTENDED_PRICE_NZD);
   throw new Error("Invalid tier");
@@ -49,10 +51,23 @@ export function addonPriceForMode(env: any, mode: StreamModeInput) {
 }
 
 export function priceForTierAndMode(env: any, tier: number, mode: StreamModeInput) {
+  const m = normalizeMode(mode);
+
+  const directKey =
+    m === "hls"
+      ? `HLS_${tier}H_PRICE_NZD`
+      : m === "rtc"
+        ? `WEBRTC_${tier}H_PRICE_NZD`
+        : `BOTH_${tier}H_PRICE_NZD`;
+  const direct = env[directKey];
+  if (direct !== undefined && direct !== null && direct !== "") return Number(direct);
+
   return basePriceForTier(env, tier) + addonPriceForMode(env, mode);
 }
 
 export function hoursForTier(env: any, tier: number) {
+  if (tier === 1) return Number(env.ONE_HOUR ?? 1);
+  if (tier === 2) return Number(env.TWO_HOURS ?? 2);
   if (tier === 3) return Number(env.STANDARD_HOURS);
   if (tier === 8) return Number(env.EXTENDED_HOURS);
   throw new Error("Invalid tier");

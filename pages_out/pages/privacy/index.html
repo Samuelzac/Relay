@@ -1,53 +1,93 @@
-<!DOCTYPE html>
-<html>
+<!doctype html>
+<html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Privacy Policy</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Castlink Privacy Policy</title>
   <style>
-    body{margin:0;background:#0b0b0b;color:#fff;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;line-height:1.5}
-    .wrap{max-width:900px;margin:0 auto;padding:22px}
-    h1{font-size:26px;margin:0 0 10px}
-    h2{font-size:18px;margin:22px 0 8px}
-    p,li{opacity:.92}
-    a{color:#9ad1ff}
-    .muted{opacity:.78}
-    .card{background:rgba(255,255,255,.06);border-radius:14px;padding:18px}
+    :root{color-scheme:dark;--bg:#080a0d;--panel:#10141b;--text:#f8fafc;--muted:#a8b3c3;--border:#263140;--link:#dbeafe}
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;line-height:1.55}
+    .wrap{max-width:920px;margin:0 auto;padding:22px}
+    h1{font-size:30px;margin:0 0 8px}
+    h2{font-size:18px;margin:24px 0 8px}
+    p,li{color:var(--muted)}
+    a{color:var(--link);text-decoration:none}
+    .card{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:16px;margin:14px 0}
+    .nav{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:18px;font-size:14px}
   </style>
 </head>
 <body>
   <div class="wrap">
-    <h1>Privacy Policy</h1>
-    <p class="muted">Last updated: <span id="d"></span></p>
+    <nav class="nav">
+      <a href="/">Home</a>
+      <a href="/create">Create event</a>
+      <a href="/faq">FAQ</a>
+      <a href="/support">Support</a>
+      <a href="/terms">Terms</a>
+    </nav>
+
+    <h1>Castlink Privacy Policy</h1>
+    <p>Last updated: <span id="d"></span></p>
 
     <div class="card">
-      <p>We collect the minimum data required to operate a self‑serve streaming event. We do not sell your personal information.</p>
+      <p>Castlink collects the information needed to create, operate, support, secure, and bill private live-streaming events. We do not sell personal information.</p>
     </div>
 
-    <h2>What we collect</h2>
+    <h2>1. Information We Collect</h2>
     <ul>
-      <li><b>Host details:</b> email address and event metadata (title, tier, limits).</li>
-      <li><b>Payments:</b> handled by Stripe. We do not store full card details.</li>
-      <li><b>Viewer sessions:</b> limited technical data (such as IP address and timestamps) used for concurrency control and abuse prevention.</li>
-      <li><b>Reports:</b> report reason, optional description, and related technical logs.</li>
+      <li><b>Host details:</b> email address, event title, selected package, delivery mode, timestamps, and event status.</li>
+      <li><b>Payment details:</b> payment status, Stripe checkout identifiers, and limited transaction metadata. Full card details are handled by Stripe and are not stored by Castlink.</li>
+      <li><b>Event links and secrets:</b> private broadcast keys, watch keys, success tokens, and temporary OBS/WHIP tokens where applicable.</li>
+      <li><b>Viewer session data:</b> viewer session IDs, active viewer counts, heartbeats, join/leave timing, peak viewers, viewer seconds, and event usage summaries.</li>
+      <li><b>Technical data:</b> IP address, user agent, device/browser information, logs, errors, request timing, and security signals.</li>
+      <li><b>Email delivery data:</b> email address, transactional email content, delivery provider responses, and resend events.</li>
+      <li><b>Support and reports:</b> messages, report reasons, optional descriptions, and any links or details provided for troubleshooting or abuse review.</li>
     </ul>
 
-    <h2>How we use data</h2>
+    <h2>2. How We Use Information</h2>
     <ul>
-      <li>To create and operate events and links.</li>
-      <li>To prevent abuse and enforce limits.</li>
-      <li>To respond to support requests and compliance issues.</li>
-      <li>To comply with legal obligations.</li>
+      <li>To create events, process payments, and provide broadcast/watch links.</li>
+      <li>To provision streaming infrastructure and OBS/WHIP access.</li>
+      <li>To enforce event limits, paid time, viewer limits, and extension purchases.</li>
+      <li>To send transactional emails such as event links and extension confirmations.</li>
+      <li>To troubleshoot stream issues, browser/device problems, and payment or email delivery problems.</li>
+      <li>To prevent abuse, investigate reports, protect service security, and comply with legal obligations.</li>
+      <li>To prepare internal usage summaries and improve reliability.</li>
     </ul>
 
-    <h2>Sharing</h2>
-    <p>We share data with service providers strictly as needed (e.g., Stripe for payment processing, infrastructure providers for streaming). We may share information with law enforcement where required or reasonably necessary.</p>
+    <h2>3. Payments</h2>
+    <p>Payments are processed by Stripe. Stripe may collect and process card details, billing information, fraud signals, and transaction data under its own terms and privacy policy. Castlink receives payment status and transaction identifiers needed to fulfil purchases and extensions.</p>
 
-    <h2>Retention</h2>
-    <p>Event records and technical logs are kept only as long as necessary for operations, accounting, and security.</p>
+    <h2>4. Streaming Providers and Infrastructure</h2>
+    <p>Castlink uses cloud and streaming providers to operate live events. Technical data may pass through infrastructure providers as needed for streaming, authentication, logging, security, and delivery.</p>
 
-    <h2>Contact</h2>
-    <p>For privacy queries, contact the platform operator at the email shown on the purchase confirmation.</p>
+    <h2>5. Email Provider</h2>
+    <p>Castlink may use a transactional email provider to send event links, extension confirmations, and support emails. Email addresses and message content are shared only as needed to deliver those emails.</p>
+
+    <h2>6. Viewer Privacy</h2>
+    <p>Viewers generally do not need accounts. However, opening a watch link may create technical session records used for viewer limits, troubleshooting, security, and usage summaries. Castlink does not provide a public viewer directory.</p>
+
+    <h2>7. Content</h2>
+    <p>Castlink does not intentionally record streams in this MVP. Hosts control what they broadcast. We may still process technical metadata and logs related to the stream. If reports, legal requests, or safety issues arise, we may preserve relevant event records and logs.</p>
+
+    <h2>8. Sharing</h2>
+    <p>We share information with service providers only as needed to operate Castlink, including payment processors, cloud infrastructure, streaming services, email providers, and support/security tooling. We may disclose information where required by law, to protect rights or safety, to investigate abuse, or to enforce our Terms.</p>
+
+    <h2>9. Retention</h2>
+    <p>We keep event records, transaction metadata, technical logs, support records, and usage summaries only as long as reasonably needed for operations, accounting, security, legal compliance, and dispute handling. Retention periods may vary by data type.</p>
+
+    <h2>10. Security</h2>
+    <p>We use technical and organisational measures to protect event links, credentials, and logs. No internet service can be guaranteed completely secure. Hosts should keep broadcast links and OBS tokens private.</p>
+
+    <h2>11. Your Choices</h2>
+    <p>You can choose who receives watch links. You can request help with event records or email resend issues through the platform operator. Where applicable law gives you access, correction, deletion, or complaint rights, we will respond as required.</p>
+
+    <h2>12. International Services</h2>
+    <p>Some providers may process data outside New Zealand. By using Castlink, you understand that data may be processed where our infrastructure, payment, email, and streaming providers operate.</p>
+
+    <h2>13. Contact</h2>
+    <p>For privacy questions, contact the platform operator using the support details provided with your purchase or on the website.</p>
   </div>
 <script>
   document.getElementById("d").textContent = new Date().toISOString().slice(0,10);

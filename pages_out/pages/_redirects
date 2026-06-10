@@ -10,5 +10,21 @@
 # CREATE
 /create/*          /create/index.html    200
 
+# ENDED
+/ended/*           /ended/index.html     200
+
+# ADMIN
+/admin/*           /admin/index.html     200
+
+# FAQ
+/faq/*             /faq/index.html       200
+
+# SUPPORT
+/support/*         /support/index.html   200
+
+# LEGAL
+/terms/*           /terms/index.html     200
+/privacy/*         /privacy/index.html   200
+
 # ROOT FALLBACK
 /*                 /index.html           200

@@ -1,0 +1,328 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Castlink FAQ</title>
+  <style>
+    :root{
+      color-scheme:dark;
+      --bg:#080a0d;
+      --panel:#10141b;
+      --panel2:#151b24;
+      --text:#f8fafc;
+      --muted:#a8b3c3;
+      --border:#263140;
+      --accent:#dbeafe;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;line-height:1.55}
+    a{color:var(--accent);text-decoration:none}
+    .wrap{max-width:980px;margin:0 auto;padding:22px}
+    .top{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:20px}
+    .brand{font-weight:850}
+    .nav{display:flex;gap:14px;flex-wrap:wrap;font-size:14px}
+    h1{font-size:34px;line-height:1.08;margin:0 0 10px}
+    h2{font-size:18px;margin:26px 0 10px}
+    p{margin:0 0 10px;color:var(--muted)}
+    .intro{max-width:720px}
+    .grid{display:grid;gap:12px}
+    details{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:0;overflow:hidden}
+    summary{cursor:pointer;padding:14px 16px;font-weight:760}
+    details[open] summary{border-bottom:1px solid var(--border)}
+    .answer{padding:14px 16px;color:var(--muted)}
+    .answer ul,.answer ol{margin:8px 0 0 20px;padding:0}
+    .answer li{margin:6px 0}
+    .callout{background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:14px;margin:14px 0;color:var(--muted)}
+    code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:#bfdbfe}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="top">
+      <div class="brand">Castlink</div>
+      <nav class="nav">
+        <a href="/">Home</a>
+        <a href="/create">Create event</a>
+        <a href="/support">Support</a>
+        <a href="/terms">Terms</a>
+        <a href="/privacy">Privacy</a>
+      </nav>
+    </div>
+
+    <h1>FAQ and Troubleshooting</h1>
+    <p class="intro">Answers for hosts and viewers before, during, and after a private live stream.</p>
+
+    <div class="callout">
+      If a stream is not ready immediately after purchase, wait a minute and refresh. Some stream types need background setup, and Castlink prepares resources as quickly as possible.
+    </div>
+
+    <h2>Buying and Links</h2>
+    <div class="grid">
+      <details open>
+        <summary>What happens after I pay?</summary>
+        <div class="answer">You land on a success page with your private broadcast link and your viewer watch link. The same links are also sent by email. Paid events must be started within 7 days of purchase.</div>
+      </details>
+      <details>
+        <summary>What is the free test stream for?</summary>
+        <div class="answer">The free test stream lets you check your browser, camera, microphone, OBS setup, watch link, and viewer playback before buying. It uses real stream links, targets the same 720p HD quality as paid events, and is limited to 3 minutes and a small number of viewers.</div>
+      </details>
+      <details>
+        <summary>What is the broadcast link?</summary>
+        <div class="answer">The broadcast link is private. It is for the host only. Anyone with this link may be able to broadcast or access OBS tokens, so do not share it with viewers.</div>
+      </details>
+      <details>
+        <summary>What is the watch link?</summary>
+        <div class="answer">The watch link is the link you share with viewers. Viewers do not need an account.</div>
+      </details>
+      <details>
+        <summary>I lost my email. Can I get the links again?</summary>
+        <div class="answer">Use the success page resend button if you still have the success page open. Otherwise contact the platform operator with your purchase email and event title.</div>
+      </details>
+      <details>
+        <summary>Can I change the event title after purchase?</summary>
+        <div class="answer">Not from the public pages yet. Contact support or create a new event if the title matters for your viewers.</div>
+      </details>
+    </div>
+
+    <h2>Stream Types</h2>
+    <div class="grid">
+      <details>
+        <summary>What quality is the stream?</summary>
+        <div class="answer">The current Castlink setup targets 720p HD video at up to 30fps with 128kbps stereo audio. Actual quality depends on the host camera, browser, OBS settings, upload speed, viewer connection, and device performance.</div>
+      </details>
+      <details>
+        <summary>Is this 1080p?</summary>
+        <div class="answer">Not in the launch configuration. Castlink should currently be treated as private 720p HD streaming. 1080p may be added later if the infrastructure, pricing, and device requirements are tuned for it.</div>
+      </details>
+      <details>
+        <summary>What is HLS?</summary>
+        <div class="answer">HLS is the standard private playback mode. It is better for larger audiences and normal event viewing, and it usually has a short delay compared with WebRTC.</div>
+      </details>
+      <details>
+        <summary>What is WebRTC?</summary>
+        <div class="answer">WebRTC is the real-time mode. It is lower latency and better for smaller interactive streams, but it is more sensitive to browser, device, and network issues.</div>
+      </details>
+      <details>
+        <summary>What is the difference between WebRTC and HLS?</summary>
+        <div class="answer">WebRTC prioritises low delay. HLS prioritises reliable private playback for more viewers. If viewers only need to watch, HLS is usually simpler. If the host needs a near real-time experience, WebRTC is the better fit.</div>
+      </details>
+      <details>
+        <summary>What does Both mean?</summary>
+        <div class="answer">Both provides WebRTC and HLS paths for the same event. It is useful when you want low-latency publishing plus broader viewer playback.</div>
+      </details>
+      <details>
+        <summary>Which mode should I choose?</summary>
+        <div class="answer">
+          Choose HLS for most private events. Choose WebRTC when low latency matters. Choose Both when you need flexibility or OBS/WHIP plus broader viewer delivery.
+        </div>
+      </details>
+    </div>
+
+    <h2>Broadcasting</h2>
+    <div class="grid">
+      <details>
+        <summary>Do I need an app to broadcast?</summary>
+        <div class="answer">No. You can broadcast from a browser using the private broadcast link. You may also use OBS if your event supports it.</div>
+      </details>
+      <details>
+        <summary>Which browser should hosts use?</summary>
+        <div class="answer">Use a current version of Chrome, Edge, or Safari. On mobile, close other camera apps first and keep the browser tab active while live.</div>
+      </details>
+      <details>
+        <summary>Why is the camera or microphone not working?</summary>
+        <div class="answer">
+          Check:
+          <ul>
+            <li>Browser permission for camera and microphone</li>
+            <li>Another app is not using the camera</li>
+            <li>The correct camera/mic is selected on the broadcast page</li>
+            <li>You are on HTTPS, not an insecure local/custom URL</li>
+            <li>Refresh after changing permissions</li>
+          </ul>
+        </div>
+      </details>
+      <details>
+        <summary>Can I switch cameras or microphones?</summary>
+        <div class="answer">Yes. Use Preview after selecting a different camera or mic. If it behaves oddly, stop and refresh the page.</div>
+      </details>
+      <details>
+        <summary>What does Go Live do?</summary>
+        <div class="answer">Go Live opens the paid event window and begins publishing. Your package time starts when the event window opens.</div>
+      </details>
+      <details>
+        <summary>What does Finish Stream do?</summary>
+        <div class="answer">Finish Stream ends the event early, stops the active stream path, and prepares a usage summary. Viewers will no longer be able to watch after finishing.</div>
+      </details>
+      <details>
+        <summary>Can I extend the stream?</summary>
+        <div class="answer">Yes. On the broadcast page, use Buy +1 hour before the stream expires. The same broadcast and watch links continue working after extension.</div>
+      </details>
+    </div>
+
+    <h2>OBS</h2>
+    <div class="grid">
+      <details>
+        <summary>Can I stream through OBS?</summary>
+        <div class="answer">Yes. Open the broadcast link and choose OBS Token. Castlink gives you the WHIP server and bearer token to paste into OBS.</div>
+      </details>
+      <details>
+        <summary>What OBS service should I choose?</summary>
+        <div class="answer">Choose <code>WHIP</code> as the service, then paste the server URL and bearer token from the broadcast page.</div>
+      </details>
+      <details>
+        <summary>My OBS token expired. What do I do?</summary>
+        <div class="answer">Return to the broadcast link and generate a new OBS token. Tokens are temporary for security.</div>
+      </details>
+      <details>
+        <summary>OBS says it cannot connect.</summary>
+        <div class="answer">
+          Check:
+          <ul>
+            <li>The event is paid and ready</li>
+            <li>You copied the full WHIP server URL</li>
+            <li>You copied the bearer token exactly</li>
+            <li>Your OBS version supports WHIP</li>
+            <li>Your network/firewall allows outbound streaming</li>
+          </ul>
+        </div>
+      </details>
+      <details>
+        <summary>Can I use RTMP instead of WHIP?</summary>
+        <div class="answer">The current easy OBS path is WHIP. RTMP/HLS support may be available depending on configuration, but WHIP is the preferred setup in the app.</div>
+      </details>
+    </div>
+
+    <h2>Watching</h2>
+    <div class="grid">
+      <details>
+        <summary>Do viewers need accounts?</summary>
+        <div class="answer">No. Anyone with the watch link can view, subject to event limits.</div>
+      </details>
+      <details>
+        <summary>Why does the watch page say waiting?</summary>
+        <div class="answer">The stream may not be live yet, or the broadcaster may still be connecting. Refresh after a minute if it does not update.</div>
+      </details>
+      <details>
+        <summary>Why is there a delay?</summary>
+        <div class="answer">HLS streams normally have delay. WebRTC is lower latency but depends more on browser and network conditions.</div>
+      </details>
+      <details>
+        <summary>Video is buffering or freezing. What can I do?</summary>
+        <div class="answer">
+          Try:
+          <ul>
+            <li>Refresh the watch page</li>
+            <li>Use a stronger Wi-Fi or mobile connection</li>
+            <li>Close other tabs/apps using bandwidth</li>
+            <li>Try another browser</li>
+            <li>Ask the host to check their upload connection</li>
+          </ul>
+        </div>
+      </details>
+      <details>
+        <summary>The viewer limit is reached. What does that mean?</summary>
+        <div class="answer">The event has reached its concurrent viewer limit. Try again shortly, or ask the host to upgrade viewer capacity from the broadcast page. Existing links continue working after an upgrade.</div>
+      </details>
+      <details>
+        <summary>Can the host increase viewer capacity?</summary>
+        <div class="answer">Yes. If the event is close to full, the broadcast page warns the host and offers +100, +250, or +500 concurrent viewer upgrades through Stripe. There are no automatic viewer overage charges during launch.</div>
+      </details>
+      <details>
+        <summary>Can viewers watch on phones?</summary>
+        <div class="answer">Yes. Viewers can usually watch from modern mobile browsers. For best results, keep the screen awake and use a stable connection.</div>
+      </details>
+    </div>
+
+    <h2>Timing and Billing</h2>
+    <div class="grid">
+      <details>
+        <summary>When does paid time start?</summary>
+        <div class="answer">Paid time starts when the event window is opened, usually when the host goes live or the stream path is started. Buying the stream does not start the package timer.</div>
+      </details>
+      <details>
+        <summary>How long do I have to start after buying?</summary>
+        <div class="answer">Paid events must be started within 7 days of purchase. If a paid event is not started within that window, it may expire unused and you may need to contact support or create a new event.</div>
+      </details>
+      <details>
+        <summary>What happens when time runs out?</summary>
+        <div class="answer">The stream expires and new viewing/broadcast access is blocked. The broadcast and watch pages show remaining-time warnings before the end.</div>
+      </details>
+      <details>
+        <summary>Can I buy more time?</summary>
+        <div class="answer">Yes. Use Buy +1 hour on the broadcast page before the event expires.</div>
+      </details>
+      <details>
+        <summary>Will I be charged surprise overages?</summary>
+        <div class="answer">No. The current launch model is base package plus optional repeat purchase for extra time or viewer capacity. Overage tracking may be shown for transparency, but extra charges are not automatic unless clearly offered later.</div>
+      </details>
+      <details>
+        <summary>Are refunds available?</summary>
+        <div class="answer">Refunds depend on the situation and the platform terms. If there is a technical issue, contact support with the event link and purchase email.</div>
+      </details>
+    </div>
+
+    <h2>Security and Privacy</h2>
+    <div class="grid">
+      <details>
+        <summary>Is the stream public?</summary>
+        <div class="answer">No public directory is provided. Access is by private link. Anyone with the watch link may view, so share it carefully.</div>
+      </details>
+      <details>
+        <summary>Can I password-protect viewers?</summary>
+        <div class="answer">Not in the current public flow. The watch link acts as the access key.</div>
+      </details>
+      <details>
+        <summary>Is the stream recorded?</summary>
+        <div class="answer">Not in this MVP unless recording is explicitly added later. Castlink is focused on live delivery.</div>
+      </details>
+      <details>
+        <summary>What content is allowed?</summary>
+        <div class="answer">Hosts must have rights and consent for what they stream. Illegal, infringing, abusive, or unsafe content is prohibited. See the Terms for details.</div>
+      </details>
+    </div>
+
+    <h2>Quick Fixes</h2>
+    <div class="grid">
+      <details>
+        <summary>Host quick checklist</summary>
+        <div class="answer">
+          <ol>
+            <li>Open the private broadcast link.</li>
+            <li>Allow camera and microphone.</li>
+            <li>Click Preview.</li>
+            <li>Check the readiness indicators.</li>
+            <li>Click Go Live or generate an OBS token.</li>
+            <li>Keep the tab open while broadcasting.</li>
+          </ol>
+        </div>
+      </details>
+      <details>
+        <summary>Viewer quick checklist</summary>
+        <div class="answer">
+          <ol>
+            <li>Open the watch link.</li>
+            <li>Click Play if the browser requires it.</li>
+            <li>Refresh if the host has just gone live.</li>
+            <li>Try another browser/network if playback stalls.</li>
+          </ol>
+        </div>
+      </details>
+      <details>
+        <summary>What information should I send support?</summary>
+        <div class="answer">
+          Send:
+          <ul>
+            <li>Purchase email</li>
+            <li>Event title</li>
+            <li>Broadcast or watch link</li>
+            <li>Device and browser</li>
+            <li>What you clicked and what happened</li>
+            <li>Any error message shown on screen</li>
+          </ul>
+        </div>
+      </details>
+    </div>
+  </div>
+</body>
+</html>

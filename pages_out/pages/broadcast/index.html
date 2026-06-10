@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-  <title>Relay Broadcast</title>
+  <title>Castlink Broadcast</title>
 
   <script src="https://web-broadcast.live-video.net/1.17.0/amazon-ivs-web-broadcast.js"></script>
 
@@ -28,14 +28,14 @@
     html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
     body{min-height:100svh; overflow:hidden}
 
-    .shell{position:relative;min-height:100svh;display:grid;grid-template-rows:auto 1fr auto;background:#000}
+    .shell{position:relative;min-height:100svh;background:#000}
     .preview-wrap{position:absolute;inset:0;background:#000}
     video{width:100%;height:100%;object-fit:cover;display:block;background:#000}
-    .scrim-top{position:absolute;inset:0 0 auto 0;height:160px;background:linear-gradient(to bottom, rgba(0,0,0,.72), rgba(0,0,0,0));pointer-events:none;z-index:1}
-    .scrim-bottom{position:absolute;inset:auto 0 0 0;height:220px;background:linear-gradient(to top, rgba(0,0,0,.78), rgba(0,0,0,0));pointer-events:none;z-index:1}
-    .topbar{position:relative;z-index:2;padding:calc(12px + env(safe-area-inset-top)) 14px 10px 14px;display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+    .scrim-top{position:absolute;inset:0 0 auto 0;height:130px;background:linear-gradient(to bottom, rgba(0,0,0,.7), rgba(0,0,0,0));pointer-events:none;z-index:2}
+    .scrim-bottom{position:absolute;inset:auto 0 0 0;height:170px;background:linear-gradient(to top, rgba(0,0,0,.72), rgba(0,0,0,0));pointer-events:none;z-index:2}
+    .topbar{position:relative;z-index:3;padding:calc(12px + env(safe-area-inset-top)) 14px 10px 14px;display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
     .title-block{display:flex;flex-direction:column;gap:6px;min-width:0}
-    .title{font-size:20px;font-weight:800;letter-spacing:.2px}
+    .title{font-size:18px;font-weight:800;letter-spacing:.2px}
     .subtitle{color:var(--muted);font-size:13px;max-width:min(70vw,560px)}
     .status-row{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
     .pill{display:inline-flex;align-items:center;gap:8px;min-height:32px;padding:6px 10px;border-radius:999px;background:rgba(0,0,0,.42);border:1px solid var(--border);backdrop-filter: blur(10px);font-size:12px;white-space:nowrap}
@@ -43,45 +43,90 @@
     .pill.good .dot{background:var(--good)}
     .pill.warn .dot{background:var(--warn)}
     .pill.bad .dot{background:var(--bad)}
-    .bottom-ui{position:relative;z-index:2;margin-top:auto;padding:12px 14px calc(16px + env(safe-area-inset-bottom)) 14px;display:grid;gap:12px}
-    .panel{background:var(--panel);border:1px solid var(--border);border-radius:18px;backdrop-filter: blur(16px);box-shadow:var(--shadow)}
-    .controls{padding:14px;display:grid;gap:12px}
+    .bottom-ui{position:absolute;z-index:4;inset:auto 0 0 0;padding:12px 14px calc(16px + env(safe-area-inset-bottom)) 14px;display:flex;gap:10px;align-items:flex-end;justify-content:center;pointer-events:none}
+    .panel{background:var(--panel);border:1px solid var(--border);border-radius:16px;backdrop-filter: blur(16px);box-shadow:var(--shadow);pointer-events:auto}
+    .controls{padding:10px;display:grid;gap:8px;width:min(720px,calc(100vw - 28px));max-width:calc(100vw - 28px)}
     .inputs{display:grid;gap:10px;grid-template-columns:1fr}
     .input-row{display:grid;gap:10px;grid-template-columns:1fr 1fr}
     .field{display:grid;gap:6px}
-    .label{font-size:12px;color:var(--muted)}
+    .label{font-size:12px;color:rgba(255,255,255,.82);font-weight:700}
     input,select,button{font:inherit}
-    input,select{width:100%;min-height:46px;border-radius:12px;border:1px solid var(--border);background:rgba(255,255,255,.08);color:var(--text);padding:10px 12px;outline:none}
+    input,select{width:100%;min-height:46px;border-radius:12px;border:1px solid rgba(255,255,255,.24);background:#171b24;color:var(--text);padding:10px 12px;outline:none}
     input::placeholder{color:rgba(255,255,255,.48)}
-    .actions{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
-    button{min-height:52px;border-radius:14px;border:0;cursor:pointer;font-weight:800;color:#fff;background:var(--panel-2)}
+    .controls .inputs,.controls .meta,.controls .state-line{display:none}
+    .controls.setup-open .inputs .input-row:first-child{display:none}
+    .controls.setup-open .inputs{position:fixed;z-index:20;left:50%;right:auto;bottom:88px;transform:translateX(-50%);width:min(460px,calc(100vw - 28px));max-height:calc(100svh - 150px);overflow:auto;display:grid;background:#10131a;border:1px solid rgba(255,255,255,.22);border-radius:16px;padding:14px;box-shadow:var(--shadow);backdrop-filter:blur(18px);color:#fff}
+    .actions{display:grid;grid-template-columns:54px minmax(0,1fr);gap:8px;align-items:center;justify-content:center}
+    button{min-height:46px;border-radius:999px;border:0;cursor:pointer;font-weight:800;color:#fff;background:var(--panel-2);padding:0 12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     button.primary{background:var(--btn)}
     button.stop{background:var(--btnStop)}
     button:disabled{opacity:.48;cursor:not-allowed}
+    #btnPreview,#btnStop,#btnObs{display:none}
+    #btnGoLive.is-live{background:var(--btnStop)}
+    #btnSetup{display:inline-flex;align-items:center;justify-content:center;padding:0;width:54px;min-width:54px}
+    #btnSetup svg{width:22px;height:22px;display:block}
+    #btnSetup .btn-label{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
     .meta{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;color:var(--muted);font-size:13px}
     .state-line{display:flex;gap:8px;flex-wrap:wrap}
     .chip{padding:6px 10px;border-radius:999px;border:1px solid var(--border);font-size:12px;background:rgba(255,255,255,.06)}
-    details{overflow:hidden}
-    summary{list-style:none;cursor:pointer;padding:12px 14px;color:var(--muted);font-size:13px;border-bottom:1px solid transparent}
-    details[open] summary{border-bottom-color:var(--border)}
+    .chip.warn{border-color:rgba(251,191,36,.55);color:#ffe3a3}
+    .chip.bad{border-color:rgba(255,138,128,.6);color:#ffb4b4}
+    details{overflow:visible;background:transparent;border-color:transparent;box-shadow:none;backdrop-filter:none}
+    .aux-panel{display:none}
+    summary{list-style:none;cursor:pointer;padding:12px 14px;color:var(--text);font-size:13px;border:1px solid var(--border);border-radius:999px;background:rgba(0,0,0,.48);backdrop-filter:blur(16px);font-weight:800}
+    details[open] summary{background:rgba(25,118,210,.88);border-color:rgba(255,255,255,.28)}
     summary::-webkit-details-marker{display:none}
     .log{padding:12px 14px 14px 14px;max-height:220px;overflow:auto;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;white-space:pre-wrap;line-height:1.4;color:#d7d7d7;background:rgba(0,0,0,.2)}
-    .empty-preview{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:20px;color:rgba(255,255,255,.68);font-size:14px;pointer-events:none;z-index:0}
-    @media (max-width:760px){.topbar{flex-direction:column;align-items:stretch}.status-row{justify-content:flex-start}.input-row{grid-template-columns:1fr}.actions{grid-template-columns:1fr}.title{font-size:18px}}
+    code{display:block;padding:10px 12px;border-radius:10px;border:1px solid rgba(255,255,255,.18);background:#07090d;color:#f8fafc;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;word-break:break-all}
+    details[open] .finish-row,details[open] .obs-grid,details[open] .log{position:fixed;right:14px;bottom:88px;width:min(460px,calc(100vw - 28px));max-height:calc(100svh - 150px);overflow:auto;background:#10131a;border:1px solid rgba(255,255,255,.22);border-radius:16px;box-shadow:var(--shadow);backdrop-filter:blur(18px);color:#fff}
+    .obs-grid{display:grid;gap:10px;padding:14px}
+    .obs-actions{display:flex;gap:10px;flex-wrap:wrap}
+    .obs-actions button{min-height:42px;border-radius:10px;padding:9px 12px}
+    .finish-row{display:grid;gap:8px;padding:14px}
+    .empty-preview{position:absolute;inset:0;display:flex;align-items:flex-start;justify-content:center;text-align:center;padding:24svh 20px 20px;color:rgba(255,255,255,.78);font-size:14px;pointer-events:none;z-index:1;background:radial-gradient(circle at center, rgba(25,118,210,.18), rgba(0,0,0,0) 45%)}
+    .empty-preview strong{display:block;color:#fff;font-size:28px;line-height:1.1;margin-bottom:8px}
+    .empty-preview span{display:block;max-width:430px;line-height:1.5}
+    @media (max-width:920px){.bottom-ui{justify-content:center}.controls{width:calc(100vw - 20px);max-width:calc(100vw - 20px)}}
+    @media (max-width:760px){
+      .topbar{align-items:stretch;padding-left:10px;padding-right:10px}
+      .status-row{justify-content:flex-start;gap:6px}
+      .pill{font-size:11px;min-height:28px;padding:5px 8px}
+      .subtitle{max-width:100%;font-size:12px}
+      .input-row{grid-template-columns:1fr}
+      .title{font-size:16px}
+      .bottom-ui{padding:10px 10px calc(12px + env(safe-area-inset-bottom)) 10px}
+      .controls{width:100%;max-width:100%;padding:8px;border-radius:14px}
+      .topbar{pointer-events:none}
+      .title{font-size:14px}
+      .subtitle{font-size:11px;max-height:34px;overflow:hidden}
+      .status-row{max-width:50vw;justify-content:flex-end}
+      #readyPill{display:none}
+      .bottom-ui{padding:8px 8px calc(10px + env(safe-area-inset-bottom)) 8px}
+      .controls{width:100%;max-width:100%;padding:7px;border-radius:999px;background:rgba(12,12,12,.72)}
+      .actions{grid-template-columns:48px minmax(0,1fr);gap:8px}
+      button{min-height:48px;padding:0 10px;font-size:14px}
+      #btnSetup{width:48px;min-width:48px}
+      #btnGoLive{font-size:15px}
+      .empty-preview{padding-top:28svh}
+      .empty-preview strong{font-size:22px}
+      .controls.setup-open .inputs{left:10px;right:10px;top:auto;bottom:calc(76px + env(safe-area-inset-bottom));transform:none;width:auto;max-height:min(42svh,270px);padding:12px;border-radius:18px}
+      .controls.setup-open .inputs .input-row{gap:8px}
+      select{min-height:44px;font-size:14px}
+    }
   </style>
 </head>
 <body>
   <div class="shell">
     <div class="preview-wrap">
       <video id="preview" playsinline autoplay muted></video>
-      <div class="empty-preview" id="emptyPreview">Camera preview will appear here</div>
+      <div class="empty-preview" id="emptyPreview"><span><strong>Ready when you are</strong>Preview your camera, then go live or generate OBS setup details for this private stream.</span></div>
       <div class="scrim-top"></div>
       <div class="scrim-bottom"></div>
     </div>
 
     <div class="topbar">
       <div class="title-block">
-        <div class="title">Relay Broadcast</div>
+        <div class="title">Castlink Broadcast</div>
         <div class="subtitle" id="readyInfo">Checking broadcaster access…</div>
       </div>
 
@@ -95,7 +140,7 @@
     <div></div>
 
     <div class="bottom-ui">
-      <div class="panel controls">
+      <div class="panel controls" id="controlsPanel">
         <div class="inputs">
           <div class="input-row">
             <div class="field">
@@ -121,8 +166,18 @@
         </div>
 
         <div class="actions">
+          <button id="btnSetup" aria-label="Camera and mic" title="Camera and mic">
+            <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M15 10l4.55-2.28A1 1 0 0 1 21 8.62v6.76a1 1 0 0 1-1.45.9L15 14" />
+              <rect x="3" y="6" width="12" height="12" rx="2" />
+              <path d="M9 12v2a3 3 0 0 0 6 0v-2" />
+              <path d="M12 17v3" />
+            </svg>
+            <span class="btn-label">Camera and mic</span>
+          </button>
           <button id="btnPreview">Preview</button>
           <button id="btnGoLive" class="primary" disabled>Go Live</button>
+          <button id="btnObs" disabled>OBS Token</button>
           <button id="btnStop" class="stop">Stop</button>
         </div>
 
@@ -131,21 +186,65 @@
           <div id="liveHint">Preparing stream path…</div>
         </div>
 
+        <div class="state-line">
+          <span class="chip" id="remainingChip">remaining: not started</span>
+          <span class="chip" id="usageChip">usage: not started</span>
+          <button id="btnExtend" disabled>Buy +1 hour</button>
+        </div>
+        <div class="state-line">
+          <span class="chip" id="viewerCapChip">viewers: 0/0</span>
+          <button class="viewer-upgrade" data-viewers="100" disabled>+100 viewers</button>
+          <button class="viewer-upgrade" data-viewers="250" disabled>+250 viewers</button>
+          <button class="viewer-upgrade" data-viewers="500" disabled>+500 viewers</button>
+        </div>
         <div class="state-line" id="stateLine"></div>
       </div>
 
-      <details class="panel">
+      <details class="panel aux-panel">
+        <summary>Finish & billing summary</summary>
+        <div class="finish-row">
+          <div id="finishInfo" class="muted">Finish the paid stream when the event is complete. This closes the event window and prepares the usage summary.</div>
+          <button id="btnFinish" class="stop" disabled>Finish Stream</button>
+          <code id="usageSummary">(usage summary will appear here)</code>
+        </div>
+      </details>
+
+      <details class="panel aux-panel">
+        <summary>OBS / WHIP</summary>
+        <div class="obs-grid">
+          <div class="meta">
+            <div id="obsInfo">Generate a temporary WHIP token for OBS.</div>
+          </div>
+          <div>
+            <div class="label">Service</div>
+            <code>WHIP</code>
+          </div>
+          <div>
+            <div class="label">Server</div>
+            <code id="obsServer">(not generated)</code>
+          </div>
+          <div>
+            <div class="label">Bearer token</div>
+            <code id="obsToken">(not generated)</code>
+          </div>
+          <div class="obs-actions">
+            <button id="btnObsPanel" disabled>Get OBS Token</button>
+            <button id="btnCopyObs" disabled>Copy OBS Setup</button>
+          </div>
+        </div>
+      </details>
+
+      <details class="panel aux-panel">
         <summary>Logs</summary>
         <div id="log" class="log"></div>
       </details>
     </div>
   </div>
 
+<script src="/assets/relay-config.js"></script>
 <script>
 (() => {
-  const API_BASE = (location.origin.includes("pages.dev") || location.origin.includes("localhost"))
-    ? "https://stream-platform-api.kiwismurph.workers.dev"
-    : location.origin;
+  const API_BASE = window.RelayConfig.apiBase;
 
   const qs = new URLSearchParams(location.search);
   const $ = (id) => document.getElementById(id);
@@ -162,25 +261,52 @@
   const elCam = $("camera");
   const elMic = $("mic");
   const elStateLine = $("stateLine");
+  const remainingChip = $("remainingChip");
+  const usageChip = $("usageChip");
+  const viewerCapChip = $("viewerCapChip");
+  const finishInfo = $("finishInfo");
+  const usageSummaryEl = $("usageSummary");
   const btnPreview = $("btnPreview");
+  const btnSetup = $("btnSetup");
+  const controlsPanel = $("controlsPanel");
   const btnGoLive = $("btnGoLive");
+  const btnObs = $("btnObs");
+  const btnObsPanel = $("btnObsPanel");
+  const btnCopyObs = $("btnCopyObs");
+  const btnFinish = $("btnFinish");
+  const btnExtend = $("btnExtend");
   const btnStop = $("btnStop");
   const videoEl = $("preview");
   const emptyPreview = $("emptyPreview");
+  const obsInfo = $("obsInfo");
+  const obsServer = $("obsServer");
+  const obsToken = $("obsToken");
 
   let localStream = null;
   let stage = null;
+  let hlsClient = null;
   let stageToken = null;
   let startedAtMs = null;
   let timerHandle = null;
+  let usageTimer = null;
   let readinessTimer = null;
   let readyToBroadcast = false;
   let currentPublic = null;
   let currentReadiness = null;
   let currentReadinessState = "checking";
+  let extensionPriceText = "+1 hour";
+  let viewerUpgradePrices = {};
+  let autoExtendStarted = false;
+  let hlsWarmStarted = false;
+  let isBroadcasting = false;
 
   elEventId.value = qs.get("event") || qs.get("id") || "";
   elEventKey.value = qs.get("key") || "";
+  if (qs.get("extended")) elLiveHint.textContent = "Extension payment received. Rechecking stream time...";
+  if (qs.get("extend_cancelled")) elLiveHint.textContent = "Extension checkout was cancelled.";
+  if (qs.get("extend")) elLiveHint.textContent = "Opening extension checkout...";
+  if (qs.get("viewer_upgraded")) elLiveHint.textContent = "Viewer capacity upgrade complete. Rechecking usage...";
+  if (qs.get("viewer_upgrade_cancelled")) elLiveHint.textContent = "Viewer capacity upgrade checkout was cancelled.";
 
   function log(...args){
     const line = args.map(a => typeof a === "string" ? a : JSON.stringify(a)).join(" ");
@@ -196,10 +322,21 @@
 
   function setReady(ready, text, detail, kind){
     readyToBroadcast = ready;
-    btnGoLive.disabled = !ready;
+    updateBroadcastControls();
+    btnObs.disabled = !ready;
+    btnObsPanel.disabled = !ready;
+    btnFinish.disabled = !currentReadiness?.stream_window_open;
+    btnExtend.disabled = !currentReadiness?.stream_window_open;
     elReady.className = `pill ${kind || (ready ? "good" : "warn")}`.trim();
     elReady.querySelector("span:last-child").textContent = "ready: " + text;
     elReadyInfo.textContent = detail || "";
+  }
+
+  function updateBroadcastControls(){
+    btnGoLive.textContent = isBroadcasting ? "Stop" : "Go Live";
+    btnGoLive.classList.toggle("is-live", isBroadcasting);
+    btnGoLive.classList.toggle("stop", isBroadcasting);
+    btnGoLive.disabled = isBroadcasting ? false : !readyToBroadcast;
   }
 
   function renderFlags(readiness){
@@ -208,14 +345,65 @@
       elStateLine.innerHTML = "";
       return;
     }
-    flags.push(["Stage", readiness.stage_exists]);
+    if (readiness.rtc_enabled) flags.push(["Stage", readiness.stage_exists]);
     if (readiness.hls_enabled) flags.push(["HLS channel", readiness.hls_channel_exists]);
-    if (readiness.hls_enabled) flags.push(["Encoder", readiness.encoder_configuration_exists]);
-    if (readiness.hls_enabled) flags.push(["Composition", readiness.composition_started]);
+    if (readiness.hls_enabled) flags.push(["Stream key", readiness.can_issue_broadcaster_token]);
+    if (readiness.hls_enabled && readiness.rtc_enabled) flags.push(["Encoder", readiness.encoder_configuration_exists]);
+    if (readiness.hls_enabled && readiness.rtc_enabled) flags.push(["Composition", readiness.composition_started]);
     if (readiness.hls_enabled) flags.push(["Playback URL", readiness.playback_url_exists]);
     if (readiness.whip_url_exists) flags.push(["WHIP", readiness.whip_url_exists]);
 
     elStateLine.innerHTML = flags.map(([label, ok]) => `<span class="chip">${label}: ${ok ? "yes" : "no"}</span>`).join("");
+  }
+
+  function formatDuration(seconds){
+    const s = Math.max(0, Number(seconds || 0));
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const r = Math.floor(s % 60);
+    if (h > 0) return `${h}h ${String(m).padStart(2,"0")}m`;
+    return `${m}m ${String(r).padStart(2,"0")}s`;
+  }
+
+  function updateTimeWarning(readiness){
+    const seconds = readiness?.seconds_remaining;
+    remainingChip.className = "chip";
+    if (seconds === null || seconds === undefined) {
+      remainingChip.textContent = "remaining: not started";
+      setViewerUpgradeEnabled(false);
+      return;
+    }
+    remainingChip.textContent = `remaining: ${formatDuration(seconds)}`;
+    if (seconds <= 120) remainingChip.className = "chip bad";
+    else if (seconds <= 600) remainingChip.className = "chip warn";
+    if (readiness.warning) elLiveHint.textContent = readiness.warning;
+  }
+
+  function setViewerUpgradeEnabled(enabled){
+    document.querySelectorAll(".viewer-upgrade").forEach(btn => {
+      btn.disabled = !enabled;
+    });
+  }
+
+  function centsToDollars(cents){
+    return (Number(cents || 0) / 100).toFixed(2);
+  }
+
+  async function loadPricing(){
+    try{
+      const r = await apiGet("/api/pricing");
+      const price = r?.extensions?.one_hour_nzd;
+      if(typeof price === "number") extensionPriceText = `+1 hour $${centsToDollars(price)} NZD`;
+      viewerUpgradePrices = r?.viewer_upgrades || {};
+      btnExtend.textContent = extensionPriceText;
+      document.querySelectorAll(".viewer-upgrade").forEach(btn => {
+        const amount = btn.getAttribute("data-viewers");
+        const cents = viewerUpgradePrices?.[amount];
+        btn.textContent = cents ? `+${amount} viewers $${centsToDollars(cents)} NZD` : `+${amount} viewers`;
+      });
+    }catch{
+      btnExtend.textContent = extensionPriceText;
+    }
   }
 
   function apiUrl(path){ return API_BASE + path; }
@@ -316,6 +504,7 @@
     currentReadiness = res?.readiness || null;
     currentReadinessState = currentReadiness?.state || "checking";
     renderFlags(currentReadiness);
+    updateTimeWarning(currentReadiness);
     return res;
   }
 
@@ -328,6 +517,72 @@
     stageToken = prov?.participantToken || prov?.publisher?.token;
     if(!stageToken) throw new Error("No publisher token returned from /rtc/provision");
     return prov;
+  }
+
+  async function provisionHlsChannel(){
+    const eventId = elEventId.value.trim();
+    const key = elEventKey.value.trim();
+    if(!eventId || !key) throw new Error("Missing event or key");
+
+    const prov = await apiPost(`/api/events/${encodeURIComponent(eventId)}/hls/provision?key=${encodeURIComponent(key)}`, {});
+    if(!(prov?.ingest?.endpoint || prov?.ingest?.ingestEndpoint || prov?.ingest?.rtmpsUrl) || !prov?.ingest?.streamKey) throw new Error("No HLS ingest details returned.");
+    return prov;
+  }
+
+  async function warmHlsChannelIfNeeded(readiness){
+    if(hlsWarmStarted) return null;
+    if(!readiness?.hls_enabled || readiness?.rtc_enabled) return null;
+    if(!readiness?.paid || readiness?.expired || readiness?.disabled) return null;
+    if(readiness?.can_issue_broadcaster_token) return null;
+
+    hlsWarmStarted = true;
+    setStatus("warming hls...", "warn");
+    elLiveHint.textContent = "Creating HLS channel and stream key...";
+    try{
+      const prov = await provisionHlsChannel();
+      log("HLS warm", { playback: prov?.playback?.url, alreadyProvisioned: prov?.alreadyProvisioned });
+      return prov;
+    }catch(e){
+      hlsWarmStarted = false;
+      log("HLS warm failed", String(e));
+      throw e;
+    }
+  }
+
+  async function provisionObsToken(){
+    const eventId = elEventId.value.trim();
+    const key = elEventKey.value.trim();
+    if(!eventId || !key) throw new Error("Missing event or key");
+
+    obsInfo.textContent = "Requesting OBS token...";
+    const res = await apiPost(`/api/events/${encodeURIComponent(eventId)}/whip/provision?key=${encodeURIComponent(key)}`, {});
+    const server = res?.whip_url || "https://global.whip.live-video.net";
+    const token = res?.bearer_token || "";
+    if(!token) throw new Error("No bearer token returned.");
+
+    obsServer.textContent = server;
+    obsToken.textContent = token;
+    btnCopyObs.disabled = false;
+    obsInfo.textContent = res?.expires_at ? `Token ready. Expires ${res.expires_at}.` : "Token ready.";
+    return { server, token };
+  }
+
+  async function copyObsSetup(){
+    const server = obsServer.textContent || "";
+    const token = obsToken.textContent || "";
+    if(!server || !token || token === "(not generated)") return;
+    const text = [
+      "OBS Stream Settings",
+      "Service: WHIP",
+      `Server: ${server}`,
+      `Bearer Token: ${token}`,
+    ].join("\n");
+    try{
+      await navigator.clipboard.writeText(text);
+      obsInfo.textContent = "OBS setup copied.";
+    }catch{
+      obsInfo.textContent = "Copy failed. Copy the Server and Bearer token manually.";
+    }
   }
 
   function stopReadiness(){
@@ -355,12 +610,17 @@
       return;
     }
 
+    setViewerUpgradeEnabled(!!readiness.paid && !readiness.expired);
+
     const state = readiness.state || "checking";
 
     if(readiness.expired){
       setStatus("expired", "bad");
       setReady(false, "no", readiness.detail || "Event expired.", "bad");
       elLiveHint.textContent = "This event has expired.";
+      btnFinish.disabled = true;
+      btnExtend.disabled = true;
+      setViewerUpgradeEnabled(false);
       return;
     }
 
@@ -371,24 +631,70 @@
       return;
     }
 
-    if(state === "preparing_stage" || state === "preparing_hls_channel" || state === "preparing_encoder"){
+    const broadcastReady = !!(
+      readiness.can_go_live ||
+      readiness.can_issue_broadcaster_token ||
+      (readiness.paid && !readiness.disabled && !readiness.expired && (readiness.hls_enabled || readiness.rtc_enabled))
+    );
+
+    if(!broadcastReady && (state === "preparing_stage" || state === "preparing_hls_channel" || state === "preparing_encoder")){
       setStatus("preparing stream", "warn");
       setReady(false, "no", readiness.detail || "Preparing stream…", "warn");
       elLiveHint.textContent = readiness.hls_enabled ? "HLS infrastructure is being prepared in advance." : "RTC infrastructure is being prepared in advance.";
+      btnFinish.disabled = true;
+      btnExtend.disabled = true;
       return;
     }
 
-    if(readiness.can_go_live){
+    if(broadcastReady){
       setStatus(readiness.stream_window_open ? "live window open" : "ready to go live", "good");
       setReady(true, "yes", readiness.detail || "Ready to go live.", "good");
       elLiveHint.textContent = readiness.hls_enabled
-        ? (readiness.composition_started ? "HLS composition is running." : "HLS will start as soon as you go live.")
+        ? (readiness.rtc_enabled ? (readiness.composition_started ? "HLS composition is running." : "HLS will start as soon as you go live.") : "HLS channel is ready.")
         : "RTC is ready.";
+      btnFinish.disabled = !readiness.stream_window_open;
+      btnExtend.disabled = !readiness.stream_window_open;
       return;
     }
 
     setStatus("checking…", "warn");
     setReady(false, "no", readiness.detail || "Checking stream readiness…", "warn");
+    btnFinish.disabled = !readiness.stream_window_open;
+    btnExtend.disabled = !readiness.stream_window_open;
+  }
+
+  async function loadUsage(){
+    const eventId = elEventId.value.trim();
+    const key = elEventKey.value.trim();
+    if(!eventId || !key) return null;
+    const res = await apiGet(`/api/events/${encodeURIComponent(eventId)}/usage?key=${encodeURIComponent(key)}`);
+    const usage = res?.usage;
+    if(usage){
+      usageChip.textContent = `usage: ${usage.broadcast_minutes}m, ${usage.viewer_hours} viewer-hours`;
+      const active = Number(usage.active_viewers || 0);
+      const limit = Number(usage.viewer_limit || 0);
+      const pct = Number(usage.viewer_cap_percent || 0);
+      viewerCapChip.textContent = limit ? `viewers: ${active}/${limit} (${pct}%)` : `viewers: ${active}`;
+      viewerCapChip.className = usage.viewer_cap_full ? "chip bad" : usage.viewer_cap_warning ? "chip warn" : "chip";
+      if(usage.viewer_cap_full) elLiveHint.textContent = "Viewer limit reached. New viewers cannot join unless capacity is upgraded.";
+      else if(usage.viewer_cap_warning) elLiveHint.textContent = "Viewer capacity is close to full. Upgrade capacity if more viewers are expected.";
+      usageSummaryEl.textContent = JSON.stringify(usage, null, 2);
+    }
+    return usage;
+  }
+
+  function startUsagePolling(){
+    if(usageTimer) return;
+    usageTimer = setInterval(() => {
+      loadUsage().catch(e => log("USAGE poll failed", String(e)));
+    }, 15000);
+  }
+
+  function stopUsagePolling(){
+    if(usageTimer){
+      clearInterval(usageTimer);
+      usageTimer = null;
+    }
   }
 
   async function refreshReadiness(){
@@ -400,11 +706,28 @@
         return;
       }
 
-      const readyRes = await fetchReadiness();
+      let readyRes = await fetchReadiness();
+      if(readyRes?.readiness){
+        const warmed = await warmHlsChannelIfNeeded(readyRes.readiness);
+        if(warmed) {
+          readyRes = await fetchReadiness();
+        }
+      }
       applyReadinessUi(readyRes?.readiness || null);
+      await loadUsage().catch(e => log("USAGE failed", String(e)));
+      if(readyRes?.readiness?.stream_window_open) startUsagePolling();
+      else stopUsagePolling();
 
-      if(currentReadiness && !currentReadiness.can_go_live && !currentReadiness.expired){
-        scheduleReadiness(2500);
+      const broadcastReady = !!(
+        currentReadiness &&
+        (
+          currentReadiness.can_go_live ||
+          currentReadiness.can_issue_broadcaster_token ||
+          (currentReadiness.paid && !currentReadiness.disabled && !currentReadiness.expired && (currentReadiness.hls_enabled || currentReadiness.rtc_enabled))
+        )
+      );
+      if(currentReadiness && !broadcastReady && !currentReadiness.expired){
+        scheduleReadiness(1000);
       }
     }catch(e){
       setStatus("error", "bad");
@@ -422,6 +745,43 @@
     return res;
   }
 
+  async function goLiveHlsDirect(){
+    const sdk = window.IVSBroadcastClient;
+    if(!sdk) throw new Error("IVS Web Broadcast SDK not loaded.");
+
+    await refreshReadiness();
+    if(!readyToBroadcast) throw new Error("Broadcast path is still preparing.");
+
+    if(!localStream) await preview();
+    const prov = await provisionHlsChannel();
+    const startRes = await startForBroadcast();
+    log("START", startRes);
+
+    try{ hlsClient && hlsClient.delete && hlsClient.delete(); }catch{}
+    const ingestEndpoint = prov.ingest.endpoint || prov.ingest.ingestEndpoint || String(prov.ingest.rtmpsUrl || "").replace(/^rtmps:\/\//, "").replace(/:443\/app\/?$/, "");
+    hlsClient = sdk.create({
+      streamConfig: sdk.STANDARD_LANDSCAPE,
+      ingestEndpoint,
+    });
+
+    await hlsClient.addVideoInputDevice(localStream, "camera", { index: 0 });
+    if(localStream.getAudioTracks().length) await hlsClient.addAudioInputDevice(localStream, "microphone");
+
+    setStatus("connecting live...", "warn");
+    setReady(true, "connecting", "Publishing to IVS channel...", "warn");
+    await hlsClient.startBroadcast(prov.ingest.streamKey);
+
+    isBroadcasting = true;
+    updateBroadcastControls();
+    setStatus("live", "good");
+    setReady(true, "live", "You are live.", "good");
+    elInfo.textContent = "Publishing to HLS channel.";
+    if(!startedAtMs){
+      startedAtMs = Date.now();
+      startTimer();
+    }
+  }
+
   async function goLive(){
     const sdk = window.IVSBroadcastClient;
     if(!sdk) throw new Error("IVS Web Broadcast SDK not loaded.");
@@ -433,6 +793,15 @@
 
     if(!localStream) await preview();
     await provisionPublishToken();
+    const startPromise = startForBroadcast()
+      .then(res => {
+        log("START warm", res);
+        return res;
+      })
+      .catch(e => {
+        log("START warm failed (will retry after connect)", String(e));
+        return null;
+      });
 
     const tracks = localStream.getTracks();
     const audioTrack = tracks.find(t => t.kind === "audio");
@@ -461,11 +830,26 @@
         setStatus("connecting live…", "warn");
         setReady(true, "connecting", "Publisher connected. Opening live stream…", "warn");
         try{
-          const res = await startForBroadcast();
-          log("START", res);
+          const warmed = await startPromise;
+          if(!warmed || (currentReadiness?.hls_enabled && !warmed?.composition_started)){
+            const res = await startForBroadcast();
+            log("START", res);
+            if(currentReadiness?.hls_enabled && !res?.composition_started){
+              setTimeout(async () => {
+                try{
+                  const retry = await startForBroadcast();
+                  log("START retry", retry);
+                }catch(e){
+                  log("START retry failed (non-fatal)", String(e));
+                }
+              }, 3000);
+            }
+          }
         }catch(e){
           log("START failed (non-fatal)", String(e));
         }
+        isBroadcasting = true;
+        updateBroadcastControls();
         setStatus("live", "good");
         setReady(true, "live", "You are live.", "good");
         if(!startedAtMs){
@@ -491,6 +875,11 @@
   async function stopAll(){
     try{ stage && stage.leave(); }catch{}
     stage = null;
+    try{ hlsClient && hlsClient.stopBroadcast && hlsClient.stopBroadcast(); }catch{}
+    try{ hlsClient && hlsClient.delete && hlsClient.delete(); }catch{}
+    hlsClient = null;
+    isBroadcasting = false;
+    updateBroadcastControls();
 
     if(localStream){
       localStream.getTracks().forEach(t => t.stop());
@@ -500,6 +889,7 @@
     emptyPreview.style.display = "";
 
     stopTimer();
+    stopUsagePolling();
     setStatus("stopped", "warn");
     elInfo.textContent = "Stopped.";
     setReady(false, "checking…", "Rechecking event…", "warn");
@@ -520,20 +910,135 @@
 
   btnGoLive.onclick = async () => {
     try{
+      if(isBroadcasting){
+        await stopAll();
+        return;
+      }
       btnGoLive.disabled = true;
-      await goLive();
+      btnObs.disabled = true;
+      btnObsPanel.disabled = true;
+      await refreshReadiness();
+      if(currentReadiness?.hls_enabled && !currentReadiness?.rtc_enabled) await goLiveHlsDirect();
+      else await goLive();
     } catch(e){
       log("GoLive error", String(e));
       setStatus("error", "bad");
     } finally {
-      btnGoLive.disabled = !readyToBroadcast;
+      updateBroadcastControls();
+      btnObs.disabled = !readyToBroadcast;
+      btnObsPanel.disabled = !readyToBroadcast;
     }
   };
+
+  async function onObsToken(){
+    try{
+      btnObs.disabled = true;
+      btnObsPanel.disabled = true;
+      await refreshReadiness();
+      if(!readyToBroadcast) throw new Error("Broadcast path is still preparing.");
+      await provisionObsToken();
+    }catch(e){
+      log("OBS token error", String(e));
+      obsInfo.textContent = String(e);
+    }finally{
+      btnObs.disabled = !readyToBroadcast;
+      btnObsPanel.disabled = !readyToBroadcast;
+    }
+  }
+
+  async function finishStream(){
+    const eventId = elEventId.value.trim();
+    const key = elEventKey.value.trim();
+    if(!eventId || !key) throw new Error("Missing event or key");
+    if(!confirm("Finish this paid stream now? Viewers will no longer be able to watch.")) return;
+
+    finishInfo.textContent = "Finishing stream...";
+    btnFinish.disabled = true;
+    try{
+      try{ stage && stage.leave(); }catch{}
+      stage = null;
+      const res = await apiPost(`/api/events/${encodeURIComponent(eventId)}/finish?key=${encodeURIComponent(key)}`, {});
+      usageSummaryEl.textContent = JSON.stringify(res?.usage || res, null, 2);
+      finishInfo.textContent = "Stream finished. Usage summary is ready.";
+      setStatus("finished", "bad");
+      setReady(false, "finished", "This stream has been finished.", "bad");
+      stopTimer();
+      stopUsagePolling();
+      await refreshReadiness().catch(() => {});
+    }catch(e){
+      finishInfo.textContent = String(e);
+      btnFinish.disabled = false;
+    }
+  }
+
+  async function extendStream(){
+    const eventId = elEventId.value.trim();
+    const key = elEventKey.value.trim();
+    if(!eventId || !key) throw new Error("Missing event or key");
+    btnExtend.disabled = true;
+    try{
+      const res = await apiPost(`/api/events/${encodeURIComponent(eventId)}/extend/checkout?key=${encodeURIComponent(key)}`, {});
+      if(!res?.url) throw new Error("No checkout URL returned.");
+      location.href = res.url;
+    }catch(e){
+      log("Extend checkout error", String(e));
+      elLiveHint.textContent = String(e);
+      btnExtend.disabled = !currentReadiness?.stream_window_open;
+    }
+  }
+
+  async function upgradeViewerCapacity(amount){
+    const eventId = elEventId.value.trim();
+    const key = elEventKey.value.trim();
+    if(!eventId || !key) throw new Error("Missing event or key");
+    const btn = document.querySelector(`.viewer-upgrade[data-viewers="${amount}"]`);
+    if(btn) btn.disabled = true;
+    try{
+      const res = await apiPost(`/api/events/${encodeURIComponent(eventId)}/viewer-upgrade/checkout?key=${encodeURIComponent(key)}`, { amount: Number(amount) });
+      if(!res?.url) throw new Error("No checkout URL returned.");
+      location.href = res.url;
+    }catch(e){
+      log("Viewer upgrade checkout error", String(e));
+      elLiveHint.textContent = String(e);
+      setViewerUpgradeEnabled(!!currentReadiness?.stream_window_open);
+    }
+  }
+
+  btnObs.onclick = onObsToken;
+  btnSetup.onclick = () => {
+    controlsPanel.classList.toggle("setup-open");
+  };
+  btnObsPanel.onclick = onObsToken;
+  btnCopyObs.onclick = copyObsSetup;
+  btnFinish.onclick = finishStream;
+  btnExtend.onclick = extendStream;
+  document.querySelectorAll(".viewer-upgrade").forEach(btn => {
+    btn.onclick = () => upgradeViewerCapacity(btn.getAttribute("data-viewers"));
+  });
 
   btnStop.onclick = async () => {
     try{ await stopAll(); }
     catch(e){ log("Stop error", String(e)); }
   };
+
+  async function onDeviceChange(){
+    try{
+      if(isBroadcasting) return;
+      await preview();
+      controlsPanel.classList.remove("setup-open");
+    }catch(e){
+      log("Device change preview error", String(e));
+      elLiveHint.textContent = "Could not switch camera/mic. Check browser permissions.";
+    }
+  }
+
+  elCam.addEventListener("change", onDeviceChange);
+  elMic.addEventListener("change", onDeviceChange);
+  document.addEventListener("click", (ev) => {
+    if(!controlsPanel.classList.contains("setup-open")) return;
+    if(controlsPanel.contains(ev.target)) return;
+    controlsPanel.classList.remove("setup-open");
+  });
 
   function scheduleReload(){
     stopReadiness();
@@ -555,14 +1060,26 @@
   (async () => {
     try{
       setStatus("init…", "warn");
-      const s = await navigator.mediaDevices.getUserMedia({ video:true, audio:true });
-      s.getTracks().forEach(t => t.stop());
-      await listDevices();
+      await loadPricing();
+      if (qs.get("extend") && !autoExtendStarted) {
+        autoExtendStarted = true;
+        await extendStream();
+        return;
+      }
+      try{
+        const s = await navigator.mediaDevices.getUserMedia({ video:true, audio:true });
+        s.getTracks().forEach(t => t.stop());
+        await listDevices();
+      }catch(e){
+        log("Camera permission/device init warning", String(e));
+        elLiveHint.textContent = "Allow camera/microphone before going live.";
+      }
       await refreshReadiness();
     } catch(e){
       log("Init error", String(e));
-      setStatus("needs permissions", "bad");
-      setReady(false, "no", "Allow camera/microphone permissions, then reload.", "bad");
+      setStatus("checking", "warn");
+      setReady(false, "no", "Checking stream readiness...", "warn");
+      scheduleReadiness(1000);
     }
   })();
 })();

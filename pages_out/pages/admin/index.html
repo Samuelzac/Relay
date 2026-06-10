@@ -1,122 +1,719 @@
-<!DOCTYPE html>
-<html>
+<!doctype html>
+<html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <title>Admin – Reports</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Castlink Admin</title>
   <style>
-    body{margin:0;background:#0b0b0b;color:#fff;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;line-height:1.4}
-    .wrap{max-width:1100px;margin:0 auto;padding:18px}
-    h1{margin:0 0 10px;font-size:20px}
-    .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:10px 0 16px}
-    input{padding:10px 12px;border-radius:10px;border:1px solid rgba(255,255,255,.15);background:rgba(255,255,255,.06);color:#fff;min-width:320px}
-    button{padding:10px 14px;border-radius:10px;border:0;background:rgba(255,255,255,.14);color:#fff;cursor:pointer}
-    button.danger{background:#d50000}
+    :root{
+      color-scheme:dark;
+      --bg:#080a0d;
+      --panel:#10141b;
+      --panel2:#151b24;
+      --text:#f8fafc;
+      --muted:#a8b3c3;
+      --border:#263140;
+      --good:#34d399;
+      --warn:#fbbf24;
+      --bad:#fb7185;
+      --btn:#e5e7eb;
+      --btnText:#0b0f14;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;line-height:1.4}
+    .wrap{max-width:1180px;margin:0 auto;padding:20px}
+    header{display:flex;justify-content:space-between;align-items:flex-end;gap:14px;flex-wrap:wrap;margin-bottom:16px}
+    h1{font-size:22px;margin:0}
+    .muted{color:var(--muted);font-size:13px}
+    .grid{display:grid;gap:12px;grid-template-columns:1fr}
+    @media (min-width:860px){.grid.two{grid-template-columns:360px 1fr}}
+    .card{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:14px}
+    .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+    label{display:grid;gap:6px;font-size:12px;color:var(--muted)}
+    input,select,button{font:inherit}
+    input,select{min-height:42px;border-radius:8px;border:1px solid var(--border);background:#0b1118;color:var(--text);padding:9px 10px}
+    input.key{min-width:min(100%,360px)}
+    button{min-height:42px;border-radius:8px;border:0;background:var(--btn);color:var(--btnText);font-weight:750;padding:9px 12px;cursor:pointer}
+    button.secondary{background:var(--panel2);color:var(--text);border:1px solid var(--border)}
+    button.danger{background:#7f1d1d;color:white}
+    button:disabled{opacity:.55;cursor:not-allowed}
+    .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px}
+    .stat{background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:12px}
+    .stat strong{display:block;font-size:24px}
+    .launch-grid{display:grid;gap:10px;grid-template-columns:1fr;margin:12px 0}
+    @media (min-width:760px){.launch-grid{grid-template-columns:220px 1fr}}
+    .launch-score{background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:14px;display:grid;gap:6px}
+    .launch-score strong{font-size:30px;line-height:1}
+    .launch-score.pass{border-color:rgba(52,211,153,.45)}
+    .launch-score.warn{border-color:rgba(251,191,36,.45)}
+    .launch-score.fail{border-color:rgba(251,113,133,.55)}
+    .blockers{background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:14px}
+    .blockers ul{margin:8px 0 0 18px;padding:0;color:var(--muted)}
+    .blockers li{margin:5px 0}
+    .commands{display:grid;gap:8px;margin-top:10px}
+    .command{display:grid;gap:8px;grid-template-columns:1fr auto;align-items:center;background:#0b1118;border:1px solid var(--border);border-radius:8px;padding:10px}
+    .command code{max-width:none;white-space:normal;overflow-wrap:anywhere}
     table{width:100%;border-collapse:collapse;font-size:13px}
-    th,td{padding:10px 8px;border-bottom:1px solid rgba(255,255,255,.08);vertical-align:top}
-    th{opacity:.8;text-align:left;font-weight:650}
-    .muted{opacity:.75}
-    .pill{display:inline-block;padding:3px 8px;border-radius:999px;background:rgba(255,255,255,.12);font-size:12px}
-    .bad{color:#ff8a80}
+    th,td{padding:10px 8px;border-bottom:1px solid var(--border);text-align:left;vertical-align:top}
+    th{color:var(--muted);font-size:12px;font-weight:700}
+    code{display:block;max-width:360px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#dbeafe}
+    .pill{display:inline-flex;align-items:center;gap:6px;padding:4px 8px;border-radius:999px;background:var(--panel2);border:1px solid var(--border);font-size:12px}
+    .pill.available{color:var(--good)}
+    .pill.assigned{color:#bfdbfe}
+    .pill.pending,.pill.warn{color:var(--warn)}
+    .pill.open{color:var(--bad)}
+    .pill.reviewing{color:var(--warn)}
+    .pill.closed{color:var(--good)}
+    .pill.failed,.pill.bad{color:var(--bad)}
+    .pill.pass{color:var(--good)}
+    .pill.fail{color:var(--bad)}
+    .section-title{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px}
+    .scroll{overflow:auto}
+    .msg{min-height:20px}
+    .actions{display:flex;gap:6px;flex-wrap:wrap;min-width:260px}
+    .actions button{min-height:34px;padding:7px 9px;font-size:12px}
+    .detail-grid{display:grid;gap:10px;grid-template-columns:1fr}
+    @media (min-width:900px){.detail-grid{grid-template-columns:1fr 1fr}}
+    .kv{display:grid;gap:6px}
+    .kv div{display:grid;grid-template-columns:120px 1fr;gap:10px;border-bottom:1px solid var(--border);padding:6px 0}
+    .kv span:first-child{color:var(--muted)}
+    .detail-box{background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:12px;overflow:auto}
+    .hidden{display:none}
+    pre{white-space:pre-wrap;margin:0;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:#dbeafe}
   </style>
 </head>
 <body>
   <div class="wrap">
-    <h1>Admin – Stream Reports</h1>
-    <div class="row">
-      <input id="key" placeholder="Admin key" />
-      <button id="load">Load reports</button>
-      <span id="status" class="muted"></span>
+    <header>
+      <div>
+        <h1>Castlink Admin</h1>
+        <div class="muted">Events and pre-made stream inventory</div>
+      </div>
+      <div class="row">
+        <input id="key" class="key" placeholder="Admin key" />
+        <input id="apiOverride" class="key" placeholder="API base override" />
+        <button id="loadBtn">Refresh</button>
+      </div>
+    </header>
+
+    <section class="card" style="margin-bottom:12px">
+      <div class="section-title">
+        <div>
+          <strong>Launch checks</strong>
+          <div class="muted">Production config, database, pricing, email, Stripe, AWS, inventory, and moderation status</div>
+        </div>
+        <div class="row">
+          <span id="launchSummary" class="muted"></span>
+          <button id="launchChecksBtn" class="secondary">Run checks</button>
+        </div>
+      </div>
+      <div id="launchOverview" class="launch-grid">
+        <div class="launch-score warn">
+          <span class="muted">Launch status</span>
+          <strong>Unknown</strong>
+          <span class="muted">Run checks to get a go/no-go result.</span>
+        </div>
+        <div class="blockers">
+          <strong>Post-deploy stream smoke tests</strong>
+          <div class="muted">Run these after Worker deploy, secrets, migrations, and domains are connected. They create real short test streams and request cleanup.</div>
+          <div id="smokeCommands" class="commands"></div>
+        </div>
+      </div>
+      <div class="scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Status</th>
+              <th>Check</th>
+              <th>Detail</th>
+            </tr>
+          </thead>
+          <tbody id="launchChecksBody">
+            <tr><td colspan="3" class="muted">Run checks before deploy and after each production change.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <div class="grid two">
+      <section class="card">
+        <div class="section-title">
+          <strong>Fill inventory</strong>
+          <span id="status" class="muted msg"></span>
+        </div>
+        <div class="grid">
+          <label>Mode
+            <select id="fillMode">
+              <option value="hls">HLS</option>
+              <option value="rtc">WebRTC</option>
+              <option value="both">Both</option>
+            </select>
+          </label>
+          <label>Available target
+            <input id="fillTarget" type="number" min="0" step="1" value="3" />
+          </label>
+          <button id="fillBtn">Create ready slots</button>
+          <div class="muted">Creates enough resources to reach the target, up to the Worker fill limit.</div>
+          <button id="resetAwsStateBtn" class="danger">Reset DB after manual AWS cleanup</button>
+          <div class="muted">Use only after IVS channels and stages have been manually cleared in AWS.</div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="section-title">
+          <strong>Inventory summary</strong>
+          <span class="muted" id="apiBase"></span>
+        </div>
+        <div id="summary" class="stats"></div>
+      </section>
     </div>
 
-    <div style="overflow:auto">
-      <table>
-        <thead>
-          <tr>
-            <th>Time</th>
-            <th>Event</th>
-            <th>Reason</th>
-            <th>Description</th>
-            <th>IP</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody id="tbody">
-          <tr><td colspan="6" class="muted">Enter key and click “Load reports”.</td></tr>
-        </tbody>
-      </table>
-    </div>
+    <section class="card" style="margin-top:12px">
+      <div class="section-title">
+        <strong>Recent events</strong>
+        <span class="muted" id="eventCount"></span>
+      </div>
+      <div class="scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Created</th>
+              <th>Event</th>
+              <th>Status</th>
+              <th>Mode</th>
+              <th>Tier</th>
+              <th>Cleanup</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="eventsBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="card" style="margin-top:12px">
+      <div class="section-title">
+        <strong>Recent reports</strong>
+        <span class="muted" id="reportCount"></span>
+      </div>
+      <div class="scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Created</th>
+              <th>Report</th>
+              <th>Event</th>
+              <th>Status</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="reportsBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="eventDetail" class="card hidden" style="margin-top:12px">
+      <div class="section-title">
+        <strong id="detailTitle">Event details</strong>
+        <button id="closeDetailBtn" class="secondary">Close</button>
+      </div>
+      <div class="detail-grid">
+        <div class="detail-box">
+          <div id="detailMeta" class="kv"></div>
+        </div>
+        <div class="detail-box">
+          <pre id="detailUsage"></pre>
+        </div>
+      </div>
+    </section>
+
+    <section class="card" style="margin-top:12px">
+      <div class="section-title">
+        <strong>Recent inventory slots</strong>
+        <span class="muted" id="slotCount"></span>
+      </div>
+      <div class="scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Created</th>
+              <th>Mode</th>
+              <th>Status</th>
+              <th>Assigned event</th>
+              <th>Resources</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="slotsBody"></tbody>
+        </table>
+      </div>
+    </section>
   </div>
 
+<script src="/assets/relay-config.js"></script>
 <script>
-  const API = "https://YOUR-WORKER-DOMAIN";
-  const keyInput = document.getElementById("key");
-  const loadBtn = document.getElementById("load");
-  const tbody = document.getElementById("tbody");
-  const statusEl = document.getElementById("status");
+(() => {
+  const $ = id => document.getElementById(id);
+  const keyInput = $("key");
+  const apiOverride = $("apiOverride");
+  const statusEl = $("status");
+  const summaryEl = $("summary");
+  const eventsBody = $("eventsBody");
+  const slotsBody = $("slotsBody");
+  const eventCount = $("eventCount");
+  const slotCount = $("slotCount");
+  const reportsBody = $("reportsBody");
+  const reportCount = $("reportCount");
+  const launchOverview = $("launchOverview");
+  const launchChecksBody = $("launchChecksBody");
+  const launchSummary = $("launchSummary");
+  let smokeCommands = $("smokeCommands");
+  const eventDetail = $("eventDetail");
+  const detailTitle = $("detailTitle");
+  const detailMeta = $("detailMeta");
+  const detailUsage = $("detailUsage");
 
-  // allow ?key=... prefill
-  const qp = new URLSearchParams(location.search);
-  const qk = qp.get("key");
+  const params = new URLSearchParams(location.search);
+  const qk = params.get("key");
   if (qk) keyInput.value = qk;
+  else {
+    try { keyInput.value = localStorage.getItem("RELAY_ADMIN_KEY") || ""; } catch {}
+  }
 
-  function esc(s){ return (s||"").replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+  try {
+    apiOverride.value = localStorage.getItem("RELAY_API_BASE") || window.RelayConfig.apiBase;
+  } catch {
+    apiOverride.value = window.RelayConfig.apiBase;
+  }
+  $("apiBase").textContent = apiOverride.value;
 
-  async function load() {
-    const key = keyInput.value.trim();
-    if (!key) { alert("Enter admin key"); return; }
-    statusEl.textContent = "Loading…";
-    tbody.innerHTML = `<tr><td colspan="6" class="muted">Loading…</td></tr>`;
+  function apiBase(){
+    return String(apiOverride.value || window.RelayConfig.apiBase).replace(/\/+$/, "");
+  }
 
-    const res = await fetch(`${API}/api/admin/reports?key=${encodeURIComponent(key)}`);
-    const data = await res.json().catch(()=> ({}));
-    if (!res.ok) {
-      statusEl.textContent = "";
-      tbody.innerHTML = `<tr><td colspan="6" class="bad">${esc(data.error || "Failed")}</td></tr>`;
-      return;
-    }
+  function persistSettings(){
+    try {
+      if (keyInput.value.trim()) localStorage.setItem("RELAY_ADMIN_KEY", keyInput.value.trim());
+      if (apiOverride.value.trim()) localStorage.setItem("RELAY_API_BASE", apiBase());
+    } catch {}
+    $("apiBase").textContent = apiBase();
+  }
 
-    const rows = data.reports || [];
-    statusEl.textContent = `${rows.length} report(s)`;
+  function esc(value){
+    return String(value ?? "").replace(/[&<>"']/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
+  }
 
-    if (!rows.length) {
-      tbody.innerHTML = `<tr><td colspan="6" class="muted">No reports.</td></tr>`;
-      return;
-    }
+  function when(value){
+    return value ? new Date(value).toLocaleString() : "";
+  }
 
-    tbody.innerHTML = rows.map(r => {
-      const when = new Date(r.created_at).toLocaleString();
-      const ev = r.event_id ? `${esc(r.event_title || "(untitled)")}<div class="muted">${esc(r.event_id)}</div>` : `<span class="muted">(no event)</span>`;
-      const badge = r.event_disabled ? `<span class="pill">disabled</span>` : `<span class="pill">${esc(r.event_status||"")}</span>`;
-      const action = r.event_id
-        ? `<button class="danger" data-ev="${esc(r.event_id)}">Disable event</button>`
-        : `<span class="muted">—</span>`;
-      return `<tr>
-        <td>${esc(when)}</td>
-        <td>${ev}<div style="margin-top:6px">${badge}</div></td>
-        <td>${esc(r.reason)}</td>
-        <td>${esc(r.description || "")}</td>
-        <td class="muted">${esc(r.ip_address || "")}</td>
-        <td>${action}</td>
-      </tr>`;
-    }).join("");
+  function modeForEvent(ev){
+    if (ev.rtc_enabled && ev.hls_enabled) return "both";
+    if (ev.hls_enabled) return "hls";
+    if (ev.rtc_enabled) return "rtc";
+    return "none";
+  }
 
-    tbody.querySelectorAll("button.danger").forEach(btn => {
+  function cleanupStatus(ev){
+    if (ev.cleanup_completed_at) return `done ${when(ev.cleanup_completed_at)}`;
+    if (ev.cleanup_error) return `error: ${ev.cleanup_error}`;
+    if (ev.cleanup_started_at) return `attempt ${ev.cleanup_attempts || 0}`;
+    if (ev.status === "expired") return "pending";
+    return "-";
+  }
+
+  function setStatus(message){
+    statusEl.textContent = message;
+  }
+
+  function smokeTestCommands(){
+    const api = apiBase();
+    return ["rtc", "hls", "both"].map(mode => `node tools/smoke-test-stream.mjs --api ${api} --email support@castlink.stream --mode ${mode}`);
+  }
+
+  function renderSmokeCommands(){
+    smokeCommands.innerHTML = smokeTestCommands().map((cmd, index) => `
+      <div class="command">
+        <code>${esc(cmd)}</code>
+        <button class="secondary copy-smoke" data-index="${index}">Copy</button>
+      </div>
+    `).join("");
+    smokeCommands.querySelectorAll("button.copy-smoke").forEach(btn => {
       btn.addEventListener("click", async () => {
-        const ev = btn.getAttribute("data-ev");
-        if (!ev) return;
-        const key = keyInput.value.trim();
-        if (!confirm("Disable this event? This will block new viewers and broadcaster config.")) return;
-        btn.disabled = true;
-        const r = await fetch(`${API}/api/admin/events/${encodeURIComponent(ev)}/disable?key=${encodeURIComponent(key)}`, { method: "POST" });
-        const j = await r.json().catch(()=> ({}));
-        if (!r.ok) { alert(j.error || "Failed"); btn.disabled=false; return; }
-        await load();
+        const index = Number(btn.getAttribute("data-index") || 0);
+        await copyText(smokeTestCommands()[index], "Smoke-test command");
       });
     });
   }
 
-  loadBtn.addEventListener("click", load);
+  async function api(path, init = {}){
+    const key = keyInput.value.trim();
+    if (!key) throw new Error("Enter admin key");
+    persistSettings();
+    const res = await fetch(apiBase() + path, {
+      ...init,
+      headers: {
+        "x-relay-admin-key": key,
+        ...(init.headers || {}),
+      },
+    });
+    const text = await res.text();
+    let json = null;
+    try { json = text ? JSON.parse(text) : null; } catch {}
+    if (!res.ok) throw new Error((json && (json.error || json.message)) || text || `HTTP ${res.status}`);
+    return json;
+  }
+
+  async function copyText(text, label){
+    await navigator.clipboard.writeText(text);
+    setStatus(`${label} copied`);
+  }
+
+  function linkActions(eventId){
+    return `
+      <button class="secondary event-action" data-action="details" data-event="${esc(eventId)}">Details</button>
+      <button class="secondary event-action" data-action="copy-watch" data-event="${esc(eventId)}">Watch</button>
+      <button class="secondary event-action" data-action="copy-broadcast" data-event="${esc(eventId)}">Broadcast</button>
+      <button class="secondary event-action" data-action="resend" data-event="${esc(eventId)}">Resend</button>
+    `;
+  }
+
+  function dangerActions(ev){
+    if (ev.status === "expired") return "";
+    const finish = ev.status === "paid" || ev.status === "live"
+      ? `<button class="danger event-action" data-action="finish" data-event="${esc(ev.id)}">Finish</button>`
+      : "";
+    return `${finish}<button class="danger event-action" data-action="disable" data-event="${esc(ev.id)}">Disable</button>`;
+  }
+
+  function renderSummary(rows){
+    const modes = ["hls", "rtc", "both"];
+    const statuses = ["available", "assigned", "failed", "retired"];
+    const lookup = new Map((rows || []).map(r => [`${r.mode}:${r.status}`, r.count]));
+    summaryEl.innerHTML = modes.flatMap(mode => statuses.map(status => {
+      const count = Number(lookup.get(`${mode}:${status}`) || 0);
+      return `<div class="stat"><span class="muted">${esc(mode)} ${esc(status)}</span><strong>${count}</strong></div>`;
+    })).join("");
+  }
+
+  function renderEvents(events){
+    eventCount.textContent = `${events.length} shown`;
+    if (!events.length) {
+      eventsBody.innerHTML = `<tr><td colspan="7" class="muted">No events found.</td></tr>`;
+      return;
+    }
+    eventsBody.innerHTML = events.map(ev => `
+      <tr>
+        <td>${esc(when(ev.created_at))}</td>
+        <td><strong>${esc(ev.title || "(untitled)")}</strong>${ev.is_test ? ` <span class="pill warn">test</span>` : ""}<code>${esc(ev.id)}</code><div class="muted">${esc(ev.email)}</div></td>
+        <td><span class="pill ${esc(ev.status)}">${esc(ev.status)}</span></td>
+        <td>${esc(modeForEvent(ev))}</td>
+        <td>${esc(ev.tier)}h</td>
+        <td><span class="muted">${esc(cleanupStatus(ev))}</span></td>
+        <td><div class="actions">${linkActions(ev.id)}${dangerActions(ev)}${ev.status === "expired" && !ev.cleanup_completed_at ? `<button class="secondary cleanup" data-event="${esc(ev.id)}">Clean up</button>` : ""}</div></td>
+      </tr>
+    `).join("");
+
+    eventsBody.querySelectorAll("button.event-action").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const eventId = btn.getAttribute("data-event");
+        const action = btn.getAttribute("data-action");
+        if (!eventId || !action) return;
+        btn.disabled = true;
+        try {
+          await handleEventAction(eventId, action);
+        } catch(e) {
+          setStatus(e.message || "Action failed");
+        } finally {
+          btn.disabled = false;
+        }
+      });
+    });
+
+    eventsBody.querySelectorAll("button.cleanup").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const eventId = btn.getAttribute("data-event");
+        if (!eventId) return;
+        if (!confirm("Clean up this expired event's stream resources now?")) return;
+        btn.disabled = true;
+        try {
+          await api(`/api/admin/events/${encodeURIComponent(eventId)}/cleanup`, { method: "POST" });
+          await load();
+        } catch(e) {
+          setStatus(e.message || "Cleanup failed");
+          btn.disabled = false;
+        }
+      });
+    });
+  }
+
+  function renderReports(reports){
+    reportCount.textContent = `${reports.length} shown`;
+    if (!reports.length) {
+      reportsBody.innerHTML = `<tr><td colspan="5" class="muted">No reports found.</td></tr>`;
+      return;
+    }
+    reportsBody.innerHTML = reports.map(r => `
+      <tr>
+        <td>${esc(when(r.created_at))}</td>
+        <td>
+          <strong>${r.urgent ? "Urgent: " : ""}${esc(r.reason)}</strong>
+          <div class="muted">${esc(r.description || "-")}</div>
+          <div class="muted">${esc(r.reporter_email || "")}</div>
+        </td>
+        <td>${r.event_id ? `<strong>${esc(r.event_title || "(untitled)")}</strong><code>${esc(r.event_id)}</code><div class="muted">${esc(r.event_status || "")}</div>` : `<span class="muted">-</span>`}</td>
+        <td><span class="pill ${esc(r.status)}">${esc(r.status)}</span></td>
+        <td><div class="actions">
+          ${r.event_id ? `<button class="secondary report-action" data-action="details" data-event="${esc(r.event_id)}">Event</button><button class="danger report-action" data-action="disable" data-event="${esc(r.event_id)}">Disable</button>` : ""}
+          ${r.status !== "closed" ? `<button class="secondary report-action" data-action="close" data-report="${esc(r.id)}">Close</button>` : ""}
+        </div></td>
+      </tr>
+    `).join("");
+
+    reportsBody.querySelectorAll("button.report-action").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const action = btn.getAttribute("data-action");
+        const eventId = btn.getAttribute("data-event");
+        const reportId = btn.getAttribute("data-report");
+        btn.disabled = true;
+        try {
+          if (action === "details" && eventId) await handleEventAction(eventId, "details");
+          if (action === "disable" && eventId) await handleEventAction(eventId, "disable");
+          if (action === "close" && reportId) {
+            await api(`/api/admin/reports/${encodeURIComponent(reportId)}/status`, {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ status: "closed" }),
+            });
+            setStatus("Report closed");
+            await load();
+          }
+        } catch(e) {
+          setStatus(e.message || "Report action failed");
+        } finally {
+          btn.disabled = false;
+        }
+      });
+    });
+  }
+
+  function renderLaunchChecks(data){
+    launchSummary.textContent = `${data.failed || 0} failed, ${data.warnings || 0} warnings`;
+    const checks = data.checks || [];
+    const failed = checks.filter(check => check.status === "fail");
+    const warned = checks.filter(check => check.status === "warn");
+    const status = failed.length ? "fail" : warned.length ? "warn" : "pass";
+    const statusText = failed.length ? "Blocked" : warned.length ? "Review" : "Ready";
+    const detail = failed.length
+      ? `${failed.length} blocker${failed.length === 1 ? "" : "s"} must be fixed before launch.`
+      : warned.length
+        ? `${warned.length} warning${warned.length === 1 ? "" : "s"} to review before launch.`
+        : "All configured launch checks passed.";
+    const issues = failed.concat(warned).slice(0, 8);
+    launchOverview.innerHTML = `
+      <div class="launch-score ${esc(status)}">
+        <span class="muted">Launch status</span>
+        <strong>${esc(statusText)}</strong>
+        <span class="muted">${esc(detail)}</span>
+      </div>
+      <div class="blockers">
+        <strong>${failed.length ? "Blockers and warnings" : warned.length ? "Warnings" : "Next verification"}</strong>
+        ${issues.length ? `<ul>${issues.map(check => `<li><b>${esc(check.label)}:</b> ${esc(check.detail)}</li>`).join("")}</ul>` : `<div class="muted" style="margin-top:8px">Run the stream smoke tests after deploy, then test camera/OBS publishing in a real browser.</div>`}
+        <div class="commands" id="smokeCommands"></div>
+      </div>
+    `;
+    smokeCommands = $("smokeCommands");
+    renderSmokeCommands();
+    if (!checks.length) {
+      launchChecksBody.innerHTML = `<tr><td colspan="3" class="muted">No checks returned.</td></tr>`;
+      return;
+    }
+    launchChecksBody.innerHTML = checks.map(check => `
+      <tr>
+        <td><span class="pill ${esc(check.status)}">${esc(check.status)}</span></td>
+        <td><strong>${esc(check.label)}</strong><div class="muted">${esc(check.id)}</div></td>
+        <td>${esc(check.detail)}</td>
+      </tr>
+    `).join("");
+  }
+
+  async function runLaunchChecks(){
+    $("launchChecksBtn").disabled = true;
+    launchSummary.textContent = "Checking...";
+    try {
+      const data = await api("/api/admin/launch-checks");
+      renderLaunchChecks(data);
+      setStatus(data.failed ? "Launch checks found blockers" : "Launch checks complete");
+    } catch(e) {
+      launchSummary.textContent = e.message || "Checks failed";
+      launchChecksBody.innerHTML = `<tr><td colspan="3" class="muted">${esc(e.message || "Checks failed")}</td></tr>`;
+    } finally {
+      $("launchChecksBtn").disabled = false;
+    }
+  }
+
+  async function loadEventDetail(eventId, reveal = true){
+    const data = await api(`/api/admin/events/${encodeURIComponent(eventId)}`);
+    const ev = data.event;
+    detailTitle.textContent = ev.title || "Event details";
+    detailMeta.innerHTML = [
+      ["Event ID", ev.id],
+      ["Email", ev.email],
+      ["Status", ev.status],
+      ["Mode", modeForEvent(ev)],
+      ["Tier", `${ev.tier}h`],
+      ["Created", when(ev.created_at)],
+      ["Starts", when(ev.starts_at) || "-"],
+      ["Expires", when(ev.expires_at) || "-"],
+      ["Cleanup", cleanupStatus(ev)],
+      ["Watch", ev.watch_url],
+      ["Broadcast", ev.broadcast_url],
+      ["Playback", ev.playback_url || "-"],
+    ].map(([k, v]) => `<div><span>${esc(k)}</span><span>${esc(v)}</span></div>`).join("");
+    detailUsage.textContent = JSON.stringify(ev.usage || {}, null, 2);
+    if (reveal) eventDetail.classList.remove("hidden");
+    return ev;
+  }
+
+  async function handleEventAction(eventId, action){
+    if (action === "details") {
+      await loadEventDetail(eventId, true);
+      setStatus("Event loaded");
+      return;
+    }
+    if (action === "copy-watch" || action === "copy-broadcast") {
+      const ev = await loadEventDetail(eventId, false);
+      await copyText(action === "copy-watch" ? ev.watch_url : ev.broadcast_url, action === "copy-watch" ? "Watch link" : "Broadcast link");
+      return;
+    }
+    if (action === "resend") {
+      if (!confirm("Resend this event email to the customer?")) return;
+      await api(`/api/admin/events/${encodeURIComponent(eventId)}/resend-email`, { method: "POST" });
+      setStatus("Email resent");
+      return;
+    }
+    if (action === "finish" || action === "disable") {
+      const label = action === "finish" ? "finish this stream now" : "disable this event now";
+      if (!confirm(`Are you sure you want to ${label}?`)) return;
+      await api(`/api/admin/events/${encodeURIComponent(eventId)}/${action}`, { method: "POST" });
+      setStatus(action === "finish" ? "Stream finished" : "Event disabled");
+      await load();
+      return;
+    }
+  }
+
+  function canRetire(slot){
+    return slot.status === "available" || slot.status === "failed";
+  }
+
+  function renderSlots(slots){
+    slotCount.textContent = `${slots.length} shown`;
+    if (!slots.length) {
+      slotsBody.innerHTML = `<tr><td colspan="6" class="muted">No inventory slots yet.</td></tr>`;
+      return;
+    }
+    slotsBody.innerHTML = slots.map(slot => `
+      <tr>
+        <td>${esc(when(slot.created_at))}</td>
+        <td>${esc(slot.mode)}</td>
+        <td><span class="pill ${esc(slot.status)}">${esc(slot.status)}</span></td>
+        <td>${slot.assigned_event_id ? `<code>${esc(slot.assigned_event_id)}</code>` : `<span class="muted">-</span>`}</td>
+        <td>
+          <div class="muted">Stage</div><code>${esc(slot.rtc_stage_arn || "-")}</code>
+          <div class="muted">Playback</div><code>${esc(slot.ivs_playback_url || "-")}</code>
+        </td>
+        <td>${canRetire(slot) ? `<button class="secondary retire" data-slot="${esc(slot.id)}">Retire</button>` : `<span class="muted">-</span>`}</td>
+      </tr>
+    `).join("");
+
+    slotsBody.querySelectorAll("button.retire").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const slotId = btn.getAttribute("data-slot");
+        if (!slotId) return;
+        if (!confirm("Retire this inventory slot? It will no longer be assigned to new events.")) return;
+        btn.disabled = true;
+        try {
+          await api(`/api/admin/inventory/${encodeURIComponent(slotId)}/retire`, { method: "POST" });
+          await load();
+        } catch(e) {
+          setStatus(e.message || "Retire failed");
+          btn.disabled = false;
+        }
+      });
+    });
+  }
+
+  async function load(){
+    setStatus("Loading...");
+    try{
+      const [events, inventory, reports] = await Promise.all([
+        api("/api/admin/events"),
+        api("/api/admin/inventory"),
+        api("/api/admin/reports"),
+      ]);
+      renderEvents(events.events || []);
+      renderSummary(inventory.summary || []);
+      renderSlots(inventory.slots || []);
+      renderReports(reports.reports || []);
+      setStatus("Loaded");
+    }catch(e){
+      setStatus(e.message || "Failed");
+    }
+  }
+
+  async function fill(){
+    setStatus("Creating slots...");
+    $("fillBtn").disabled = true;
+    try{
+      const body = {
+        mode: $("fillMode").value,
+        target_available: Number($("fillTarget").value || 0),
+      };
+      const result = await api("/api/admin/inventory/fill", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      setStatus(`Created ${result?.result?.created ?? 0}`);
+      await load();
+    }catch(e){
+      setStatus(e.message || "Failed");
+    }finally{
+      $("fillBtn").disabled = false;
+    }
+  }
+
+  async function resetAwsState(){
+    const ok = confirm("Only run this after AWS IVS shows no Castlink channels or stages. This will retire inventory rows and clear saved IVS resource references from events. Continue?");
+    if(!ok) return;
+    setStatus("Resetting DB AWS state...");
+    $("resetAwsStateBtn").disabled = true;
+    try{
+      const result = await api("/api/admin/aws-state/reset-after-manual-cleanup", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ confirm: "AWS_IVS_IS_EMPTY" }),
+      });
+      const r = result?.result || {};
+      setStatus(`Reset ${r.inventory_reset ?? 0} inventory rows and ${r.event_resource_refs_cleared ?? 0} event refs`);
+      await load();
+    }catch(e){
+      setStatus(e.message || "Reset failed");
+    }finally{
+      $("resetAwsStateBtn").disabled = false;
+    }
+  }
+
+  $("loadBtn").addEventListener("click", load);
+  $("launchChecksBtn").addEventListener("click", runLaunchChecks);
+  $("fillBtn").addEventListener("click", fill);
+  $("resetAwsStateBtn").addEventListener("click", resetAwsState);
+  $("closeDetailBtn").addEventListener("click", () => eventDetail.classList.add("hidden"));
+  apiOverride.addEventListener("change", persistSettings);
+  keyInput.addEventListener("change", persistSettings);
+  renderSmokeCommands();
+  if (keyInput.value) load();
+})();
 </script>
 </body>
 </html>

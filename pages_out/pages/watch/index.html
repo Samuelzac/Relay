@@ -3,20 +3,21 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-  <title>Relay Watch</title>
+  <title>Castlink Watch</title>
 
   <script src="https://web-broadcast.live-video.net/1.17.0/amazon-ivs-web-broadcast.js"></script>
   <script src="https://player.live-video.net/1.48.0/amazon-ivs-player.min.js"></script>
 
   <style>
     :root { color-scheme: dark; }
+    html,body{height:100%}
     body {
       font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
-      background:#0b0c10; color:#e8e8e8; margin:0;
+      background:#000; color:#e8e8e8; margin:0; overflow:hidden;
     }
     header {
-      padding:14px 16px; border-bottom:1px solid #20232a; display:flex; gap:12px;
-      align-items:center; justify-content:space-between; background:#0b0c10; position:sticky; top:0; z-index:10;
+      padding:calc(12px + env(safe-area-inset-top)) 14px 10px; display:flex; gap:12px;
+      align-items:center; justify-content:space-between; background:linear-gradient(to bottom, rgba(0,0,0,.72), rgba(0,0,0,0)); position:fixed; inset:0 0 auto 0; z-index:10;
     }
     .title { font-weight:700; }
     .pill {
@@ -25,32 +26,45 @@
     .pill.good { border-color:#1f6f4a; color:#bff7de; }
     .pill.warn { border-color:#7a5a0a; color:#ffe3a3; }
     .pill.bad { border-color:#7c2d38; color:#ffb4b4; }
+    .pill.timewarn { border-color:#7a5a0a; color:#ffe3a3; }
     .topbar-right{
       display:flex; gap:10px; align-items:center; flex-wrap:wrap; justify-content:flex-end;
     }
-    main { padding:14px 16px; max-width:1200px; margin:0 auto; }
+    main { padding:0; margin:0; }
     .card { border:1px solid #20232a; border-radius:14px; padding:12px; background:#0f1117; }
-    .row { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-bottom:10px; }
+    .watch-layout{display:block}
+    .player-card{position:fixed;inset:0;padding:0;overflow:hidden;background:#05070a;border:0;border-radius:0}
+    .viewer-stage{position:absolute;inset:0;background:radial-gradient(circle at 50% 30%, #172033 0, #080a0f 42%, #030407 100%)}
+    .idle-panel{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:28px;color:#cbd5e1}
+    .idle-panel > div{max-width:470px}
+    .idle-panel h1{margin:0 0 10px;font-size:30px;line-height:1.08;color:#fff}
+    .idle-panel p{margin:0;color:#a8b3c3;line-height:1.55}
+    .controls-card{position:fixed;left:50%;bottom:calc(14px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:12;width:auto;max-width:calc(100vw - 28px);background:rgba(10,12,18,.74);backdrop-filter:blur(16px);box-shadow:0 14px 40px rgba(0,0,0,.4);border-color:rgba(255,255,255,.14);padding:10px}
+    .controls-card .row:first-child{display:none}
+    .row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:0; }
     button {
-      background:#1f2937; border:1px solid #334155; color:#e5e7eb; padding:10px 12px; border-radius:10px; cursor:pointer;
+      background:#1f2937; border:1px solid #334155; color:#e5e7eb; padding:10px 14px; border-radius:999px; cursor:pointer;font-weight:800;
     }
     button:disabled { opacity:0.55; cursor:not-allowed; }
     select, input {
       background:#0f172a; border:1px solid #334155; color:#e5e7eb; padding:9px 10px; border-radius:10px;
     }
-    .player-shell{ margin-top:8px; }
+    .player-shell{ position:absolute;inset:0;z-index:1; }
     video {
-      width:100%; background:#000; border-radius:12px; border:1px solid #20232a;
-      min-height:70svh; max-height:78svh; object-fit:contain; display:block;
+      width:100%;height:100svh; background:#000; border:0;
+      min-height:100svh; max-height:none; object-fit:contain; display:block;
     }
     .videos {
-      display:grid; gap:10px; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); min-height:70svh;
+      display:grid; gap:10px; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); min-height:100svh;padding:0;
     }
     .videos video{
-      min-height:70svh; max-height:78svh;
+      min-height:100svh; max-height:none;
     }
     .muted { color:#a3a3a3; }
     .err { color:#ffb4b4; }
+    #hlsInfo,#rtcInfo{position:fixed;left:14px;bottom:calc(78px + env(safe-area-inset-bottom));right:14px;z-index:11;margin:0!important;text-align:center;font-size:12px;pointer-events:none;word-break:break-word}
+    #hlsInfo{display:none}
+    #readyInfo{margin:6px 0 0!important;font-size:12px;max-width:520px}
     .log {
       font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
       font-size:12px; white-space:pre-wrap; background:#0b1220; border:1px solid #202a3a;
@@ -77,31 +91,65 @@
     .overlay.open{
       opacity:1; pointer-events:auto;
     }
+    .modal{
+      position:fixed; inset:auto 16px 16px 16px; max-width:560px; margin:0 auto; background:#0d1118;
+      border:1px solid #283243; border-radius:12px; box-shadow:0 20px 70px rgba(0,0,0,.5); z-index:50;
+      padding:14px; display:none;
+    }
+    .modal.open{display:block}
+    .modal-head{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px}
+    .modal-body{display:grid;gap:10px}
+    textarea{min-height:92px;resize:vertical;background:#0f172a;border:1px solid #334155;color:#e5e7eb;padding:9px 10px;border-radius:10px;font:inherit}
+    .checkrow{display:flex;gap:8px;align-items:center;color:#cbd5e1}
     @media (max-width:900px){
-      video { min-height:52svh; max-height:68svh; }
-      .videos { min-height:52svh; }
-      .videos video{ min-height:52svh; max-height:68svh; }
+      .title{display:none}.topbar-right{width:100%;justify-content:space-between;gap:6px}.pill{font-size:11px;padding:4px 7px}
+      .controls-card{left:10px;right:10px;transform:none;max-width:none}.controls-card .row:nth-child(2){justify-content:center}
+      select{max-width:130px}
     }
   </style>
 </head>
 <body>
   <header>
-    <div class="title">Relay Watch</div>
+    <div class="title">Castlink Watch</div>
     <div class="topbar-right">
       <span id="modePill" class="pill">mode: auto</span>
       <span id="statusPill" class="pill">status: —</span>
       <span id="readyPill" class="pill warn">ready: checking…</span>
+      <span id="remainingPill" class="pill">remaining: —</span>
       <button id="menuBtn" class="icon-btn" aria-label="Open details">☰</button>
     </div>
   </header>
 
   <main>
-    <div class="card">
+    <div class="watch-layout">
+    <section class="card player-card">
+      <div class="viewer-stage">
+        <div id="idlePanel" class="idle-panel">
+          <div>
+            <h1>Private stream viewer</h1>
+            <p>Load the event when the broadcast is ready. If the stream is still preparing, Castlink will keep checking and show the next available playback mode.</p>
+          </div>
+        </div>
+        <div class="player-shell">
+          <div id="hlsWrap" style="display:none;">
+            <video id="hlsVideo" playsinline controls autoplay></video>
+            <div class="muted" id="hlsInfo" style="margin:8px 12px 12px;"></div>
+          </div>
+
+          <div id="rtcWrap" style="display:none;">
+            <div class="videos" id="rtcVideos"></div>
+            <div class="muted" id="rtcInfo" style="margin:8px 12px 12px;"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card controls-card">
       <div class="row">
         <label class="muted">Event</label>
-        <input id="eventId" style="min-width:280px" />
+        <input id="eventId" style="min-width:min(100%,280px);width:100%;" />
         <label class="muted">Key</label>
-        <input id="eventKey" style="min-width:280px" />
+        <input id="eventKey" style="min-width:min(100%,280px);width:100%;" />
       </div>
 
       <div class="row">
@@ -115,26 +163,50 @@
         <button id="btnLoad">Load / Refresh</button>
         <button id="btnPlay" disabled>Play</button>
         <button id="btnStop">Stop</button>
+        <button id="btnReport">Report</button>
       </div>
 
       <div id="errorLine" class="muted err" style="margin:6px 0 0; display:none;"></div>
       <div id="readyInfo" class="muted" style="margin:6px 0 10px;"></div>
 
-      <div class="player-shell">
-        <div id="hlsWrap" style="display:none;">
-          <video id="hlsVideo" playsinline controls></video>
-          <div class="muted" id="hlsInfo" style="margin-top:6px;"></div>
-        </div>
-
-        <div id="rtcWrap" style="display:none;">
-          <div class="videos" id="rtcVideos"></div>
-          <div class="muted" id="rtcInfo" style="margin-top:6px;"></div>
-        </div>
-      </div>
+    </section>
     </div>
   </main>
 
   <div id="overlay" class="overlay"></div>
+
+  <section id="reportModal" class="modal" aria-hidden="true">
+    <div class="modal-head">
+      <strong>Report stream</strong>
+      <button id="closeReportBtn" class="icon-btn" aria-label="Close report">x</button>
+    </div>
+    <div class="modal-body">
+      <label class="muted">Reason
+        <select id="reportReason">
+          <option value="inappropriate">Inappropriate content</option>
+          <option value="illegal">Illegal content</option>
+          <option value="privacy">Privacy or consent issue</option>
+          <option value="harassment">Harassment or abuse</option>
+          <option value="technical">Technical issue</option>
+          <option value="other">Other</option>
+        </select>
+      </label>
+      <label class="muted">Details
+        <textarea id="reportDescription" placeholder="What happened?"></textarea>
+      </label>
+      <label class="muted">Your email (optional)
+        <input id="reportEmail" type="email" placeholder="you@example.com" />
+      </label>
+      <label class="checkrow">
+        <input id="reportUrgent" type="checkbox" />
+        <span>This is urgent or safety-related</span>
+      </label>
+      <div class="row" style="margin-bottom:0;">
+        <button id="submitReportBtn">Submit report</button>
+        <span id="reportStatus" class="muted"></span>
+      </div>
+    </div>
+  </section>
 
   <aside id="drawer" class="drawer" aria-hidden="true">
     <div class="drawer-head">
@@ -160,12 +232,10 @@
     </div>
   </aside>
 
+<script src="/assets/relay-config.js"></script>
 <script>
 (() => {
-  const API_BASE =
-    (location.origin.includes("pages.dev") || location.origin.includes("localhost"))
-      ? "https://stream-platform-api.kiwismurph.workers.dev"
-      : location.origin;
+  const API_BASE = window.RelayConfig.apiBase;
 
   const qs = new URLSearchParams(location.search);
   const $ = (id) => document.getElementById(id);
@@ -178,6 +248,7 @@
   const elModePill = $("modePill");
   const elStatusPill = $("statusPill");
   const elReadyPill = $("readyPill");
+  const elRemainingPill = $("remainingPill");
   const elReadyInfo = $("readyInfo");
   const elLog = $("log");
   const elErr = $("errorLine");
@@ -187,20 +258,32 @@
   const elHlsInfo = $("hlsInfo");
   const elRtcInfo = $("rtcInfo");
   const elRtcVideos = $("rtcVideos");
+  const elIdlePanel = $("idlePanel");
 
   const btnLoad = $("btnLoad");
   const btnPlay = $("btnPlay");
   const btnStop = $("btnStop");
   const btnClear = $("btnClear");
+  const btnReport = $("btnReport");
+  const btnCloseReport = $("closeReportBtn");
+  const btnSubmitReport = $("submitReportBtn");
   const btnMenu = $("menuBtn");
   const btnCloseDrawer = $("closeDrawerBtn");
   const drawer = $("drawer");
   const overlay = $("overlay");
+  const reportModal = $("reportModal");
+  const reportReason = $("reportReason");
+  const reportDescription = $("reportDescription");
+  const reportEmail = $("reportEmail");
+  const reportUrgent = $("reportUrgent");
+  const reportStatus = $("reportStatus");
 
   let ev = null;
   let readyState = { ready:false, reason:"Checking event…" };
   let readinessTimer = null;
   let autoSelectedMode = null;
+  let viewerSessionId = null;
+  let viewerHeartbeat = null;
 
   let ivsPlayer = null;
   let hlsRetryTimer = null;
@@ -208,6 +291,13 @@
 
   let stage = null;
   let stageToken = null;
+  let autoPlayEnabled = qs.get("autoplay") !== "0";
+  let autoPlayStarted = false;
+  let playInFlight = false;
+  let manualStop = false;
+  let rtcMediaSeen = false;
+  let rtcReconnectTimer = null;
+  let rtcReconnectAttempts = 0;
 
   elEventId.value = qs.get("event") || qs.get("id") || "";
   elEventKey.value = qs.get("key") || "";
@@ -233,6 +323,17 @@
     drawer.setAttribute("aria-hidden", "true");
   }
 
+  function openReport(){
+    reportStatus.textContent = "";
+    reportModal.classList.add("open");
+    reportModal.setAttribute("aria-hidden", "false");
+  }
+
+  function closeReport(){
+    reportModal.classList.remove("open");
+    reportModal.setAttribute("aria-hidden", "true");
+  }
+
   function showError(msg){
     elErr.style.display = msg ? "" : "none";
     elErr.textContent = msg || "";
@@ -254,11 +355,43 @@
     elReadyPill.textContent = "ready: " + text;
   }
 
+  function formatDuration(seconds){
+    const s = Math.max(0, Number(seconds || 0));
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const r = Math.floor(s % 60);
+    if (h > 0) return `${h}h ${String(m).padStart(2,"0")}m`;
+    return `${m}m ${String(r).padStart(2,"0")}s`;
+  }
+
+  function setRemaining(readiness){
+    const seconds = readiness?.seconds_remaining;
+    elRemainingPill.className = "pill";
+    if (seconds === null || seconds === undefined) {
+      elRemainingPill.textContent = "remaining: —";
+      return;
+    }
+    elRemainingPill.textContent = "remaining: " + formatDuration(seconds);
+    if (seconds <= 120) elRemainingPill.className = "pill bad";
+    else if (seconds <= 600) elRemainingPill.className = "pill timewarn";
+    if (readiness.warning) elReadyInfo.textContent = readiness.warning;
+  }
+
   function setReadyState(ready, reason, kind){
     readyState = { ready, reason };
     btnPlay.disabled = !ready;
     elReadyInfo.textContent = reason || "";
     setReadyPill(ready, ready ? "yes" : "no", kind);
+    if(ready && autoPlayEnabled && !autoPlayStarted && !manualStop){
+      setTimeout(() => autoPlayIfReady(), 50);
+    }
+  }
+
+  function nudgeRtcAutoplayIfQuiet(){
+    if(elMode.value !== "rtc" || rtcMediaSeen || manualStop || playInFlight || !readyState.ready) return;
+    if(!autoPlayEnabled) return;
+    autoPlayStarted = false;
+    setTimeout(() => autoPlayIfReady(), 100);
   }
 
   function apiUrl(path){ return API_BASE + path; }
@@ -291,9 +424,33 @@
     });
   }
 
-  function showHls(){ elHlsWrap.style.display = ""; elRtcWrap.style.display = "none"; }
-  function showRtc(){ elRtcWrap.style.display = ""; elHlsWrap.style.display = "none"; }
-  function showNone(){ elRtcWrap.style.display = "none"; elHlsWrap.style.display = "none"; }
+  async function submitReport(){
+    const eventId = elEventId.value.trim();
+    const key = elEventKey.value.trim();
+    if(!eventId || !key) throw new Error("Missing event or key");
+    btnSubmitReport.disabled = true;
+    reportStatus.textContent = "Submitting...";
+    try{
+      const res = await apiPost(`/api/events/${encodeURIComponent(eventId)}/report?key=${encodeURIComponent(key)}`, {
+        reason: reportReason.value,
+        description: reportDescription.value,
+        reporter_email: reportEmail.value,
+        urgent: reportUrgent.checked,
+      });
+      reportStatus.textContent = res?.report_id ? "Report submitted" : "Submitted";
+      reportDescription.value = "";
+      reportUrgent.checked = false;
+      setTimeout(closeReport, 900);
+    }catch(e){
+      reportStatus.textContent = String(e);
+    }finally{
+      btnSubmitReport.disabled = false;
+    }
+  }
+
+  function showHls(){ elIdlePanel.style.display = "none"; elHlsWrap.style.display = ""; elRtcWrap.style.display = "none"; }
+  function showRtc(){ elIdlePanel.style.display = "none"; elRtcWrap.style.display = ""; elHlsWrap.style.display = "none"; }
+  function showNone(){ elIdlePanel.style.display = ""; elRtcWrap.style.display = "none"; elHlsWrap.style.display = "none"; }
 
   function applyModeForEvent(pub){
     const rtcEnabled = !!pub?.rtc_enabled;
@@ -326,8 +483,9 @@
     setStatus("loading…");
     setModePill();
 
-    const pub = await apiGet(`/api/events/${encodeURIComponent(eventId)}/public?key=${encodeURIComponent(key)}`);
-    ev = pub;
+      const pub = await apiGet(`/api/events/${encodeURIComponent(eventId)}/public?key=${encodeURIComponent(key)}`);
+      ev = pub;
+      setRemaining(pub?.readiness);
 
     setStatus(pub.status || "ok");
     log("PUBLIC", pub);
@@ -377,28 +535,6 @@
     elHlsInfo.textContent = "";
   }
 
-  async function ensureStartedForHls(){
-    const now = Date.now();
-    if(now - lastStartAt < 2500) return;
-    lastStartAt = now;
-
-    const eventId = elEventId.value.trim();
-    const key = elEventKey.value.trim();
-
-    const res = await apiPost(`/api/events/${encodeURIComponent(eventId)}/start?key=${encodeURIComponent(key)}`, {});
-    log("START", res);
-  }
-
-  async function probePlayback(url){
-    try{
-      const r = await fetch(url, { method:"GET", cache:"no-store" });
-      return r.ok;
-    }catch(e){
-      log("PLAYBACK probe failed", String(e));
-      return false;
-    }
-  }
-
   function isPlayerSupportedSafe(){
     if(!window.IVSPlayer) return false;
 
@@ -429,7 +565,6 @@
           return;
         }
 
-        await ensureStartedForHls().catch(e => log("Warm start failed", String(e)));
         ev = await loadPublic();
 
         if(!ev.playback_url){
@@ -438,14 +573,7 @@
           return;
         }
 
-        const playbackReady = await probePlayback(ev.playback_url);
-        if(!playbackReady){
-          setReadyState(false, "Preparing HLS playlist…", "warn");
-          scheduleReadiness(2500);
-          return;
-        }
-
-        setReadyState(true, "HLS is ready to watch.", "good");
+        setReadyState(true, ev?.readiness?.state === "waiting_for_stream" ? "Waiting for live media. Click Play." : "HLS is starting. Click Play.", "good");
         elHlsInfo.textContent = ev.playback_url;
         return;
       }
@@ -459,6 +587,7 @@
         try{
           await rtcViewerToken(true);
           setReadyState(true, "RTC is ready. Click Play to connect.", "good");
+          nudgeRtcAutoplayIfQuiet();
         }catch(e){
           setReadyState(false, "Preparing RTC viewer access…", "warn");
           log("RTC readiness failed", String(e));
@@ -495,8 +624,6 @@
     if(!ev) await loadPublic();
     if(!ev.hls_enabled) throw new Error("This event is not HLS-enabled.");
 
-    await ensureStartedForHls();
-    await new Promise(r => setTimeout(r, 900));
     ev = await loadPublic();
 
     const playbackUrl = ev.playback_url;
@@ -523,6 +650,13 @@
         setStatus("playing (hls)");
       }catch(e){
         log("HLS load/play threw", String(e));
+        try{
+          videoEl.muted = true;
+          await ivsPlayer.play();
+          setStatus("playing muted (hls)");
+        }catch(e2){
+          log("HLS muted autoplay failed", String(e2));
+        }
       }
     };
 
@@ -531,7 +665,6 @@
       hlsRetryTimer = setTimeout(async () => {
         hlsRetryTimer = null;
         try{
-          await ensureStartedForHls();
           ev = await loadPublic();
           await refreshReadiness();
         }catch(e){
@@ -563,11 +696,46 @@
   }
 
   function stopRtc(){
+    if(rtcReconnectTimer){
+      clearTimeout(rtcReconnectTimer);
+      rtcReconnectTimer = null;
+    }
     try { stage && stage.leave(); } catch {}
     stage = null;
     stageToken = null;
+    rtcMediaSeen = false;
     elRtcVideos.innerHTML = "";
     elRtcInfo.textContent = "";
+  }
+
+  async function acquireViewerSeat(){
+    if(viewerSessionId) return;
+    const eventId = elEventId.value.trim();
+    const key = elEventKey.value.trim();
+    const res = await apiPost(`/api/events/${encodeURIComponent(eventId)}/view-session?key=${encodeURIComponent(key)}`, {});
+    if(res && res.granted === false){
+      const active = Number(res.active || 0);
+      const limit = Number(res.limit || 0);
+      throw new Error(`This event is currently full (${active}/${limit} viewers). Try again shortly or ask the host to increase capacity.`);
+    }
+    viewerSessionId = res.session_id || null;
+    clearInterval(viewerHeartbeat);
+    viewerHeartbeat = setInterval(() => {
+      if(!viewerSessionId) return;
+      apiPost(`/api/events/${encodeURIComponent(eventId)}/heartbeat`, { session_id: viewerSessionId }).catch(e => log("viewer heartbeat failed", String(e)));
+    }, 15000);
+  }
+
+  async function releaseViewerSeat(){
+    if(viewerHeartbeat){
+      clearInterval(viewerHeartbeat);
+      viewerHeartbeat = null;
+    }
+    if(!viewerSessionId) return;
+    const eventId = elEventId.value.trim();
+    const sessionId = viewerSessionId;
+    viewerSessionId = null;
+    await apiPost(`/api/events/${encodeURIComponent(eventId)}/leave`, { session_id: sessionId }).catch(e => log("viewer leave failed", String(e)));
   }
 
   async function rtcViewerToken(silent = false){
@@ -615,6 +783,8 @@
     if(!ev) await loadPublic();
     if(!ev.rtc_enabled) throw new Error("This event is not RTC-enabled.");
 
+    stopRtc();
+    rtcMediaSeen = false;
     await rtcViewerToken();
 
     const sdk = window.IVSBroadcastClient;
@@ -634,10 +804,14 @@
       log("RTC state", state);
       if(state === StageConnectionState.CONNECTED) {
         setStatus("playing (rtc)");
-        elRtcInfo.textContent = "Connected. Waiting for broadcaster…";
+        elRtcInfo.textContent = "Connected. Waiting for broadcaster...";
+        scheduleRtcReconnectIfQuiet();
       }
-      if(state === StageConnectionState.CONNECTING) setStatus("rtc connecting…");
-      if(state === StageConnectionState.ERRORED) setStatus("rtc errored…");
+      if(state === StageConnectionState.CONNECTING) setStatus("rtc connecting...");
+      if(state === StageConnectionState.ERRORED) {
+        setStatus("rtc errored...");
+        scheduleRtcReconnectIfQuiet(1500);
+      }
       if(state === StageConnectionState.DISCONNECTED) setStatus("rtc disconnected");
     });
 
@@ -648,27 +822,66 @@
 
     stage.on(StageEvents.STAGE_PARTICIPANT_STREAMS_ADDED, (participant, streams) => {
       log("RTC streams added", participant.id, streams.map(s => s.streamType));
+      rtcMediaSeen = true;
+      rtcReconnectAttempts = 0;
+      if(rtcReconnectTimer){
+        clearTimeout(rtcReconnectTimer);
+        rtcReconnectTimer = null;
+      }
       const videoEl = createParticipantEl(participant.id, participant.info?.userInfo || participant.id);
       const ms = new MediaStream();
       streams.forEach(s => { if(s.mediaStreamTrack) ms.addTrack(s.mediaStreamTrack); });
       videoEl.srcObject = ms;
-      videoEl.play().catch(() => {});
+      videoEl.play().catch(async () => {
+        videoEl.muted = true;
+        await videoEl.play().catch(() => {});
+      });
       elRtcInfo.textContent = "Receiving RTC media.";
     });
 
     stage.on(StageEvents.STAGE_PARTICIPANT_STREAMS_REMOVED, (participant) => {
       log("RTC streams removed", participant.id);
       removeParticipantEl(participant.id);
+      rtcMediaSeen = false;
+      scheduleRtcReconnectIfQuiet(2500);
     });
 
     await stage.join();
-    elRtcInfo.textContent = "Connected. Waiting for broadcaster…";
+    elRtcInfo.textContent = "Connected. Waiting for broadcaster...";
+    scheduleRtcReconnectIfQuiet(5000);
+  }
+
+  function scheduleRtcReconnectIfQuiet(delay = 5000){
+    if(rtcMediaSeen || rtcReconnectTimer || manualStop || elMode.value !== "rtc") return;
+    rtcReconnectTimer = setTimeout(async () => {
+      rtcReconnectTimer = null;
+      if(rtcMediaSeen || manualStop || elMode.value !== "rtc") return;
+      rtcReconnectAttempts += 1;
+      log("RTC reconnect", rtcReconnectAttempts);
+      try{
+        if(rtcReconnectAttempts > 1) await loadPublic().catch(() => {});
+        await playRtc();
+      }catch(e){
+        log("RTC reconnect failed", String(e));
+        scheduleRtcReconnectIfQuiet(Math.min(8000, 2500 + rtcReconnectAttempts * 500));
+      }
+    }, delay);
+  }
+
+  async function autoPlayIfReady(){
+    if(!autoPlayEnabled || autoPlayStarted || playInFlight || manualStop || !readyState.ready) return;
+    autoPlayStarted = true;
+    await onPlay();
   }
 
   async function onPlay(){
     showError("");
     try{
+      if(playInFlight) return;
+      playInFlight = true;
+      manualStop = false;
       btnPlay.disabled = true;
+      await acquireViewerSeat();
       if(elMode.value === "hls") await playHls();
       else if(elMode.value === "rtc") await playRtc();
       else await loadPublic();
@@ -676,18 +889,28 @@
       log("PLAY error:", String(e));
       setStatus("error");
       showError(String(e));
+      autoPlayStarted = false;
+      await releaseViewerSeat();
       await refreshReadiness().catch(() => {});
     }finally{
+      playInFlight = false;
       btnPlay.disabled = !readyState.ready;
     }
   }
-
   function onStop(){
+    manualStop = true;
+    autoPlayStarted = false;
+    rtcReconnectAttempts = 0;
     stopHls();
     stopRtc();
+    releaseViewerSeat();
     setStatus("stopped");
     showError("");
   }
+
+  window.addEventListener("pagehide", () => {
+    releaseViewerSeat();
+  });
 
   btnLoad.onclick = async () => {
     showError("");
@@ -705,12 +928,21 @@
 
   btnPlay.onclick = onPlay;
   btnStop.onclick = onStop;
+  btnReport.onclick = openReport;
+  btnCloseReport.onclick = closeReport;
+  btnSubmitReport.onclick = () => submitReport().catch(e => { reportStatus.textContent = String(e); });
   btnMenu.onclick = openDrawer;
   btnCloseDrawer.onclick = closeDrawer;
-  overlay.onclick = closeDrawer;
+  overlay.onclick = () => {
+    closeDrawer();
+    closeReport();
+  };
 
   elMode.onchange = () => {
     stopReadinessPolling();
+    autoPlayStarted = false;
+    manualStop = false;
+    rtcReconnectAttempts = 0;
     setModePill();
     showNone();
     setReadyState(false, "Checking selected mode…", "warn");
@@ -725,6 +957,9 @@
     stopReadinessPolling();
     setReadyState(false, "Checking event…", "warn");
     autoSelectedMode = null;
+    autoPlayStarted = false;
+    manualStop = false;
+    rtcReconnectAttempts = 0;
     ev = null;
     setTimeout(() => {
       loadPublic().then(refreshReadiness).catch(e => {

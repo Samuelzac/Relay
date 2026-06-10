@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Relay — Success</title>
+  <title>Castlink - Success</title>
   <style>
     :root{
       color-scheme:dark;
@@ -57,11 +57,15 @@
 </head>
 <body>
 <div class="wrap">
-  <h2>Payment successful</h2>
+  <h2 id="pageTitle">Payment successful</h2>
 
   <div class="card">
     <div id="topMsg"><b>Loading your event…</b></div>
     <div class="muted" id="subMsg" style="margin-top:8px;">Checking stream readiness.</div>
+    <div class="muted" id="startWindowMsg" style="margin-top:8px;">Paid events must be started within 7 days. Your package time starts when the host goes live.</div>
+    <div class="row">
+      <button id="resendEmailBtn" class="secondary" disabled>Resend email</button>
+    </div>
   </div>
 
   <div class="grid">
@@ -123,9 +127,11 @@
   <div class="card">
     <div class="tiny">Watch link</div>
     <code id="watchUrlCode"></code>
+    <button id="copyWatchBtn" class="secondary" type="button" disabled>Copy Watch Link</button>
 
     <div class="tiny" style="margin-top:10px;">Broadcast link</div>
     <code id="broadcastUrlCode"></code>
+    <button id="copyBroadcastBtn" class="secondary" type="button" disabled>Copy Broadcast Link</button>
   </div>
 
   <details class="card">
@@ -139,16 +145,20 @@
   </details>
 </div>
 
+<script src="/assets/relay-config.js"></script>
 <script>
 (() => {
-  const API_BASE = "https://stream-platform-api.kiwismurph.workers.dev";
+  const API_BASE = window.RelayConfig.apiBase;
   const params = new URLSearchParams(location.search);
 
   const eventId = params.get("event") || params.get("eventId") || params.get("id") || "";
   const successToken = params.get("st") || params.get("token") || params.get("successToken") || "";
+  const isTest = params.get("test") === "1";
 
+  const pageTitle = document.getElementById("pageTitle");
   const topMsg = document.getElementById("topMsg");
   const subMsg = document.getElementById("subMsg");
+  const startWindowMsg = document.getElementById("startWindowMsg");
 
   const broadcastState = document.getElementById("broadcastState");
   const broadcastInfo = document.getElementById("broadcastInfo");
@@ -161,6 +171,9 @@
   const watchBtn = document.getElementById("watchBtn");
   const getObsBtn = document.getElementById("getObsBtn");
   const copySetupBtn = document.getElementById("copySetupBtn");
+  const copyWatchBtn = document.getElementById("copyWatchBtn");
+  const copyBroadcastBtn = document.getElementById("copyBroadcastBtn");
+  const resendEmailBtn = document.getElementById("resendEmailBtn");
 
   const watchUrlCode = document.getElementById("watchUrlCode");
   const broadcastUrlCode = document.getElementById("broadcastUrlCode");
@@ -175,6 +188,14 @@
   let watchParts = null;
   let broadcastParts = null;
   let readinessTimer = null;
+  let currentWatchUrl = "";
+  let currentBroadcastUrl = "";
+
+  if (isTest) {
+    pageTitle.textContent = "Test stream created";
+    subMsg.textContent = "This free test stream has a short live window and limited viewers.";
+    startWindowMsg.textContent = "Free test streams must be started quickly and run for 3 minutes. Paid events can be started within 7 days.";
+  }
 
   function setPill(el, kind, text){
     el.className = `pill ${kind}`.trim();
@@ -195,6 +216,17 @@
     };
   }
 
+  function friendlyLinkLabel(prefix, link){
+    try {
+      const u = new URL(link);
+      const raw = decodeURIComponent((u.hash || "").replace(/^#/, "")).replace(/-/g, " ").trim();
+      const name = raw ? raw.replace(/\b\w/g, c => c.toUpperCase()) : "Private Event";
+      return `${prefix}: ${name}`;
+    } catch {
+      return `${prefix}: Private Event`;
+    }
+  }
+
   async function fetchJson(url, init){
     const r = await fetch(url, init);
     const t = await r.text();
@@ -213,6 +245,23 @@
     });
   }
 
+  async function resendEmail(){
+    resendEmailBtn.disabled = true;
+    subMsg.textContent = "Sending email...";
+    try{
+      await fetchJson(`${API_BASE}/api/events/${encodeURIComponent(eventId)}/email/resend?st=${encodeURIComponent(successToken)}`, {
+        method: "POST",
+        headers: { "content-type":"application/json" },
+        body: "{}"
+      });
+      subMsg.textContent = "Email sent. Check your inbox.";
+    }catch(e){
+      subMsg.textContent = e.message || "Could not send email.";
+    }finally{
+      resendEmailBtn.disabled = false;
+    }
+  }
+
   async function probePlayback(url){
     try{
       const r = await fetch(url, { method:"GET", cache:"no-store" });
@@ -226,12 +275,55 @@
     if (!broadcastParts?.eventId || !broadcastParts?.key) return false;
 
     try{
-      await fetchJson(`${API_BASE}/api/events/${encodeURIComponent(broadcastParts.eventId)}/rtc/provision?key=${encodeURIComponent(broadcastParts.key)}`, {
-        method: "POST",
-        headers: { "content-type":"application/json" },
-        body: "{}",
+      const ready = await fetchJson(`${API_BASE}/api/events/${encodeURIComponent(broadcastParts.eventId)}/readiness?key=${encodeURIComponent(broadcastParts.key)}`, {
+        method: "GET",
         credentials: "include"
       });
+      const r = ready?.readiness || {};
+
+      if (r.expired) {
+        setPill(broadcastState, "bad", "Expired");
+        broadcastInfo.textContent = "This event has expired.";
+        setLinkReady(broadcastBtn, false);
+        getObsBtn.disabled = true;
+        setPill(obsState, "bad", "Unavailable");
+        obsInfo.textContent = "OBS access is unavailable for expired events.";
+        return false;
+      }
+
+      if (!r.paid) {
+        setPill(broadcastState, "warn", "Awaiting payment");
+        broadcastInfo.textContent = r.detail || "Waiting for payment confirmation.";
+        setLinkReady(broadcastBtn, false);
+        getObsBtn.disabled = true;
+        setPill(obsState, "warn", "Waiting");
+        obsInfo.textContent = "OBS access unlocks after payment confirmation.";
+        return false;
+      }
+
+      if (r.hls_enabled && !r.rtc_enabled) {
+        const readyForHls = !!r.can_issue_broadcaster_token;
+        setPill(broadcastState, readyForHls ? "good" : "warn", readyForHls ? "Ready" : "Open broadcast");
+        broadcastInfo.textContent = readyForHls
+          ? "Broadcaster access is ready."
+          : "Open the broadcast page to prepare the HLS channel.";
+        setLinkReady(broadcastBtn, true);
+        getObsBtn.disabled = true;
+        setPill(obsState, "bad", "Not available");
+        obsInfo.textContent = "Browser HLS is used for this event.";
+        return true;
+      }
+
+      if (!r.can_issue_broadcaster_token && !r.can_go_live) {
+        setPill(broadcastState, "warn", "Preparing");
+        broadcastInfo.textContent = r.detail || "Preparing broadcaster access.";
+        setLinkReady(broadcastBtn, true);
+        getObsBtn.disabled = true;
+        setPill(obsState, "warn", "Preparing");
+        obsInfo.textContent = "OBS access will unlock when broadcaster access is ready.";
+        return false;
+      }
+
       setPill(broadcastState, "good", "Ready");
       broadcastInfo.textContent = "Broadcaster access is ready.";
       setLinkReady(broadcastBtn, true);
@@ -240,16 +332,15 @@
       obsInfo.textContent = "You can get an OBS token now.";
       return true;
     }catch{
-      setPill(broadcastState, "warn", "Preparing");
-      broadcastInfo.textContent = "It may take 1–2 minutes before broadcasting is ready.";
+      setPill(broadcastState, "warn", "Checking");
+      broadcastInfo.textContent = "Checking broadcaster access.";
       setLinkReady(broadcastBtn, false);
       getObsBtn.disabled = true;
-      setPill(obsState, "warn", "Preparing");
-      obsInfo.textContent = "Waiting for broadcaster access to finish warming up.";
+      setPill(obsState, "warn", "Checking");
+      obsInfo.textContent = "Checking OBS access.";
       return false;
     }
   }
-
   async function pollWatchReadiness(){
     if (!watchParts?.eventId || !watchParts?.key) return false;
 
@@ -270,21 +361,13 @@
       if (pub.hls_enabled) {
         if (!pub.playback_url) {
           setPill(watchState, "warn", "Preparing");
-          watchInfo.textContent = "It may take 1–2 minutes before watch playback is ready.";
-          setLinkReady(watchBtn, false);
-          return false;
-        }
-
-        const playbackReady = await probePlayback(pub.playback_url);
-        if (!playbackReady) {
-          setPill(watchState, "warn", "Preparing");
-          watchInfo.textContent = "It may take 1–2 minutes before watch playback is ready.";
+          watchInfo.textContent = "Creating the watch link now.";
           setLinkReady(watchBtn, false);
           return false;
         }
 
         setPill(watchState, "good", "Ready");
-        watchInfo.textContent = "Watch playback is ready.";
+        watchInfo.textContent = "Watch link is ready. Video appears once the broadcast starts.";
         setLinkReady(watchBtn, true);
         return true;
       }
@@ -302,7 +385,7 @@
       return false;
     }catch{
       setPill(watchState, "warn", "Preparing");
-      watchInfo.textContent = "It may take 1–2 minutes before watch playback is ready.";
+      watchInfo.textContent = "Checking watch access.";
       setLinkReady(watchBtn, false);
       return false;
     }
@@ -317,11 +400,11 @@
 
     if (bReady || wReady) {
       topMsg.innerHTML = "<b>Your event is warming up.</b>";
-      subMsg.textContent = "Some parts are ready now. The rest may take 1–2 minutes.";
+      subMsg.textContent = "Some parts are ready now. The rest is warming in the background.";
       return;
     }
 
-    topMsg.innerHTML = "<b>⚠️ It may take 1–2 minutes before your stream is ready to broadcast or watch.</b>";
+    topMsg.innerHTML = "<b>Your stream is being prepared.</b>";
     subMsg.textContent = "Your stream is being prepared in the background.";
   }
 
@@ -386,8 +469,23 @@
     }
   }
 
+  async function copyPrivateLink(kind){
+    const link = kind === "watch" ? currentWatchUrl : currentBroadcastUrl;
+    const info = kind === "watch" ? watchInfo : broadcastInfo;
+    if (!link) return;
+    try{
+      await navigator.clipboard.writeText(link);
+      info.textContent = kind === "watch" ? "Watch link copied." : "Broadcast link copied.";
+    }catch{
+      info.textContent = "Could not copy automatically. Open the link and copy it from the address bar.";
+    }
+  }
+
   document.getElementById("getObsBtn").addEventListener("click", getObsToken);
   document.getElementById("copySetupBtn").addEventListener("click", copySetup);
+  copyWatchBtn.addEventListener("click", () => copyPrivateLink("watch"));
+  copyBroadcastBtn.addEventListener("click", () => copyPrivateLink("broadcast"));
+  resendEmailBtn.addEventListener("click", resendEmail);
 
   (async () => {
     eventCode.textContent = eventId || "(missing)";
@@ -395,7 +493,7 @@
 
     if (!eventId || !successToken) {
       topMsg.innerHTML = '<b class="bad">Missing event or success token.</b>';
-      subMsg.textContent = "Open this page from the normal Relay success flow.";
+      subMsg.textContent = "Open this page from the normal Castlink success flow.";
       return;
     }
 
@@ -403,18 +501,23 @@
       const links = await getLinks();
       const watchUrl = links.watch_url || "";
       const broadcastUrl = links.broadcast_url || "";
+      currentWatchUrl = watchUrl;
+      currentBroadcastUrl = broadcastUrl;
 
-      watchUrlCode.textContent = watchUrl || "(missing)";
-      broadcastUrlCode.textContent = broadcastUrl || "(missing)";
+      watchUrlCode.textContent = watchUrl ? friendlyLinkLabel("Watch", watchUrl) : "(missing)";
+      broadcastUrlCode.textContent = broadcastUrl ? friendlyLinkLabel("Broadcast", broadcastUrl) : "(missing)";
 
       watchParts = watchUrl ? parseLinkParts(watchUrl) : null;
       broadcastParts = broadcastUrl ? parseLinkParts(broadcastUrl) : null;
 
       if (watchUrl) watchBtn.href = watchUrl;
       if (broadcastUrl) broadcastBtn.href = broadcastUrl;
+      copyWatchBtn.disabled = !watchUrl;
+      copyBroadcastBtn.disabled = !broadcastUrl;
 
       setLinkReady(watchBtn, false);
       setLinkReady(broadcastBtn, false);
+      resendEmailBtn.disabled = false;
 
       await refreshReadiness();
       scheduleReadiness();

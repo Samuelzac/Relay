@@ -1,9 +1,9 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Relay – Private live streaming</title>
+  <title>Castlink - Private live streaming</title>
   <style>
     :root{
       --bg:#07090c;
@@ -75,11 +75,12 @@
 <body>
   <div class="wrap">
     <div class="top">
-      <div class="brand"><span class="dot"></span>Relay</div>
+      <div class="brand"><span class="dot"></span>Castlink</div>
       <div class="nav">
         <a href="#how">How it works</a>
         <a href="#pricing">Pricing</a>
-        <a href="#faq">FAQ</a>
+        <a href="/faq">FAQ</a>
+        <a href="/support">Support</a>
         <a class="btn ghost" href="/create">Create event</a>
       </div>
     </div>
@@ -87,9 +88,10 @@
     <section class="hero">
       <div class="card">
         <h1>Go live instantly.<br/>Share a private link.</h1>
-        <p class="lead">Relay is a simple, professional live stream for when you don’t want social media — no app installs, no public feed, no noise.</p>
+        <p class="lead">Castlink is a simple, professional live stream for when you don't want social media - no app installs, no public feed, no noise.</p>
         <div class="row">
           <a class="btn" href="/create">Create event</a>
+          <a class="btn ghost" href="/create#test">Try 3-minute test</a>
           <a class="btn ghost" href="#how">See how it works</a>
         </div>
         <div class="steps" style="margin-top:14px">
@@ -102,8 +104,8 @@
       <div class="stack">
         <div class="card">
           <div class="k">Built for simple, private delivery</div>
-          <div class="muted">Workshops • company updates • school events • product demos • community meetings</div>
-          <div style="margin-top:12px" class="muted2">Viewers don’t need an account. Hosts don’t need an app.</div>
+          <div class="muted">Workshops &bull; company updates &bull; school events &bull; product demos &bull; community meetings</div>
+          <div style="margin-top:12px" class="muted2">Viewers don't need an account. Hosts don't need an app.</div>
         </div>
 
         <div class="card">
@@ -117,12 +119,12 @@
     <section id="how" style="margin-top:14px">
       <div class="card">
         <div class="k">How it works</div>
-        <div class="muted">Create an event, pay, then you’ll receive:</div>
+        <div class="muted">Create an event, pay, then you'll receive:</div>
         <ul>
           <li><b>Private broadcast link</b> (for the host)</li>
           <li><b>Public watch link</b> (for viewers)</li>
         </ul>
-        <div class="muted2" style="margin-top:10px">After purchase you can run a quick 2‑minute test stream to check your camera and audio.</div>
+        <div class="muted2" style="margin-top:10px">After purchase you receive browser links and OBS setup details by email.</div>
       </div>
     </section>
 
@@ -131,28 +133,31 @@
         <div class="k">Pricing</div>
         <div class="pricing">
           <div class="price">
-            <h3>Standard event</h3>
-            <div class="big">$99 NZD</div>
-            <div class="muted2">Up to 3 hours live • 150 concurrent viewers</div>
+            <h3>Private HLS stream</h3>
+            <div class="big">From $59 NZD</div>
+            <div class="muted2">1h, 3h, and 8h options for private viewer links</div>
             <ul>
               <li>Private broadcast link</li>
               <li>Public watch link</li>
-              <li>Auto expiry + grace period</li>
+              <li>OBS or browser broadcasting</li>
+              <li>Free 3-minute test available</li>
             </ul>
           </div>
           <div class="price">
-            <h3>Extended event</h3>
-            <div class="big">$179 NZD</div>
-            <div class="muted2">Up to 8 hours live • 150 concurrent viewers</div>
+            <h3>Real-time streaming</h3>
+            <div class="big">From $79 NZD</div>
+            <div class="muted2">WebRTC for low latency, or HLS + WebRTC together</div>
             <ul>
-              <li>Same simple flow</li>
-              <li>Longer runtime</li>
-              <li>Upgrade path available</li>
+              <li>Low-latency WebRTC</li>
+              <li>Hybrid stream packages</li>
+              <li>Optional +1 hour extension</li>
             </ul>
           </div>
         </div>
         <div class="row" style="margin-top:12px">
           <a class="btn" href="/create">Create event</a>
+          <a class="btn ghost" href="/faq">FAQ</a>
+          <a class="btn ghost" href="/support">Support</a>
           <a class="btn ghost" href="/terms">Terms</a>
           <a class="btn ghost" href="/privacy">Privacy</a>
         </div>
@@ -160,10 +165,10 @@
     </section>
 
     <section style="margin-top:14px">
-      <div class="k">Relay vs social streaming</div>
+      <div class="k">Castlink vs social streaming</div>
       <div class="compare">
         <div class="table">
-          <div class="tr"><div class="td"><b>Relay</b></div><div class="td"><b>Social platforms</b></div></div>
+          <div class="tr"><div class="td"><b>Castlink</b></div><div class="td"><b>Social platforms</b></div></div>
           <div class="tr"><div class="td">Private link delivery</div><div class="td">Public feed + discovery</div></div>
           <div class="tr"><div class="td">No ads, no comments</div><div class="td">Ads + distractions</div></div>
           <div class="tr"><div class="td">No viewer account needed</div><div class="td">Often requires accounts</div></div>
@@ -171,7 +176,7 @@
         </div>
         <div class="card">
           <div class="k">Why people pay</div>
-          <div class="muted">You’re paying for control and a clean, private broadcast experience that doesn’t depend on an audience platform.</div>
+          <div class="muted">You're paying for control and a clean, private broadcast experience that doesn't depend on an audience platform.</div>
           <div class="muted2" style="margin-top:10px">Perfect for events where the stream is the product.</div>
         </div>
       </div>
@@ -190,7 +195,7 @@
         </details>
         <details>
           <summary>Is the stream recorded?</summary>
-          <p>Not in this MVP. Relay is focused on simple live delivery. Recording can be added later.</p>
+          <p>Not in this MVP. Castlink is focused on simple live delivery. Recording can be added later.</p>
         </details>
         <details>
           <summary>What content is allowed?</summary>
@@ -200,8 +205,8 @@
     </section>
 
     <div class="footer">
-      <div>© <span id="y"></span> Relay</div>
-      <div>By using this service you agree to the <a href="/terms">Terms</a> and <a href="/privacy">Privacy Policy</a>.</div>
+      <div>&copy; <span id="y"></span> Castlink</div>
+      <div><a href="/faq">FAQ</a> · <a href="/support">Support</a> · <a href="/terms">Terms</a> · <a href="/privacy">Privacy Policy</a></div>
     </div>
   </div>
 <script>

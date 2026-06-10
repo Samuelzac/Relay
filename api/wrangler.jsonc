@@ -6,22 +6,68 @@
 		"nodejs_compat"
 	],
 	"vars": {
-		"APP_ORIGIN": "https://relay-cp1.pages.dev",
+		"APP_ORIGIN": "https://castlink.stream",
+		"BRAND_NAME": "Castlink",
+		"EMAIL_PROVIDER": "postmark",
+		"EMAIL_FROM": "Castlink <support@castlink.stream>",
+		"REPORT_ALERT_EMAIL": "support@castlink.stream",
+		"POSTMARK_MESSAGE_STREAM": "outbound",
 		"AWS_REGION": "ap-northeast-1",
 		"IVS_API_ENDPOINT": "https://ivs.ap-northeast-1.amazonaws.com",
 		"IVS_REALTIME_API_ENDPOINT": "https://ivsrealtime.ap-northeast-1.amazonaws.com",
 		"DEFAULT_VIEWER_LIMIT": "150",
-		"STANDARD_PRICE_NZD": "9900",
-		"EXTENDED_PRICE_NZD": "17900",
+		"HLS_1H_PRICE_NZD": "59",
+		"HLS_3H_PRICE_NZD": "129",
+		"HLS_8H_PRICE_NZD": "249",
+		"WEBRTC_1H_PRICE_NZD": "79",
+		"WEBRTC_2H_PRICE_NZD": "149",
+		"BOTH_3H_PRICE_NZD": "199",
+		"BOTH_8H_PRICE_NZD": "349",
+		"STANDARD_PRICE_NZD": "129",
+		"EXTENDED_PRICE_NZD": "249",
 		"STANDARD_HOURS": "3",
 		"EXTENDED_HOURS": "8",
-		"GRACE_MINUTES": "30",
-		"DELETE_IVS_ON_EXPIRE": "false",
+		"GRACE_MINUTES": "0",
+		"PAID_UNUSED_EXPIRY_DAYS": "7",
+		"STREAM_WARNING_MINUTES": "10",
+		"TEST_STREAM_MINUTES": "3",
+		"TEST_UNUSED_EXPIRY_MINUTES": "15",
+		"TEST_VIEWER_LIMIT": "3",
+		"TEST_STREAMS_PER_EMAIL_PER_DAY": "2",
+		"TEST_USE_INVENTORY": "false",
+		"DELETE_IVS_ON_EXPIRE": "true",
 		"HLS_ADDON_NZD": "0",
-		"WEBRTC_ADDON_NZD": "4000",
-		"BOTH_ADDON_NZD": "6500",
-		"IVS_PROXY_BASE": "https://ivs-proxy.fly.dev",
-		"IVS_PROXY_SECRET": "kbfkksaljdf773bhjwid9oanfjje9365ehjf"
+		"WEBRTC_ADDON_NZD": "50",
+		"BOTH_ADDON_NZD": "70",
+		"HLS_INCLUDED_VIEWER_HOURS_1H": "50",
+		"HLS_INCLUDED_VIEWER_HOURS_STANDARD": "150",
+		"HLS_INCLUDED_VIEWER_HOURS_EXTENDED": "250",
+		"WEBRTC_INCLUDED_PARTICIPANT_HOURS_1H": "25",
+		"WEBRTC_INCLUDED_PARTICIPANT_HOURS_STANDARD": "25",
+		"WEBRTC_INCLUDED_PARTICIPANT_HOURS_2H": "80",
+		"BOTH_INCLUDED_HLS_VIEWER_HOURS_STANDARD": "150",
+		"BOTH_INCLUDED_HLS_VIEWER_HOURS_EXTENDED": "300",
+		"BOTH_INCLUDED_RTC_PARTICIPANT_HOURS_STANDARD": "50",
+		"BOTH_INCLUDED_RTC_PARTICIPANT_HOURS_EXTENDED": "120",
+		"HLS_OVERAGE_VIEWER_HOUR_NZD": "0",
+		"WEBRTC_OVERAGE_PARTICIPANT_HOUR_NZD": "0",
+		"EXTRA_STREAM_MINUTE_NZD": "0",
+		"EXTENSION_1H_PRICE_NZD": "49",
+		"VIEWER_UPGRADE_100_NZD": "39",
+		"VIEWER_UPGRADE_250_NZD": "79",
+		"VIEWER_UPGRADE_500_NZD": "149",
+		"VIEWER_CAP_WARNING_PERCENT": "90",
+		"INVENTORY_MIN_HLS": "3",
+		"INVENTORY_MIN_RTC": "3",
+		"INVENTORY_MIN_BOTH": "1",
+		"INVENTORY_MAX_HLS": "3",
+		"INVENTORY_MAX_RTC": "3",
+		"INVENTORY_MAX_BOTH": "1",
+		"INVENTORY_FILL_MAX": "2",
+		"INVENTORY_FILL_BACKOFF_MINUTES": "30",
+		"INVENTORY_AUTOFILL_ENABLED": "true",
+		"HLS_PRESTART_COMPOSITION": "false",
+		"IVS_PROXY_BASE": "https://ivs-proxy.fly.dev"
 	},
 	"hyperdrive": [
 		{
@@ -45,5 +91,17 @@
 		"crons": [
 			"*/5 * * * *"
 		]
-	}
+	},
+	"migrations": [
+		{
+			"tag": "v1",
+			"new_sqlite_classes": [
+				"SeatsDO",
+				"BroadcastLockDO"
+			]
+		},
+		{
+			"tag": "v2"
+		}
+	]
 }

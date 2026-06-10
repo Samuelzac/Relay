@@ -1,0 +1,28 @@
+node_modules/
+/api/node_modules/
+.wrangler/
+/api/.wrangler/
+.dev.vars
+*.log
+
+# Local scratch files that appeared during setup/manual commands.
+/cd
+/flags
+/wrangler
+/git
+/FETCH_HEAD
+/api/cd
+/api/curl
+/api/wrangler
+
+# Historical Worker snapshots kept out of normal commits.
+/api/src/index_old.ts
+/api/src/oldindex.ts
+/api/src/workingindex.ts
+
+# Generated local stream fixtures.
+/api/public/streams/*.json
+/api/public/streams/rtc/*.json
+
+# Generated QA screenshots/previews.
+/visual-previews/

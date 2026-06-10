@@ -55,13 +55,14 @@
     <div id="brand" class="brand"></div>
   </div>
 
+<script src="/assets/relay-config.js"></script>
 <script>
-  const API = "https://YOUR-WORKER-DOMAIN";
-  const HOME_URL = "https://YOUR-PAGES-DOMAIN";
-  const BRAND_NAME = "your platform";
+  const HOME_URL = location.origin;
+  const BRAND_NAME = window.RelayConfig.brandName;
 
   const parts = location.pathname.split("/").filter(Boolean);
   const eventId = parts[1]; // /ended/:eventId
+  const key = new URLSearchParams(location.search).get("key") || "";
 
   const titleEl = document.getElementById("title");
   const detailEl = document.getElementById("detail");
@@ -70,25 +71,12 @@
   const refreshBtn = document.getElementById("refreshBtn");
   const brandEl = document.getElementById("brand");
 
-  watchLink.href = `/watch/${eventId}`;
+  watchLink.href = eventId ? `/watch?event=${encodeURIComponent(eventId)}${key ? `&key=${encodeURIComponent(key)}` : ""}` : "/watch";
   homeLink.href = HOME_URL;
   brandEl.textContent = `Powered by ${BRAND_NAME}`;
 
   async function loadMeta() {
-    if (!eventId) return;
-
-    const res = await fetch(`${API}/api/events/${eventId}`);
-    const meta = await res.json().catch(()=> ({}));
-
-    if (res.ok && meta.title) titleEl.textContent = meta.title;
-
-    if (res.ok) {
-      if (!meta.expired && meta.playback_url) { location.href = `/watch/${eventId}`; return; }
-      if (!meta.expired && !meta.playback_url) { location.href = `/watch/${eventId}`; return; }
-      detailEl.textContent = meta.expired ? "This event has reached its time limit." : "This stream is currently unavailable.";
-    } else {
-      detailEl.textContent = meta.error || "Could not load event details.";
-    }
+    if (eventId) detailEl.textContent = "This event may have reached its time limit. You can refresh or return to the watch page.";
   }
 
   refreshBtn.onclick = loadMeta;

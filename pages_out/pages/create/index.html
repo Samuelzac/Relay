@@ -3,68 +3,172 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Relay — Create Event</title>
+  <title>Castlink - Create Event</title>
   <style>
-    html,body{margin:0;padding:0;background:#000;color:#fff;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
-    .wrap{max-width:760px;margin:0 auto;padding:16px}
-    .card{margin-top:12px;padding:14px;border-radius:12px;background:rgba(255,255,255,.08)}
-    label{display:block;margin-top:10px;opacity:.9}
-    input,select{width:100%;padding:12px;border-radius:10px;border:0;margin-top:8px;font-size:16px}
-    button{margin-top:14px;padding:12px 16px;border-radius:10px;border:0;background:#1976d2;color:#fff;font-size:16px;cursor:pointer;width:100%}
+    :root{color-scheme:dark;--bg:#080a0d;--panel:#10141b;--panel2:#151b24;--panel3:#0c1118;--text:#f8fafc;--muted:#a8b3c3;--border:#263140;--accent:#e5e7eb;--accentText:#0b0f14;--blue:#93c5fd;--good:#34d399;--bad:#fb7185}
+    *{box-sizing:border-box}
+    html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+    body{min-height:100svh}
+    .wrap{max-width:1120px;margin:0 auto;padding:22px}
+    .top{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:28px}
+    .brand{font-weight:850;display:flex;align-items:center;gap:9px}
+    .brand:before{content:"";width:9px;height:9px;border-radius:999px;background:var(--blue);box-shadow:0 0 24px rgba(147,197,253,.9)}
+    .back{color:var(--muted);text-decoration:none;font-size:14px}
+    .layout{display:grid;gap:14px;grid-template-columns:1fr}
+    @media(min-width:900px){.layout{grid-template-columns:minmax(0,1.03fr) 430px;align-items:start;gap:24px} .checkout{position:sticky;top:18px}}
+    h1{font-size:42px;line-height:1.03;margin:0 0 12px;letter-spacing:0}
+    p{margin:0;color:var(--muted)}
+    .hero-copy{max-width:660px}
+    .lead{font-size:17px;line-height:1.55}
+    .card{padding:18px;border-radius:8px;background:var(--panel);border:1px solid var(--border)}
+    label{display:block;margin-top:12px;color:var(--muted);font-size:13px}
+    input,select,textarea{width:100%;min-height:46px;padding:11px 12px;border-radius:8px;border:1px solid var(--border);background:#0b1118;color:var(--text);margin-top:7px;font-size:16px}
+    textarea{min-height:92px;resize:vertical;line-height:1.4}
+    input[type="radio"],input[type="checkbox"]{width:auto;min-height:auto;margin:0;accent-color:var(--blue)}
+    button{margin-top:14px;min-height:50px;padding:12px 16px;border-radius:8px;border:0;background:var(--accent);color:var(--accentText);font-size:16px;font-weight:800;cursor:pointer;width:100%}
     button:disabled{opacity:.65;cursor:not-allowed}
-    .muted{opacity:.82;font-size:13px}
-    .bad{color:#ff8a80}
-    .row{display:flex;gap:10px;flex-wrap:wrap}
-    .pill{display:inline-flex;align-items:center;gap:8px;padding:10px 12px;border-radius:999px;background:rgba(255,255,255,.10);cursor:pointer;user-select:none}
-    .pill input{width:auto;margin:0}
-    .price{font-size:22px;font-weight:700;margin-top:10px}
-    .tiny{font-size:12px;opacity:.8}
+    .muted{color:var(--muted);font-size:13px}
+    .bad{color:var(--bad)}
+    .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+    .mode-grid{display:grid;gap:10px;margin-top:8px}
+    @media(min-width:520px){.mode-grid{grid-template-columns:repeat(3,1fr)}}
+    .pill{display:grid;gap:6px;min-height:94px;padding:12px;border-radius:8px;background:var(--panel2);border:1px solid var(--border);cursor:pointer;user-select:none;color:var(--text)}
+    .pill-head{display:flex;align-items:center;gap:8px;font-weight:800}
+    .pill span:last-child{color:var(--muted);font-size:12px;line-height:1.35}
+    .inline-check{display:flex;align-items:center;gap:9px;padding:12px;border-radius:8px;background:var(--panel3);border:1px solid var(--border);color:var(--text)}
+    .price{font-size:34px;font-weight:850;margin-top:14px;letter-spacing:0}
+    .tiny{font-size:12px;color:var(--muted)}
+    .steps{display:grid;gap:10px;margin-top:18px}
+    .step{padding:14px;border-radius:8px;background:var(--panel2);border:1px solid var(--border)}
+    .step strong{display:block;margin-bottom:4px}
+    .packages{display:grid;gap:10px;margin-top:18px}
+    @media(min-width:680px){.packages{grid-template-columns:repeat(3,1fr)}}
+    .package{padding:14px;border:1px solid var(--border);border-radius:8px;background:linear-gradient(180deg,var(--panel2),var(--panel3))}
+    .package strong{display:block;margin-bottom:8px}
+    .package .money{font-size:22px;font-weight:850;margin-bottom:6px}
+    .summary{margin-top:14px;display:grid;gap:9px;padding:14px;border-radius:8px;background:var(--panel3);border:1px solid var(--border)}
+    .summary-row{display:flex;justify-content:space-between;gap:12px;color:var(--muted);font-size:13px}
+    .summary-row strong{color:var(--text)}
+    .secure{display:flex;gap:8px;align-items:flex-start;margin-top:12px;color:var(--muted);font-size:12px;line-height:1.45}
+    .secure:before{content:"";width:8px;height:8px;border-radius:999px;background:var(--good);margin-top:5px;box-shadow:0 0 16px rgba(52,211,153,.55);flex:0 0 auto}
+    .test-card{margin-top:18px;border-color:rgba(147,197,253,.42);background:linear-gradient(180deg,#111b2a,var(--panel3))}
+    .test-card h2{margin:0 0 8px;font-size:20px}
+    .test-actions{display:grid;gap:10px;margin-top:12px}
+    @media(min-width:560px){.test-actions{grid-template-columns:1fr 1fr}}
+    .checkout h2{margin:0 0 2px;font-size:18px}
+    .checkout-sub{margin-bottom:12px}
+    @media(max-width:520px){.wrap{padding:20px} h1{font-size:31px}.price{font-size:29px}}
   </style>
 </head>
 <body>
   <div class="wrap">
-    <h2>Create a live event</h2>
-    <div class="card">
+    <div class="top">
+      <div class="brand">Castlink</div>
+      <div class="row">
+        <a class="back" href="/faq">FAQ</a>
+        <a class="back" href="/support">Support</a>
+        <a class="back" href="/">Back home</a>
+      </div>
+    </div>
+
+    <div class="layout">
+    <section class="hero-copy">
+      <h1>Create a private live event</h1>
+      <p class="lead">Pay once, get private host and viewer links, then go live from a browser or OBS. Castlink prepares the stream path after checkout so your event can start cleanly.</p>
+      <div class="steps">
+        <div class="step"><strong>Ready links after payment</strong><span class="muted">Castlink assigns prepared streaming resources when available.</span></div>
+        <div class="step"><strong>No viewer accounts</strong><span class="muted">Guests use the private watch link you share.</span></div>
+        <div class="step"><strong>Choose delivery</strong><span class="muted">Use real-time WebRTC, HLS playback, or both. Current streams target 720p HD at up to 30fps.</span></div>
+      </div>
+      <div class="packages">
+        <div class="package"><strong>HLS</strong><div class="money">From $59</div><div class="muted">Private playback, 720p HD target, short delay.</div></div>
+        <div class="package"><strong>WebRTC</strong><div class="money">From $79</div><div class="muted">Low latency, 720p HD target, best for smaller live sessions.</div></div>
+        <div class="package"><strong>Both</strong><div class="money">From $199</div><div class="muted">WebRTC + HLS, 720p HD target, flexible broadcast setup.</div></div>
+      </div>
+      <div id="test" class="card test-card">
+        <h2>Try a free 3-minute test</h2>
+        <p>Get real broadcast and watch links without checkout. Test streams target the same 720p HD quality and are limited to 3 minutes and a small number of viewers.</p>
+        <div class="test-actions">
+          <label>Email
+            <input id="testEmail" type="email" placeholder="you@example.com" />
+          </label>
+          <label>Delivery
+            <select id="testMode">
+              <option value="rtc">WebRTC</option>
+              <option value="hls">HLS</option>
+              <option value="both">Both</option>
+            </select>
+          </label>
+        </div>
+        <button id="testBtn" type="button">Create Test Stream</button>
+        <div id="testMsg" class="muted"></div>
+      </div>
+    </section>
+
+    <section class="card checkout">
+      <h2>Checkout details</h2>
+      <p class="checkout-sub">Choose the event package. Stripe shows the final amount before payment.</p>
+
       <label>Email</label>
       <input id="email" type="email" placeholder="you@example.com" />
 
       <label>Title</label>
       <input id="title" type="text" placeholder="My live stream" />
 
+      <label>Viewer invite emails <span class="tiny">(optional)</span></label>
+      <textarea id="viewerEmails" placeholder="guest@example.com, another@example.com"></textarea>
+      <div class="tiny">After payment, these recipients receive the private watch link only.</div>
+
       <label>Duration</label>
       <select id="tier">
-        <option value="3">Standard (3 hours)</option>
-        <option value="8">Extended (8 hours)</option>
+        <option value="3">3 hours</option>
       </select>
 
       <label>Delivery (choose one)</label>
-      <div class="row" style="margin-top:8px;">
+      <div class="mode-grid">
         <!-- Keep UI labels, but values map cleanly to backend modes -->
-        <label class="pill"><input type="radio" name="mode" value="rtc" checked /> WebRTC (real-time)</label>
-        <label class="pill"><input type="radio" name="mode" value="hls" /> HLS (few sec delay)</label>
-        <label class="pill"><input type="radio" name="mode" value="both" /> Both</label>
+        <label class="pill"><span class="pill-head"><input type="radio" name="mode" value="rtc" checked /> WebRTC</span><span>Low latency, 720p HD target.</span></label>
+        <label class="pill"><span class="pill-head"><input type="radio" name="mode" value="hls" /> HLS</span><span>Private playback, 720p HD target, short delay.</span></label>
+        <label class="pill"><span class="pill-head"><input type="radio" name="mode" value="both" /> Both</span><span>WebRTC + HLS, 720p HD target.</span></label>
       </div>
 
-      <label style="margin-top:12px;"><input id="wl" type="checkbox" /> White-label (hide footer)</label>
+      <label class="inline-check" style="margin-top:12px;"><input id="wl" type="checkbox" /> White-label watch page footer</label>
 
-      <div id="price" class="price">$—</div>
-      <div id="priceNote" class="tiny">Pricing loads from the API (so you can change prices without redeploying Pages).</div>
+      <div id="price" class="price">Loading price</div>
+      <div id="priceNote" class="tiny">Pricing loads securely from Castlink.</div>
+      <div class="summary">
+        <div class="summary-row"><span>Delivery</span><strong id="summaryMode">WebRTC</strong></div>
+        <div class="summary-row"><span>Duration</span><strong id="summaryDuration">3 hours</strong></div>
+        <div class="summary-row"><span>Extension</span><strong>Optional +1 hour</strong></div>
+      </div>
 
       <button id="go" type="button">Pay & Create</button>
       <div id="msg" class="muted"></div>
+      <div class="secure">After payment, the host receives browser broadcast, OBS setup, watch link, and renewal details by email.</div>
+    </section>
     </div>
   </div>
 
+<script src="/assets/relay-config.js"></script>
 <script>
-  const API_BASE = "https://stream-platform-api.kiwismurph.workers.dev";
+  const API_BASE = window.RelayConfig.apiBase;
   const msg = document.getElementById("msg");
   const goBtn = document.getElementById("go");
   const priceEl = document.getElementById("price");
   const priceNoteEl = document.getElementById("priceNote");
+  const summaryModeEl = document.getElementById("summaryMode");
+  const summaryDurationEl = document.getElementById("summaryDuration");
+  const testBtn = document.getElementById("testBtn");
+  const testMsg = document.getElementById("testMsg");
 
   function setMsg(html, cls="") {
     msg.className = `muted ${cls}`.trim();
     msg.innerHTML = html;
+  }
+
+  function setTestMsg(html, cls="") {
+    testMsg.className = `muted ${cls}`.trim();
+    testMsg.innerHTML = html;
   }
 
   function getMode() {
@@ -73,6 +177,11 @@
   }
 
   let pricing = null;
+  const tierNames = {
+    hls: { "1": "Starter", "3": "Standard", "8": "Extended" },
+    rtc: { "1": "Starter", "2": "Standard" },
+    both: { "3": "Standard", "8": "Extended" },
+  };
 
   async function loadPricing() {
     try {
@@ -82,6 +191,7 @@
     } catch (e) {
       // ignore
     }
+    renderTierOptions();
     updatePriceUI();
   }
 
@@ -91,50 +201,75 @@
   }
 
   function calcPriceCentsIfAvailable() {
-    // Your current Worker /api/pricing returns only hours, not prices.
-    // If you later add price fields, this will start working automatically.
     if (!pricing) return null;
 
     const tier = String(document.getElementById("tier").value);
     const mode = getMode();
 
-    const base = pricing?.tiers?.[tier]?.base_nzd;
-    const addons = pricing?.addons;
-    if (typeof base !== "number" || !addons) return null;
+    const price = pricing?.tiers?.[mode]?.[tier]?.price_nzd;
+    return typeof price === "number" ? price : null;
+  }
 
-    let add = 0;
-    if (mode === "hls") add = addons.hls_nzd;
-    else if (mode === "rtc") add = addons.webrtc_nzd ?? addons.rtc_nzd; // tolerate naming
-    else if (mode === "both") add = addons.both_nzd;
+  function includedText() {
+    if (!pricing) return "";
+    const tier = String(document.getElementById("tier").value);
+    const mode = getMode();
+    const plan = pricing?.tiers?.[mode]?.[tier];
+    const inc = plan?.included || {};
+    const parts = [];
+    if (inc.hls_viewer_hours) parts.push(`${inc.hls_viewer_hours} viewer-hours`);
+    if (inc.rtc_participant_hours) parts.push(`${inc.rtc_participant_hours} participant-hours`);
+    return parts.length ? `Includes ${parts.join(" + ")}.` : "";
+  }
 
-    if (typeof add !== "number") return null;
+  function renderTierOptions() {
+    const select = document.getElementById("tier");
+    const mode = getMode();
+    const current = select.value;
+    const modeTiers = pricing?.tiers?.[mode] || {};
+    const entries = Object.entries(modeTiers);
+    if (!entries.length) return;
 
-    return base + add;
+    select.innerHTML = entries.map(([tier, plan]) => {
+      const name = tierNames[mode]?.[tier] || `${tier}h`;
+      return `<option value="${tier}">${name} (${plan.hours} hour${plan.hours === 1 ? "" : "s"})</option>`;
+    }).join("");
+
+    if (modeTiers[current]) select.value = current;
   }
 
   function updatePriceUI() {
     const totalCents = calcPriceCentsIfAvailable();
+    const tier = String(document.getElementById("tier").value || "3");
+    const mode = getMode();
+    const modeLabels = { rtc: "WebRTC", hls: "HLS", both: "HLS + WebRTC" };
+    summaryModeEl.textContent = modeLabels[mode] || mode;
+    summaryDurationEl.textContent = `${tier} hour${Number(tier) === 1 ? "" : "s"}`;
     if (totalCents === null) {
       priceEl.textContent = "Calculated at checkout";
-      priceNoteEl.textContent = "Prices come from the Worker. If pricing isn't exposed, checkout will show the final amount.";
+      priceNoteEl.textContent = "Checkout will show the final amount before payment.";
       return;
     }
     priceEl.textContent = `$${nzdCentsToDollars(totalCents)} NZD`;
-    priceNoteEl.textContent = "Pricing loads from the API (so you can change prices without redeploying Pages).";
+    priceNoteEl.textContent = [includedText(), "No automatic overage charges. Hosts can add 1 hour before the stream expires."].filter(Boolean).join(" ");
   }
 
   document.getElementById("tier").addEventListener("change", updatePriceUI);
-  document.querySelectorAll('input[name="mode"]').forEach(r => r.addEventListener("change", updatePriceUI));
+  document.querySelectorAll('input[name="mode"]').forEach(r => r.addEventListener("change", () => {
+    renderTierOptions();
+    updatePriceUI();
+  }));
 
   goBtn.addEventListener("click", async () => {
     goBtn.disabled = true;
-    setMsg("Creating checkout…");
+    setMsg("Creating checkout...");
 
     const email = document.getElementById("email").value.trim();
     const title = document.getElementById("title").value.trim();
     const tier = Number(document.getElementById("tier").value);
     const mode = getMode(); // "rtc" | "hls" | "both"
     const white_label = document.getElementById("wl").checked;
+    const viewer_emails = document.getElementById("viewerEmails").value.trim();
 
     if (!email || !title) {
       setMsg('<span class="bad">Email + title are required.</span>');
@@ -142,7 +277,7 @@
       return;
     }
 
-    const body = { email, title, tier, white_label, mode };
+    const body = { email, title, tier, white_label, mode, viewer_emails };
 
     let res, text, j;
     try {
@@ -174,6 +309,39 @@
     }
 
     location.href = checkoutUrl;
+  });
+
+  testBtn.addEventListener("click", async () => {
+    testBtn.disabled = true;
+    setTestMsg("Creating test stream...");
+
+    const paidEmail = document.getElementById("email").value.trim();
+    const email = document.getElementById("testEmail").value.trim() || paidEmail;
+    const title = document.getElementById("title").value.trim() || "Castlink test stream";
+    const mode = document.getElementById("testMode").value || "rtc";
+
+    if (!email) {
+      setTestMsg('<span class="bad">Email is required for test links.</span>');
+      testBtn.disabled = false;
+      return;
+    }
+
+    try {
+      const res = await fetch(`${API_BASE}/api/test-events`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, title, mode })
+      });
+      const text = await res.text();
+      let j = null;
+      try { j = text ? JSON.parse(text) : null; } catch {}
+      if (!res.ok) throw new Error((j && (j.error || j.message)) || text || `HTTP ${res.status}`);
+      if (!j?.success_url) throw new Error("Missing test success URL.");
+      location.href = j.success_url;
+    } catch (e) {
+      setTestMsg(`<span class="bad">${e.message || "Could not create test stream."}</span>`);
+      testBtn.disabled = false;
+    }
   });
 
   loadPricing();

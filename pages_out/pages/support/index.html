@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Castlink Support</title>
+  <style>
+    :root{color-scheme:dark;--bg:#080a0d;--panel:#10141b;--panel2:#151b24;--text:#f8fafc;--muted:#a8b3c3;--border:#263140;--accent:#e5e7eb;--accentText:#0b0f14}
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;line-height:1.55}
+    .wrap{max-width:940px;margin:0 auto;padding:22px}
+    header{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:18px}
+    .brand{font-weight:850}
+    nav{display:flex;gap:12px;flex-wrap:wrap}
+    a{color:#dbeafe;text-decoration:none}
+    a:hover{text-decoration:underline}
+    h1{font-size:34px;line-height:1.1;margin:18px 0 8px}
+    h2{font-size:18px;margin:0 0 8px}
+    p{color:var(--muted);margin:0 0 12px}
+    .grid{display:grid;gap:12px;grid-template-columns:1fr}
+    @media(min-width:760px){.grid.two{grid-template-columns:1fr 1fr}}
+    .card{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:16px}
+    .callout{background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:14px;margin:14px 0}
+    .btn{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:10px 14px;border-radius:8px;background:var(--accent);color:var(--accentText);font-weight:800;text-decoration:none}
+    .btn:hover{text-decoration:none}
+    ul{margin:8px 0 0;padding-left:20px;color:var(--muted)}
+    li{margin:6px 0}
+    code{color:#dbeafe}
+    .footer{margin-top:18px;color:var(--muted);font-size:13px;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <a class="brand" href="/">Castlink</a>
+      <nav>
+        <a href="/create">Create</a>
+        <a href="/faq">FAQ</a>
+        <a href="/terms">Terms</a>
+        <a href="/privacy">Privacy</a>
+      </nav>
+    </header>
+
+    <h1>Support</h1>
+    <p>For event help, billing questions, OBS setup, or account issues, email Castlink support.</p>
+
+    <div class="callout">
+      <h2>Email support</h2>
+      <p><a class="btn" href="mailto:support@castlink.stream">support@castlink.stream</a></p>
+      <p>For live-event issues, include the event title, event link, device/browser, approximate time, and what you were trying to do.</p>
+    </div>
+
+    <div class="grid two">
+      <section class="card">
+        <h2>Live event help</h2>
+        <ul>
+          <li>Send the broadcast or watch link if you have it.</li>
+          <li>Tell us whether the issue is camera, audio, OBS, playback, payment, or access.</li>
+          <li>Include your device, browser, and internet connection if relevant.</li>
+        </ul>
+      </section>
+
+      <section class="card">
+        <h2>Billing and extensions</h2>
+        <ul>
+          <li>Include the event title and checkout email.</li>
+          <li>For more time, use the <b>Buy +1 hour</b> link from the broadcast page or ending-soon email.</li>
+          <li>Refunds are reviewed case by case under the Terms.</li>
+        </ul>
+      </section>
+
+      <section class="card">
+        <h2>OBS setup</h2>
+        <ul>
+          <li>Open the broadcast link and choose <b>OBS Token</b>.</li>
+          <li>Copy the WHIP server URL and bearer token exactly.</li>
+          <li>Never share the broadcast link or OBS bearer token publicly.</li>
+        </ul>
+      </section>
+
+      <section class="card">
+        <h2>Report a stream</h2>
+        <ul>
+          <li>Viewers can use the <b>Report</b> button on the watch page.</li>
+          <li>Reports include event metadata and are sent to Castlink moderation.</li>
+          <li>For urgent safety issues, also email <a href="mailto:support@castlink.stream">support@castlink.stream</a>.</li>
+        </ul>
+      </section>
+    </div>
+
+    <div class="callout">
+      <h2>Quick troubleshooting</h2>
+      <p>Most camera/audio/playback issues are covered in the FAQ.</p>
+      <a class="btn" href="/faq">Open FAQ</a>
+    </div>
+
+    <div class="footer">
+      <div>Castlink support</div>
+      <div><a href="/faq">FAQ</a> · <a href="/terms">Terms</a> · <a href="/privacy">Privacy</a></div>
+    </div>
+  </div>
+</body>
+</html>
