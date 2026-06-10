@@ -1,8 +1,0 @@
-{
-  "participantToken": "....",
-  "expiresAt": "...",
-  "obs": {
-    "whipUrl": "https://global.whip.live-video.net",
-    "bearerToken": "same participantToken"
-  }
-}
