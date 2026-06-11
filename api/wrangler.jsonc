@@ -7,7 +7,9 @@
 	],
 	"vars": {
 		"APP_ORIGIN": "https://castlink.stream",
+		"API_ORIGIN": "https://api.castlink.stream",
 		"BRAND_NAME": "Castlink",
+		"STREAM_WARNING_CRON_INTERVAL_MINUTES": "5",
 		"EMAIL_PROVIDER": "postmark",
 		"EMAIL_FROM": "Castlink <support@castlink.stream>",
 		"REPORT_ALERT_EMAIL": "support@castlink.stream",

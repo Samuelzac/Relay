@@ -218,6 +218,14 @@ function eventLinks(env: Env, ev: any) {
   };
 }
 
+function apiOrigin(env: Env) {
+  return String(env.API_ORIGIN || "https://api.castlink.stream").replace(/\/+$/, "");
+}
+
+function extensionCheckoutUrl(env: Env, ev: any) {
+  return `${apiOrigin(env)}/api/events/${encodeURIComponent(ev.id)}/extend/checkout?key=${encodeURIComponent(ev.broadcast_key)}`;
+}
+
 function normalizeEmailList(value: any) {
   const source = Array.isArray(value) ? value.join(",") : String(value || "");
   const seen = new Set<string>();
@@ -772,6 +780,12 @@ function extensionOneHourPrice(env: Env) {
   return Number(env.EXTENSION_1H_PRICE_NZD ?? 49);
 }
 
+function streamWarningLeadMinutes(env: Env) {
+  const target = streamWarningMinutes(env);
+  const interval = Math.max(1, Number(env.STREAM_WARNING_CRON_INTERVAL_MINUTES ?? 5));
+  return target + interval;
+}
+
 function viewerUpgradePrice(env: Env, amount: number) {
   const key = `VIEWER_UPGRADE_${amount}_NZD`;
   return Number(env[key] ?? (amount === 100 ? 39 : amount === 250 ? 79 : amount === 500 ? 149 : 0));
@@ -894,6 +908,8 @@ async function sendEventReadyEmail(env: Env, ev: any) {
   if (!ev?.email) return { skipped: true };
   const brand = appName(env);
   const { watchUrl, broadcastUrl } = eventLinks(env, ev);
+  const extendUrl = extensionCheckoutUrl(env, ev);
+  const extensionPrice = extensionOneHourPrice(env);
   const test = isTestEvent(ev);
   const minutes = testStreamMinutes(env);
   const startDays = paidUnusedExpiryDays(env);
@@ -915,7 +931,7 @@ async function sendEventReadyEmail(env: Env, ev: any) {
     "2. Allow camera and microphone, or choose OBS Token for OBS/WHIP setup.",
     "3. Share the watch link with viewers only.",
     "",
-    test ? "Free tests cannot be extended. Create a paid event when you are ready to stream for real." : "If you need more time near the end, use Buy +1 hour from the broadcast page or the warning email.",
+    test ? "Free tests cannot be extended. Create a paid event when you are ready to stream for real." : `Need more time later? Buy another hour (${formatNzMoney(extensionPrice)}): ${extendUrl}`,
   ].join("\n");
   const html = emailShell(brand, test ? "Your test stream is ready" : "Your live stream links are ready", `
       <p style="margin:0 0 12px"><b>Event:</b> ${htmlEscape(ev.title || "Untitled event")}</p>
@@ -924,9 +940,11 @@ async function sendEventReadyEmail(env: Env, ev: any) {
       <p style="margin:0 0 18px;color:#6b7280;font-size:13px">Use this on the host device. It includes browser broadcasting and OBS token setup.</p>
       <p style="margin:18px 0 8px">${emailButton("Open watch page", watchUrl)}</p>
       <p style="margin:0 0 18px;color:#6b7280;font-size:13px">Share this link with viewers.</p>
+      ${test ? "" : `<p style="margin:18px 0 8px">${emailButton(`Buy another hour (${formatNzMoney(extensionPrice)})`, extendUrl)}</p>
+      <p style="margin:0 0 18px;color:#6b7280;font-size:13px">You can extend this stream any time before it expires. Payment adds one hour to the same broadcast and watch links.</p>`}
       <div style="background:#f3f4f6;border:1px solid #e5e7eb;border-radius:6px;padding:12px;margin-top:16px">
         <p style="margin:0 0 8px"><b>OBS:</b> open the broadcast page, choose OBS Token, then copy the WHIP server and bearer token into OBS.</p>
-        <p style="margin:0">${test ? "Free tests cannot be extended. Create a paid event when you are ready to stream for real." : "If you need more time near the end, use Buy +1 hour from the broadcast page or the warning email."}</p>
+        <p style="margin:0">${test ? "Free tests cannot be extended. Create a paid event when you are ready to stream for real." : "If you need more time, use the extension payment link above before the event expires."}</p>
       </div>
       <p style="margin:18px 0 0;color:#6b7280;font-size:12px">Buttons above contain the private access links. Keep the broadcast button private and share only the watch button with viewers.</p>
   `);
@@ -1090,7 +1108,7 @@ async function sendStreamWarningEmail(env: Env, ev: any) {
   const { watchUrl, broadcastUrl } = eventLinks(env, ev);
   const minutes = streamWarningMinutes(env);
   const price = extensionOneHourPrice(env);
-  const extendUrl = `${broadcastUrl}&extend=1`;
+  const extendUrl = extensionCheckoutUrl(env, ev);
   const expires = ev.expires_at || "soon";
   const subject = `${brand}: your stream ends in about ${minutes} minutes`;
   const text = [
@@ -2326,7 +2344,7 @@ async function handleScheduled(_event: ScheduledEvent, env: any, _ctx: Execution
     const releasedReservations = await releaseAbandonedInventoryReservations(client);
     if (releasedReservations.slots) console.log("released abandoned inventory reservations", JSON.stringify(releasedReservations));
 
-    const warningMinutes = streamWarningMinutes(env);
+    const warningLeadMinutes = streamWarningLeadMinutes(env);
     const { rows: warningRows } = await client.query(
       `
       select
@@ -2348,7 +2366,7 @@ async function handleScheduled(_event: ScheduledEvent, env: any, _ctx: Execution
       order by expires_at asc
       limit 20
     `,
-      [warningMinutes]
+      [warningLeadMinutes]
     );
     for (const ev of warningRows) {
       try {
@@ -3242,7 +3260,7 @@ export default {
 
       {
         const m = match(pathname, /^\/api\/events\/([^\/]+)\/extend\/checkout$/);
-        if (method === "POST" && m) {
+        if ((method === "POST" || method === "GET") && m) {
           const eventId = m[0];
           const key = url.searchParams.get("key") || "";
 
@@ -3258,8 +3276,8 @@ export default {
             if (isDisabled(ev)) return json(env, { error: "disabled" }, 403);
 
             const price = extensionOneHourPrice(env);
-            const successUrl = `${env.APP_ORIGIN}/broadcast?event=${encodeURIComponent(eventId)}&key=${encodeURIComponent(key)}&extended=1`;
-            const cancelUrl = `${env.APP_ORIGIN}/broadcast?event=${encodeURIComponent(eventId)}&key=${encodeURIComponent(key)}&extend_cancelled=1`;
+            const successUrl = `${env.APP_ORIGIN}/broadcast/?event=${encodeURIComponent(eventId)}&key=${encodeURIComponent(key)}&extended=1`;
+            const cancelUrl = `${env.APP_ORIGIN}/broadcast/?event=${encodeURIComponent(eventId)}&key=${encodeURIComponent(key)}&extend_cancelled=1`;
             const stripe = stripeClient(env);
             const session = await stripe.checkout.sessions.create({
               mode: "payment",
@@ -3283,6 +3301,7 @@ export default {
               },
             });
 
+            if (method === "GET") return Response.redirect(session.url || cancelUrl, 303);
             return json(env, { ok: true, url: session.url, eventId, minutes: 60 }, 200);
           } finally {
             await client.end();
@@ -3314,8 +3333,8 @@ export default {
             if (price <= 0) return json(env, { error: "viewer_upgrade_not_configured" }, 500);
 
             const stripe = stripeClient(env);
-            const successUrl = `${env.APP_ORIGIN}/broadcast?event=${encodeURIComponent(eventId)}&key=${encodeURIComponent(key)}&viewer_upgraded=1`;
-            const cancelUrl = `${env.APP_ORIGIN}/broadcast?event=${encodeURIComponent(eventId)}&key=${encodeURIComponent(key)}&viewer_upgrade_cancelled=1`;
+            const successUrl = `${env.APP_ORIGIN}/broadcast/?event=${encodeURIComponent(eventId)}&key=${encodeURIComponent(key)}&viewer_upgraded=1`;
+            const cancelUrl = `${env.APP_ORIGIN}/broadcast/?event=${encodeURIComponent(eventId)}&key=${encodeURIComponent(key)}&viewer_upgrade_cancelled=1`;
             const session = await stripe.checkout.sessions.create({
               mode: "payment",
               customer_email: ev.email,
