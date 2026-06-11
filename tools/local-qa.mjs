@@ -21,6 +21,8 @@ const htmlFiles = [
 const requiredFiles = [
   "assets/relay-config.js",
   "_redirects",
+  "robots.txt",
+  "sitemap.xml",
   ...htmlFiles,
 ];
 
@@ -75,7 +77,7 @@ for (const rel of htmlFiles) {
   const full = path.join(pagesRoot, rel);
   if (!fs.existsSync(full)) continue;
   const html = readRel(rel);
-  const inlineScripts = [...html.matchAll(/<script(?![^>]*src)[^>]*>([\s\S]*?)<\/script>/gi)].map((m) => m[1]);
+  const inlineScripts = [...html.matchAll(/<script(?![^>]*src)(?![^>]*type=["']application\/ld\+json["'])[^>]*>([\s\S]*?)<\/script>/gi)].map((m) => m[1]);
   try {
     for (const code of inlineScripts) new Function(code);
     pass(`inline scripts parse: ${rel}`, `${inlineScripts.length} script(s)`);

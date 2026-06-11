@@ -1,0 +1,9 @@
+User-agent: *
+Allow: /
+Disallow: /admin/
+Disallow: /broadcast/
+Disallow: /watch/
+Disallow: /success/
+Disallow: /ended/
+
+Sitemap: https://castlink.stream/sitemap.xml
