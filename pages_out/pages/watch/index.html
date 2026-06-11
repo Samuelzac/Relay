@@ -31,6 +31,7 @@
     .topbar-right{
       display:flex; gap:10px; align-items:center; flex-wrap:wrap; justify-content:flex-end;
     }
+    #modePill,#readyPill{display:none}
     main { padding:0; margin:0; }
     .card { border:1px solid #20232a; border-radius:14px; padding:12px; background:#0f1117; }
     .watch-layout{display:block}
@@ -42,6 +43,7 @@
     .idle-panel p{margin:0;color:#a8b3c3;line-height:1.55}
     .controls-card{position:fixed;left:50%;bottom:calc(14px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:12;width:auto;max-width:calc(100vw - 28px);background:rgba(10,12,18,.74);backdrop-filter:blur(16px);box-shadow:0 14px 40px rgba(0,0,0,.4);border-color:rgba(255,255,255,.14);padding:10px}
     .controls-card .row:first-child{display:none}
+    .controls-card label,.controls-card select,#btnLoad,#btnStop{display:none}
     .row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:0; }
     button {
       background:#1f2937; border:1px solid #334155; color:#e5e7eb; padding:10px 14px; border-radius:999px; cursor:pointer;font-weight:800;
@@ -63,9 +65,10 @@
     }
     .muted { color:#a3a3a3; }
     .err { color:#ffb4b4; }
-    #hlsInfo,#rtcInfo{position:fixed;left:14px;bottom:calc(78px + env(safe-area-inset-bottom));right:14px;z-index:11;margin:0!important;text-align:center;font-size:12px;pointer-events:none;word-break:break-word}
+    #hlsInfo,#rtcInfo{display:none!important;position:fixed;left:14px;bottom:calc(78px + env(safe-area-inset-bottom));right:14px;z-index:11;margin:0!important;text-align:center;font-size:12px;pointer-events:none;word-break:break-word}
     #hlsInfo{display:none}
-    #readyInfo{margin:6px 0 0!important;font-size:12px;max-width:520px}
+    #readyInfo{display:none;margin:6px 0 0!important;font-size:12px;max-width:520px}
+    #errorLine{position:fixed;left:50%;bottom:calc(78px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:14;width:max-content;max-width:calc(100vw - 28px);padding:8px 12px;border-radius:999px;background:rgba(0,0,0,.72);border:1px solid rgba(255,255,255,.14);text-align:center}
     .log {
       font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
       font-size:12px; white-space:pre-wrap; background:#0b1220; border:1px solid #202a3a;
@@ -102,6 +105,14 @@
     .modal-body{display:grid;gap:10px}
     textarea{min-height:92px;resize:vertical;background:#0f172a;border:1px solid #334155;color:#e5e7eb;padding:9px 10px;border-radius:10px;font:inherit}
     .checkrow{display:flex;gap:8px;align-items:center;color:#cbd5e1}
+    body.ui-hidden header,
+    body.ui-hidden .controls-card,
+    body.ui-hidden #errorLine{
+      opacity:0;
+      pointer-events:none;
+      transition:opacity .22s ease;
+    }
+    header,.controls-card,#errorLine{transition:opacity .22s ease}
     @media (max-width:900px){
       .title{display:none}.topbar-right{width:100%;justify-content:space-between;gap:6px}.pill{font-size:11px;padding:4px 7px}
       .controls-card{left:10px;right:10px;transform:none;max-width:none}.controls-card .row:nth-child(2){justify-content:center}
@@ -303,6 +314,7 @@
   let rtcMediaSeen = false;
   let rtcReconnectTimer = null;
   let rtcReconnectAttempts = 0;
+  let uiHideTimer = null;
 
   elEventId.value = qs.get("event") || qs.get("id") || "";
   elEventKey.value = qs.get("key") || "";
@@ -340,8 +352,18 @@
   }
 
   function showError(msg){
-    elErr.style.display = msg ? "" : "none";
-    elErr.textContent = msg || "";
+    if(!msg){
+      elErr.style.display = "none";
+      elErr.textContent = "";
+      return;
+    }
+    const raw = String(msg);
+    const userText = /full|viewer|capacity|expired|permission/i.test(raw)
+      ? raw
+      : "Not live yet. Waiting for the broadcaster.";
+    elErr.style.display = "";
+    elErr.textContent = userText;
+    showViewerUi();
   }
 
   function log(...args){
@@ -353,7 +375,26 @@
 
   btnClear.onclick = () => { elLog.textContent = ""; };
 
-  function setStatus(text){ elStatusPill.textContent = "status: " + text; }
+  function setStatus(text){
+    const raw = String(text || "").toLowerCase();
+    let label = "Checking";
+    let kind = "warn";
+    if(raw.includes("playing") || raw.includes("receiving")) {
+      label = "Playing";
+      kind = "good";
+    } else if(raw.includes("stopped")) {
+      label = "Stopped";
+      kind = "";
+    } else if(raw.includes("error") || raw.includes("ended") || raw.includes("waiting") || raw.includes("not live")) {
+      label = "Not live";
+      kind = "warn";
+    } else if(raw.includes("loading") || raw.includes("connecting") || raw.includes("checking")) {
+      label = "Checking";
+      kind = "warn";
+    }
+    elStatusPill.className = `pill ${kind}`.trim();
+    elStatusPill.textContent = label;
+  }
   function setModePill(){ elModePill.textContent = "mode: " + elMode.value; }
   function setReadyPill(ready, text, kind){
     elReadyPill.className = "pill " + (kind || (ready ? "good" : "warn"));
@@ -415,17 +456,38 @@
   }
 
   async function toggleFullscreen(){
+    showViewerUi();
     try{
       if(document.fullscreenElement){
         await document.exitFullscreen();
         return;
       }
+      const activeVideo = document.querySelector("#hlsWrap video, #rtcVideos video");
+      if(activeVideo && typeof activeVideo.webkitEnterFullscreen === "function"){
+        activeVideo.webkitEnterFullscreen();
+        return;
+      }
       const target = document.querySelector(".player-card") || document.documentElement;
-      await target.requestFullscreen();
+      if(target.requestFullscreen){
+        await target.requestFullscreen();
+        return;
+      }
+      hideViewerUi();
     }catch(e){
       log("FULLSCREEN error:", String(e));
-      showError("Full screen is not available in this browser.");
+      hideViewerUi();
     }
+  }
+
+  function hideViewerUi(){
+    if(drawer.classList.contains("open") || reportModal.classList.contains("open")) return;
+    document.body.classList.add("ui-hidden");
+  }
+
+  function showViewerUi(){
+    document.body.classList.remove("ui-hidden");
+    clearTimeout(uiHideTimer);
+    uiHideTimer = setTimeout(hideViewerUi, 3200);
   }
   function setReadyState(ready, reason, kind){
     readyState = { ready, reason };
@@ -987,7 +1049,22 @@
   overlay.onclick = () => {
     closeDrawer();
     closeReport();
+    showViewerUi();
   };
+
+  document.addEventListener("pointerdown", (event) => {
+    if(event.target.closest("button,input,select,textarea,.drawer,.modal")) return;
+    if(document.body.classList.contains("ui-hidden")) showViewerUi();
+    else hideViewerUi();
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if(event.key === "Escape") {
+      closeDrawer();
+      closeReport();
+    }
+    showViewerUi();
+  });
 
   elMode.onchange = () => {
     stopReadinessPolling();
@@ -1026,6 +1103,7 @@
 
   (async () => {
     try{
+      showViewerUi();
       syncDrawerFields();
       await loadPublic();
       await refreshReadiness();
