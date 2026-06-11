@@ -163,6 +163,7 @@
 
         <button id="btnLoad">Load / Refresh</button>
         <button id="btnPlay" disabled>Play</button>
+        <button id="btnFullscreen">Full screen</button>
         <button id="btnStop">Stop</button>
         <button id="btnReport">Report</button>
       </div>
@@ -263,6 +264,7 @@
 
   const btnLoad = $("btnLoad");
   const btnPlay = $("btnPlay");
+  const btnFullscreen = $("btnFullscreen");
   const btnStop = $("btnStop");
   const btnClear = $("btnClear");
   const btnReport = $("btnReport");
@@ -282,6 +284,8 @@
   let ev = null;
   let readyState = { ready:false, reason:"Checking event…" };
   let readinessTimer = null;
+  let remainingTargetMs = null;
+  let remainingTickTimer = null;
   let autoSelectedMode = null;
   let viewerSessionId = null;
   let viewerHeartbeat = null;
@@ -365,19 +369,64 @@
     return `${m}m ${String(r).padStart(2,"0")}s`;
   }
 
-  function setRemaining(readiness){
-    const seconds = readiness?.seconds_remaining;
-    elRemainingPill.className = "pill";
-    if (seconds === null || seconds === undefined) {
-      elRemainingPill.textContent = "remaining: —";
-      return;
-    }
-    elRemainingPill.textContent = "remaining: " + formatDuration(seconds);
-    if (seconds <= 120) elRemainingPill.className = "pill bad";
-    else if (seconds <= 600) elRemainingPill.className = "pill timewarn";
-    if (readiness.warning) elReadyInfo.textContent = readiness.warning;
+  function formatRemainingMinutes(seconds){
+    const s = Math.max(0, Number(seconds || 0));
+    if (s <= 0) return "0m";
+    return `${Math.ceil(s / 60)}m`;
   }
 
+  function secondsUntilRemainingTarget(){
+    if(!remainingTargetMs) return null;
+    return Math.max(0, Math.ceil((remainingTargetMs - Date.now()) / 1000));
+  }
+
+  function renderRemaining(seconds, warning){
+    elRemainingPill.className = "pill";
+    if (seconds === null || seconds === undefined) {
+      elRemainingPill.textContent = "remaining: -";
+      return;
+    }
+    elRemainingPill.textContent = "remaining: " + formatRemainingMinutes(seconds);
+    if (seconds <= 120) elRemainingPill.className = "pill bad";
+    else if (seconds <= 600) elRemainingPill.className = "pill timewarn";
+    if (warning) elReadyInfo.textContent = warning;
+  }
+
+  function startRemainingTicker(){
+    if(remainingTickTimer) return;
+    remainingTickTimer = setInterval(() => {
+      const seconds = secondsUntilRemainingTarget();
+      if(seconds === null) return;
+      renderRemaining(seconds);
+    }, 1000);
+  }
+
+  function setRemaining(readiness){
+    const seconds = readiness?.seconds_remaining;
+    if (seconds === null || seconds === undefined) {
+      remainingTargetMs = null;
+      renderRemaining(null);
+      return;
+    }
+    const expiresAt = readiness?.expires_at ? Date.parse(readiness.expires_at) : NaN;
+    remainingTargetMs = Number.isFinite(expiresAt) ? expiresAt : Date.now() + Number(seconds) * 1000;
+    renderRemaining(secondsUntilRemainingTarget() ?? seconds, readiness.warning);
+    startRemainingTicker();
+  }
+
+  async function toggleFullscreen(){
+    try{
+      if(document.fullscreenElement){
+        await document.exitFullscreen();
+        return;
+      }
+      const target = document.querySelector(".player-card") || document.documentElement;
+      await target.requestFullscreen();
+    }catch(e){
+      log("FULLSCREEN error:", String(e));
+      showError("Full screen is not available in this browser.");
+    }
+  }
   function setReadyState(ready, reason, kind){
     readyState = { ready, reason };
     btnPlay.disabled = !ready;
@@ -928,6 +977,7 @@
   };
 
   btnPlay.onclick = onPlay;
+  btnFullscreen.onclick = toggleFullscreen;
   btnStop.onclick = onStop;
   btnReport.onclick = openReport;
   btnCloseReport.onclick = closeReport;
