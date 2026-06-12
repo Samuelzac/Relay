@@ -22,6 +22,13 @@
 # SUPPORT
 /support/*         /support/index.html   200
 
+# SEO LANDING PAGES
+/private-livestreaming/*                    /private-livestreaming/index.html 200
+/paid-livestream-events/*                   /paid-livestream-events/index.html 200
+/livestreaming-for-clubs-schools-venues/*   /livestreaming-for-clubs-schools-venues/index.html 200
+/hls-vs-webrtc/*                            /hls-vs-webrtc/index.html 200
+/phone-broadcasting/*                       /phone-broadcasting/index.html 200
+
 # LEGAL
 /terms/*           /terms/index.html     200
 /privacy/*         /privacy/index.html   200

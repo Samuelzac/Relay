@@ -13,6 +13,11 @@ const htmlFiles = [
   "index.html",
   "support/index.html",
   "faq/index.html",
+  "private-livestreaming/index.html",
+  "paid-livestream-events/index.html",
+  "livestreaming-for-clubs-schools-venues/index.html",
+  "hls-vs-webrtc/index.html",
+  "phone-broadcasting/index.html",
   "terms/index.html",
   "privacy/index.html",
   "ended/index.html",
@@ -102,7 +107,23 @@ for (const rel of apiPages) {
 }
 
 const redirects = fs.existsSync(path.join(pagesRoot, "_redirects")) ? readRel("_redirects") : "";
-for (const route of ["/broadcast/*", "/watch/*", "/success/*", "/ended/*", "/admin/*", "/create/*", "/faq/*", "/support/*", "/terms/*", "/privacy/*"]) {
+for (const route of [
+  "/broadcast/*",
+  "/watch/*",
+  "/success/*",
+  "/ended/*",
+  "/admin/*",
+  "/create/*",
+  "/faq/*",
+  "/support/*",
+  "/private-livestreaming/*",
+  "/paid-livestream-events/*",
+  "/livestreaming-for-clubs-schools-venues/*",
+  "/hls-vs-webrtc/*",
+  "/phone-broadcasting/*",
+  "/terms/*",
+  "/privacy/*",
+]) {
   if (redirects.includes(route)) pass(`redirect exists: ${route}`);
   else fail(`missing redirect: ${route}`);
 }

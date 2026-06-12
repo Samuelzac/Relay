@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>HLS vs WebRTC Livestreaming - Castlink</title>
+  <meta name="description" content="Compare HLS and WebRTC livestreaming for private events. Learn when to use each mode for audience size, latency, and reliability." />
+  <link rel="canonical" href="https://castlink.stream/hls-vs-webrtc/" />
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="Castlink" />
+  <meta property="og:title" content="HLS vs WebRTC Livestreaming" />
+  <meta property="og:description" content="Choose the right livestream mode for private events." />
+  <meta property="og:url" content="https://castlink.stream/hls-vs-webrtc/" />
+  <meta name="twitter:card" content="summary" />
+  <style>
+    :root{color-scheme:dark;--bg:#080a0d;--panel:#10141b;--panel2:#151b24;--text:#f8fafc;--muted:#a8b3c3;--border:#263140;--accent:#dbeafe;--btn:#e5e7eb;--btnText:#0b0f14}
+    *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;line-height:1.58}
+    a{color:var(--accent);text-decoration:none}.wrap{max-width:980px;margin:0 auto;padding:22px}.top{display:flex;justify-content:space-between;gap:14px;align-items:center;flex-wrap:wrap;margin-bottom:34px}.brand{font-weight:850}.nav{display:flex;gap:14px;flex-wrap:wrap;font-size:14px}
+    .hero{padding:28px 0 18px}.eyebrow{color:#93c5fd;font-weight:800;font-size:13px;text-transform:uppercase;letter-spacing:.08em}h1{font-size:42px;line-height:1.05;margin:10px 0 14px;letter-spacing:0}.lead{font-size:18px;color:var(--muted);max-width:760px}.grid{display:grid;gap:12px;margin-top:20px}@media(min-width:760px){.grid.two{grid-template-columns:1fr 1fr}.grid.three{grid-template-columns:repeat(3,1fr)}}.card{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:16px}.card h2,.card h3{margin:0 0 8px}.card p,p,li{color:var(--muted)}.btn{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:10px 14px;border-radius:8px;background:var(--btn);color:var(--btnText);font-weight:850}.btn.ghost{background:transparent;color:var(--text);border:1px solid var(--border)}ul{padding-left:20px}.footer{margin-top:30px;color:var(--muted);font-size:13px}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header class="top"><a class="brand" href="/">Castlink</a><nav class="nav"><a href="/create/">Create</a><a href="/private-livestreaming/">Private streaming</a><a href="/phone-broadcasting/">Phone broadcasting</a><a href="/faq/">FAQ</a></nav></header>
+    <main>
+      <section class="hero">
+        <div class="eyebrow">Streaming modes</div>
+        <h1>HLS vs WebRTC: choose the right private livestream mode.</h1>
+        <p class="lead">Castlink supports HLS, WebRTC, and combined event packages. The right choice depends on whether you need audience scale, lower latency, or both.</p>
+        <p><a class="btn" href="/create/">Create event</a> <a class="btn ghost" href="/paid-livestream-events/">Paid event streaming</a></p>
+      </section>
+      <section class="grid two">
+        <div class="card"><h2>Use HLS when</h2><ul><li>You expect more viewers.</li><li>A few seconds of latency is acceptable.</li><li>You want a stable watch-link experience.</li><li>The stream is mostly one host to many viewers.</li></ul></div>
+        <div class="card"><h2>Use WebRTC when</h2><ul><li>Lower latency matters.</li><li>The audience is smaller.</li><li>You want faster interactive-feeling delivery.</li><li>You are testing or running a more immediate session.</li></ul></div>
+      </section>
+      <section class="grid three">
+        <div class="card"><h3>HLS</h3><p>Best default for larger private events, clubs, venues, and paid watch-link delivery.</p></div>
+        <div class="card"><h3>WebRTC</h3><p>Best for low-latency private streams with smaller audiences and faster feedback loops.</p></div>
+        <div class="card"><h3>Both</h3><p>Useful when an event needs flexibility across viewer types or a low-latency path plus HLS viewing.</p></div>
+      </section>
+    </main>
+    <footer class="footer"><a href="/">Home</a> · <a href="/support/">Support</a> · <a href="/terms/">Terms</a></footer>
+  </div>
+</body>
+</html>

@@ -21,6 +21,31 @@
     <priority>0.6</priority>
   </url>
   <url>
+    <loc>https://castlink.stream/phone-broadcasting/</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://castlink.stream/private-livestreaming/</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://castlink.stream/paid-livestream-events/</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://castlink.stream/livestreaming-for-clubs-schools-venues/</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://castlink.stream/hls-vs-webrtc/</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
     <loc>https://castlink.stream/terms/</loc>
     <changefreq>monthly</changefreq>
     <priority>0.3</priority>
