@@ -4,12 +4,12 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Castlink - Private Paid Live Streaming from Your Phone</title>
-  <meta name="description" content="Create a private paid livestream, broadcast from a phone browser, and share a watch link with viewers. No broadcast software or viewer accounts required." />
+  <meta name="description" content="Create a private paid livestream, broadcast from a phone browser or OBS, and share a watch link with viewers. No viewer accounts required." />
   <link rel="canonical" href="https://castlink.stream/" />
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="Castlink" />
   <meta property="og:title" content="Castlink - Private Paid Live Streaming" />
-  <meta property="og:description" content="Create a paid private livestream, go live from your phone, and share a clean watch link." />
+  <meta property="og:description" content="Create a paid private livestream, go live from your phone or OBS, and share a clean watch link." />
   <meta property="og:url" content="https://castlink.stream/" />
   <meta name="twitter:card" content="summary" />
   <script type="application/ld+json">
@@ -66,6 +66,14 @@
     @media(max-width:900px){ .hero{grid-template-columns:1fr} }
     h1{margin:0 0 10px;font-size:40px;letter-spacing:-.6px;line-height:1.06}
     @media(max-width:520px){ h1{font-size:34px} }
+    @media(max-width:640px){
+      .wrap{padding:16px}
+      .top{display:block;padding:8px 0 14px}
+      .brand{margin-bottom:12px}
+      .nav{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;width:100%}
+      .nav a{display:flex;align-items:center;justify-content:center;min-height:38px;padding:8px 6px;border:1px solid var(--border);border-radius:10px;background:rgba(255,255,255,.04);font-size:13px;text-align:center;line-height:1.15}
+      .nav .btn{grid-column:1/-1}
+    }
     .lead{color:var(--muted);font-size:16px;margin:0 0 18px}
     .card{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:16px}
     .stack{display:flex;flex-direction:column;gap:10px}
@@ -115,7 +123,7 @@
     <section class="hero">
       <div class="card">
         <h1>Private paid livestreams from your phone.</h1>
-        <p class="lead">Create an event, pay once, open the broadcast link on your phone, and share a private watch link with viewers. Castlink is built for workshops, clubs, schools, venues, creators, and private events that do not need social media or broadcast software.</p>
+        <p class="lead">Create an event, pay once, open the broadcast link on your phone, and share a private watch link with viewers. Castlink is built for workshops, clubs, schools, venues, creators, and private events. Phone broadcasting is the simple path; OBS is available when you prefer a production setup.</p>
         <div class="row">
           <a class="btn" href="/create">Create event</a>
           <a class="btn ghost" href="/create#test">Try 3-minute test</a>
@@ -152,7 +160,7 @@
           <li><b>Private broadcast link</b> (for the host)</li>
           <li><b>Public watch link</b> (for viewers)</li>
         </ul>
-        <div class="muted2" style="margin-top:10px">After purchase you receive the event links by email. The main broadcast path works directly in a phone browser.</div>
+        <div class="muted2" style="margin-top:10px">After purchase you receive the event links by email. The main broadcast path works directly in a phone browser, with OBS available for compatible events.</div>
       </div>
     </section>
 
@@ -195,7 +203,7 @@
             <ul>
               <li>Private broadcast link</li>
               <li>Public watch link</li>
-              <li>Phone browser broadcasting</li>
+              <li>Phone browser or OBS broadcasting</li>
               <li>Free 3-minute test available</li>
             </ul>
           </div>
