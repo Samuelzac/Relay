@@ -885,6 +885,19 @@ async function usageSummary(client: any, env: Env, eventId: string) {
 }
 
 async function extendEventWindow(client: any, eventId: string, minutes: number) {
+  const { rows } = await extendEventWindowOnce(client, eventId, minutes, null);
+  return rows[0] || null;
+}
+
+async function ensureExtensionTrackingColumns(client: any) {
+  await client.query(`
+    alter table public.events
+      add column if not exists extension_checkout_session_ids text[] not null default '{}'
+  `);
+}
+
+async function extendEventWindowOnce(client: any, eventId: string, minutes: number, sessionId: string | null) {
+  await ensureExtensionTrackingColumns(client);
   const { rows } = await client.query(
     `
     update public.events
@@ -895,13 +908,18 @@ async function extendEventWindow(client: any, eventId: string, minutes: number) 
           else expires_at + ($2::int * interval '1 minute')
         end,
         warning_email_sent_at = null,
-        warning_email_error = null
+        warning_email_error = null,
+        extension_checkout_session_ids = case
+          when $3::text is null or $3::text = '' then extension_checkout_session_ids
+          else array_append(extension_checkout_session_ids, $3::text)
+        end
     where id=$1
+      and ($3::text is null or $3::text = '' or not ($3::text = any(extension_checkout_session_ids)))
     returning expires_at
   `,
-    [eventId, minutes]
+    [eventId, minutes, sessionId]
   );
-  return rows[0] || null;
+  return { rows };
 }
 
 async function sendEventReadyEmail(env: Env, ev: any) {
@@ -3080,9 +3098,11 @@ export default {
             try {
               if (action === "extend") {
                 const minutes = Number(session?.metadata?.relay_extend_minutes || 60);
-                await extendEventWindow(client, eventId, minutes);
+                const result = await extendEventWindowOnce(client, eventId, minutes, session?.id || null);
                 const ev = await getEvent(client, eventId);
-                await sendExtensionEmail(env, ev, minutes).catch((e) => console.error("extension email failed", eventId, e));
+                if (result.rows.length) {
+                  await sendExtensionEmail(env, ev, minutes).catch((e) => console.error("extension email failed", eventId, e));
+                }
               } else if (action === "viewer_upgrade") {
                 const amount = Number(session?.metadata?.relay_viewer_upgrade || 0);
                 if (allowedViewerUpgrade(amount)) {
@@ -3276,7 +3296,7 @@ export default {
             if (isDisabled(ev)) return json(env, { error: "disabled" }, 403);
 
             const price = extensionOneHourPrice(env);
-            const successUrl = `${env.APP_ORIGIN}/broadcast/?event=${encodeURIComponent(eventId)}&key=${encodeURIComponent(key)}&extended=1`;
+            const successUrl = `${env.APP_ORIGIN}/success/?event=${encodeURIComponent(eventId)}&key=${encodeURIComponent(key)}&extension=1&session_id={CHECKOUT_SESSION_ID}`;
             const cancelUrl = `${env.APP_ORIGIN}/broadcast/?event=${encodeURIComponent(eventId)}&key=${encodeURIComponent(key)}&extend_cancelled=1`;
             const stripe = stripeClient(env);
             const session = await stripe.checkout.sessions.create({
@@ -3303,6 +3323,50 @@ export default {
 
             if (method === "GET") return Response.redirect(session.url || cancelUrl, 303);
             return json(env, { ok: true, url: session.url, eventId, minutes: 60 }, 200);
+          } finally {
+            await client.end();
+          }
+        }
+      }
+
+      {
+        const m = match(pathname, /^\/api\/events\/([^\/]+)\/extend\/confirm$/);
+        if ((method === "POST" || method === "GET") && m) {
+          const eventId = m[0];
+          const key = url.searchParams.get("key") || "";
+          const sessionId = url.searchParams.get("session_id") || url.searchParams.get("session") || "";
+          if (!sessionId) return json(env, { error: "missing_session_id" }, 400);
+
+          const client = await getClient(env);
+          try {
+            const ev = await getEvent(client, eventId);
+            if (!ev) return json(env, { error: "not_found" }, 404);
+            const authRes = requireExact(key, ev.broadcast_key, env);
+            if (authRes) return authRes;
+
+            const stripe = stripeClient(env);
+            const session = await stripe.checkout.sessions.retrieve(sessionId);
+            if (session?.metadata?.relay_event_id !== eventId || session?.metadata?.relay_action !== "extend") {
+              return json(env, { error: "invalid_extension_session" }, 400);
+            }
+            if (session.payment_status !== "paid" && session.status !== "complete") {
+              return json(env, { error: "extension_payment_not_complete" }, 402);
+            }
+
+            const minutes = Number(session?.metadata?.relay_extend_minutes || 60);
+            const result = await extendEventWindowOnce(client, eventId, minutes, session.id || sessionId);
+            const updated = await getEvent(client, eventId);
+            if (result.rows.length) {
+              await sendExtensionEmail(env, updated, minutes).catch((e) => console.error("extension email failed", eventId, e));
+            }
+            return json(env, {
+              ok: true,
+              extended: true,
+              applied: result.rows.length > 0,
+              minutes,
+              expires_at: updated?.expires_at || null,
+              broadcast_url: eventLinks(env, updated).broadcastUrl,
+            });
           } finally {
             await client.end();
           }

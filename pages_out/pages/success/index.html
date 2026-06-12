@@ -154,6 +154,9 @@
 
   const eventId = params.get("event") || params.get("eventId") || params.get("id") || "";
   const successToken = params.get("st") || params.get("token") || params.get("successToken") || "";
+  const extensionMode = params.get("extension") === "1";
+  const extensionSessionId = params.get("session_id") || params.get("session") || "";
+  const broadcastKey = params.get("key") || "";
   const isTest = params.get("test") === "1";
 
   const pageTitle = document.getElementById("pageTitle");
@@ -196,6 +199,13 @@
     pageTitle.textContent = "Test stream created";
     subMsg.textContent = "This free test stream has a short live window and limited viewers.";
     startWindowMsg.textContent = "Free test streams must be started quickly and run for 3 minutes. Paid events can be started within 7 days.";
+  }
+
+  if (extensionMode) {
+    pageTitle.textContent = "Extension payment complete";
+    topMsg.innerHTML = "<b>Confirming your extra hour.</b>";
+    subMsg.textContent = "Checking Stripe payment and updating stream time.";
+    startWindowMsg.textContent = "The same broadcast and watch links continue working after extension.";
   }
 
   function setPill(el, kind, text){
@@ -243,6 +253,17 @@
     return fetchJson(`${API_BASE}/api/events/${encodeURIComponent(eventId)}/links?st=${encodeURIComponent(successToken)}`, {
       method: "GET",
       headers: { "accept": "application/json" }
+    });
+  }
+
+  async function confirmExtension(){
+    if (!eventId || !broadcastKey || !extensionSessionId) {
+      throw new Error("Missing extension confirmation details.");
+    }
+    return fetchJson(`${API_BASE}/api/events/${encodeURIComponent(eventId)}/extend/confirm?key=${encodeURIComponent(broadcastKey)}&session_id=${encodeURIComponent(extensionSessionId)}`, {
+      method: "GET",
+      headers: { "accept": "application/json" },
+      credentials: "include"
     });
   }
 
@@ -490,7 +511,38 @@
 
   (async () => {
     eventCode.textContent = eventId || "(missing)";
-    successCode.textContent = successToken || "(missing)";
+    successCode.textContent = extensionMode ? (extensionSessionId || "(missing)") : (successToken || "(missing)");
+
+    if (extensionMode) {
+      try {
+        const result = await confirmExtension();
+        const broadcastUrl = result.broadcast_url || `${location.origin}/broadcast/?event=${encodeURIComponent(eventId)}&key=${encodeURIComponent(broadcastKey)}&extended=1`;
+        currentBroadcastUrl = broadcastUrl;
+        broadcastParts = parseLinkParts(broadcastUrl);
+        broadcastBtn.href = broadcastUrl;
+        broadcastUrlCode.textContent = friendlyLinkLabel("Broadcast", broadcastUrl);
+        setLinkReady(broadcastBtn, true);
+        copyBroadcastBtn.disabled = false;
+
+        setPill(broadcastState, "good", "Extended");
+        broadcastInfo.textContent = result.expires_at ? `Extra hour added. New expiry: ${result.expires_at}` : "Extra hour added.";
+        setPill(watchState, "good", "Unchanged");
+        watchInfo.textContent = "The existing watch link continues working.";
+        setPill(obsState, "warn", "Unchanged");
+        obsInfo.textContent = "Use the broadcast page if you need a fresh OBS token.";
+        getObsBtn.disabled = true;
+        copyWatchBtn.disabled = true;
+        watchBtn.removeAttribute("href");
+        resendEmailBtn.disabled = true;
+
+        topMsg.innerHTML = "<b>Your stream has been extended.</b>";
+        subMsg.textContent = result.applied ? "One extra hour has been added." : "This extension was already applied.";
+      } catch(e) {
+        topMsg.innerHTML = '<b class="bad">Could not confirm extension.</b>';
+        subMsg.textContent = e.message || "Please refresh the page or check the broadcast page.";
+      }
+      return;
+    }
 
     if (!eventId || !successToken) {
       topMsg.innerHTML = '<b class="bad">Missing event or success token.</b>';
