@@ -289,6 +289,8 @@
   let stageToken = null;
   let startedAtMs = null;
   let timerHandle = null;
+  let remainingTargetMs = null;
+  let remainingTickTimer = null;
   let usageTimer = null;
   let readinessTimer = null;
   let readyToBroadcast = false;
@@ -368,16 +370,42 @@
 
   function updateTimeWarning(readiness){
     const seconds = readiness?.seconds_remaining;
+    if (seconds === null || seconds === undefined) {
+      remainingTargetMs = null;
+      renderRemaining(null);
+      setViewerUpgradeEnabled(false);
+      return;
+    }
+    const expiresAt = readiness?.expires_at ? Date.parse(readiness.expires_at) : NaN;
+    remainingTargetMs = Number.isFinite(expiresAt) ? expiresAt : Date.now() + Number(seconds) * 1000;
+    renderRemaining(secondsUntilRemainingTarget() ?? seconds, readiness.warning);
+    startRemainingTicker();
+  }
+
+  function secondsUntilRemainingTarget(){
+    if(!remainingTargetMs) return null;
+    return Math.max(0, Math.ceil((remainingTargetMs - Date.now()) / 1000));
+  }
+
+  function renderRemaining(seconds, warning){
     remainingChip.className = "chip";
     if (seconds === null || seconds === undefined) {
       remainingChip.textContent = "remaining: not started";
-      setViewerUpgradeEnabled(false);
       return;
     }
     remainingChip.textContent = `remaining: ${formatDuration(seconds)}`;
     if (seconds <= 120) remainingChip.className = "chip bad";
     else if (seconds <= 600) remainingChip.className = "chip warn";
-    if (readiness.warning) elLiveHint.textContent = readiness.warning;
+    if (warning) elLiveHint.textContent = warning;
+  }
+
+  function startRemainingTicker(){
+    if(remainingTickTimer) return;
+    remainingTickTimer = setInterval(() => {
+      const seconds = secondsUntilRemainingTarget();
+      if(seconds === null) return;
+      renderRemaining(seconds);
+    }, 1000);
   }
 
   function setViewerUpgradeEnabled(enabled){
@@ -465,8 +493,18 @@
       elCam.value = previousCam;
       return;
     }
-    const rear = cams.find(d => /back|rear|environment|world|facing back/i.test(d.label || ""));
-    const preferred = rear || cams[cams.length - 1];
+    const scoreCamera = (device, index) => {
+      const label = String(device.label || "").toLowerCase();
+      let score = index;
+      if(/\b(back|rear|environment)\b/.test(label)) score += 100;
+      if(/\b(camera 0|camera0|main)\b/.test(label)) score += 40;
+      if(/\b(wide)\b/.test(label)) score += 8;
+      if(/\b(ultra|dual|triple|telephoto|macro|front|user|selfie)\b/.test(label)) score -= 60;
+      return score;
+    };
+    const preferred = cams
+      .map((device, index) => ({ device, score: scoreCamera(device, index) }))
+      .sort((a, b) => b.score - a.score)[0]?.device;
     if(preferred?.deviceId) elCam.value = preferred.deviceId;
   }
 
