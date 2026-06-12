@@ -209,6 +209,12 @@ function slugifyEventTitle(value: any) {
   return slug || "event";
 }
 
+function emailSubjectEventLabel(ev: any) {
+  const title = String(ev?.title || "Untitled event").trim().replace(/\s+/g, " ").slice(0, 80);
+  const id = String(ev?.id || "").replace(/-/g, "").slice(0, 8);
+  return id ? `${title} #${id}` : title;
+}
+
 function eventLinks(env: Env, ev: any) {
   const slug = slugifyEventTitle(ev?.title);
   const eventHash = slug ? `#${encodeURIComponent(slug)}` : "";
@@ -931,7 +937,8 @@ async function sendEventReadyEmail(env: Env, ev: any) {
   const test = isTestEvent(ev);
   const minutes = testStreamMinutes(env);
   const startDays = paidUnusedExpiryDays(env);
-  const subject = test ? `${brand}: your ${minutes}-minute test stream is ready` : `${brand}: your live stream links are ready`;
+  const subjectLabel = emailSubjectEventLabel(ev);
+  const subject = test ? `${brand}: test stream ready - ${subjectLabel}` : `${brand}: stream links ready - ${subjectLabel}`;
   const text = [
     test ? `${brand} test stream ready` : `${brand} live stream ready`,
     "",
