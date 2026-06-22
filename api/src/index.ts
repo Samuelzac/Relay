@@ -4196,14 +4196,22 @@ export default {
           await client2.query(`update public.events set stripe_session_id=$1 where id=$2`, [session.id, eventId]);
           const inventoryMode = inventoryModeForEvent({ rtc_enabled: rtcEnabled, hls_enabled: hlsEnabled });
           if (inventoryMode) {
-            const reservation = await reserveInventorySlotForCheckout(client2, eventId, inventoryMode);
-            console.log("checkout inventory reservation", JSON.stringify({
-              eventId,
-              mode: inventoryMode,
-              source: reservation.source,
-              reserved: reservation.reserved,
-              slotId: reservation.slot?.id || null,
-            }));
+            try {
+              const reservation = await reserveInventorySlotForCheckout(client2, eventId, inventoryMode);
+              console.log("checkout inventory reservation", JSON.stringify({
+                eventId,
+                mode: inventoryMode,
+                source: reservation.source,
+                reserved: reservation.reserved,
+                slotId: reservation.slot?.id || null,
+              }));
+            } catch (e: any) {
+              console.error("checkout inventory reservation failed", JSON.stringify({
+                eventId,
+                mode: inventoryMode,
+                error: e?.message || String(e),
+              }));
+            }
           }
         } finally {
           await client2.end();
