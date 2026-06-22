@@ -4,7 +4,7 @@ import Stripe from "stripe";
 import { SeatsDO } from "./seats_do";
 import { BroadcastLockDO } from "./broadcast_lock_do";
 import { stripeClient, priceForTierAndMode, hoursForTier, StreamMode, normalizeMode } from "./stripe";
-import { createChannel, createStreamKey, getChannel } from "./awsIvs";
+import { createChannel, getChannel } from "./awsIvs";
 import { deleteIvsChannel } from "./ivs";
 import { createSignedS3GetUrl, deleteS3RecordingObjects, listS3Objects } from "./awsS3";
 import { createMp4Job, getMp4Job, mediaConvertConfigured, recordingMp4OutputKey } from "./awsMediaConvert";
@@ -2659,23 +2659,6 @@ async function ensureStreamKey(client: any, env: Env, eventId: string, evIn: any
   return { ev, streamKeyPlaintext, created: true };
 }
 
-async function rotateHlsStreamKey(client: any, env: Env, eventId: string, evIn: any) {
-  let ev = evIn;
-  if (!ev?.hls_enabled) return { ev, streamKeyPlaintext: null, rotated: false };
-  if (!ev.ivs_channel_arn || !ev.ivs_ingest_endpoint || !ev.ivs_playback_url) {
-    ev = (await ensureHlsChannel(client, env, eventId, ev)).ev;
-  }
-  if (!ev.ivs_channel_arn) throw new Error("hls_channel_not_ready");
-
-  const fresh = await createStreamKey(env, ev.ivs_channel_arn);
-  const streamKeyPlaintext = String(fresh.streamKeyValue || "").trim();
-  if (!streamKeyPlaintext) throw new Error("hls_stream_key_not_returned");
-  const encrypted = await encryptString(streamKeyPlaintext, env.STREAMKEY_ENC_KEY_B64);
-  await updateIvs(client, eventId, ev.ivs_channel_arn, ev.ivs_ingest_endpoint, ev.ivs_playback_url, encrypted);
-  ev = await getEvent(client, eventId);
-  return { ev, streamKeyPlaintext, rotated: true };
-}
-
 async function ensureHlsInfrastructure(client: any, env: Env, eventId: string, evIn: any) {
   let ev = evIn;
   if (!ev || !ev.hls_enabled) return ev;
@@ -5015,7 +4998,6 @@ export default {
         if (method === "POST" && m) {
           const eventId = m[0];
           const key = url.searchParams.get("key") || "";
-          const body: any = await request.json().catch(() => ({}));
 
           const client = await getClient(env);
           try {
@@ -5030,21 +5012,18 @@ export default {
             const authRes = requireExact(key, ev.broadcast_key, env);
             if (authRes) return authRes;
 
-            let keyResult: any = body?.rotate_stream_key || body?.rotateStreamKey
-              ? await rotateHlsStreamKey(client, env, eventId, ev)
-              : await provisionHlsBroadcast(client, env, eventId, ev);
+            let keyResult = await provisionHlsBroadcast(client, env, eventId, ev);
             ev = keyResult.ev;
 
             const host = ingestHostFromDb(ev.ivs_ingest_endpoint);
             return json(env, {
               ok: true,
-              alreadyProvisioned: !keyResult.created && !keyResult.rotated,
-              streamKeyRotated: !!keyResult.rotated,
+              alreadyProvisioned: !keyResult.created,
               ingest: {
                 endpoint: host,
                 ingestEndpoint: host,
                 rtmpsUrl: rtmpsUrlFromHost(host),
-                streamKey: String(keyResult.streamKeyPlaintext || "").trim(),
+                streamKey: keyResult.streamKeyPlaintext,
               },
               playback: { url: ev.ivs_playback_url },
               readiness: buildReadiness(ev, "broadcaster", env),
