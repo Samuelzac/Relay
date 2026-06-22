@@ -134,6 +134,7 @@
       <div class="status-row">
         <span id="statusPill" class="pill"><span class="dot"></span><span>status: —</span></span>
         <span id="readyPill" class="pill warn"><span class="dot"></span><span>ready: checking…</span></span>
+        <span id="remainingTopPill" class="pill"><span class="dot"></span><span>remaining: -</span></span>
         <span id="timerPill" class="pill"><span class="dot"></span><span>live: <span id="timer">00:00</span></span></span>
       </div>
     </div>
@@ -201,7 +202,7 @@
         <div class="state-line" id="stateLine"></div>
       </div>
 
-      <details class="panel aux-panel">
+      <details class="panel aux-panel finish-panel">
         <summary>Finish & billing summary</summary>
         <div class="finish-row">
           <div id="finishInfo" class="muted">Finish the paid stream when the event is complete. This closes the event window and prepares the usage summary.</div>
@@ -210,7 +211,7 @@
         </div>
       </details>
 
-      <details class="panel aux-panel">
+      <details class="panel aux-panel obs-panel">
         <summary>OBS / WHIP</summary>
         <div class="obs-grid">
           <div class="meta">
@@ -218,24 +219,24 @@
           </div>
           <div>
             <div class="label">Service</div>
-            <code>WHIP</code>
+            <code id="obsService">WHIP</code>
           </div>
           <div>
             <div class="label">Server</div>
             <code id="obsServer">(not generated)</code>
           </div>
           <div>
-            <div class="label">Bearer token</div>
+            <div class="label">Key / token</div>
             <code id="obsToken">(not generated)</code>
           </div>
           <div class="obs-actions">
-            <button id="btnObsPanel" disabled>Get OBS Token</button>
+            <button id="btnObsPanel" disabled>Get OBS Setup</button>
             <button id="btnCopyObs" disabled>Copy OBS Setup</button>
           </div>
         </div>
       </details>
 
-      <details class="panel aux-panel">
+      <details class="panel aux-panel logs-panel">
         <summary>Logs</summary>
         <div id="log" class="log"></div>
       </details>
@@ -256,6 +257,7 @@
   const elReady = $("readyPill");
   const elReadyInfo = $("readyInfo");
   const elTimer = $("timer");
+  const remainingTopPill = $("remainingTopPill");
   const elLog = $("log");
   const elInfo = $("info");
   const elLiveHint = $("liveHint");
@@ -280,6 +282,7 @@
   const videoEl = $("preview");
   const emptyPreview = $("emptyPreview");
   const obsInfo = $("obsInfo");
+  const obsService = $("obsService");
   const obsServer = $("obsServer");
   const obsToken = $("obsToken");
 
@@ -368,6 +371,12 @@
     return `${m}m ${String(r).padStart(2,"0")}s`;
   }
 
+  function formatRemainingMinutes(seconds){
+    const s = Math.max(0, Math.ceil(Number(seconds) || 0));
+    if (s <= 0) return "0m";
+    return `${Math.ceil(s / 60)}m`;
+  }
+
   function updateTimeWarning(readiness){
     const seconds = readiness?.seconds_remaining;
     if (seconds === null || seconds === undefined) {
@@ -389,13 +398,22 @@
 
   function renderRemaining(seconds, warning){
     remainingChip.className = "chip";
+    remainingTopPill.className = "pill";
     if (seconds === null || seconds === undefined) {
       remainingChip.textContent = "remaining: not started";
+      remainingTopPill.querySelector("span:last-child").textContent = "remaining: -";
       return;
     }
-    remainingChip.textContent = `remaining: ${formatDuration(seconds)}`;
-    if (seconds <= 120) remainingChip.className = "chip bad";
-    else if (seconds <= 600) remainingChip.className = "chip warn";
+    const label = `remaining: ${formatRemainingMinutes(seconds)}`;
+    remainingChip.textContent = label;
+    remainingTopPill.querySelector("span:last-child").textContent = label;
+    if (seconds <= 120) {
+      remainingChip.className = "chip bad";
+      remainingTopPill.className = "pill bad";
+    } else if (seconds <= 600) {
+      remainingChip.className = "chip warn";
+      remainingTopPill.className = "pill warn";
+    }
     if (warning) elLiveHint.textContent = warning;
   }
 
@@ -606,17 +624,32 @@
     const key = elEventKey.value.trim();
     if(!eventId || !key) throw new Error("Missing event or key");
 
-    obsInfo.textContent = "Requesting OBS token...";
-    const res = await apiPost(`/api/events/${encodeURIComponent(eventId)}/whip/provision?key=${encodeURIComponent(key)}`, {});
-    const server = res?.whip_url || "https://global.whip.live-video.net";
-    const token = res?.bearer_token || "";
-    if(!token) throw new Error("No bearer token returned.");
+    obsInfo.textContent = "Requesting OBS setup...";
+    let service = "WHIP";
+    let server = "";
+    let token = "";
+    let expiresAt = "";
 
+    if(currentReadiness?.hls_enabled && !currentReadiness?.rtc_enabled){
+      const res = await provisionHlsChannel();
+      service = "Custom / RTMPS";
+      server = res?.ingest?.rtmpsUrl || (res?.ingest?.endpoint ? `rtmps://${res.ingest.endpoint}:443/app/` : "");
+      token = res?.ingest?.streamKey || "";
+      if(!token) throw new Error("No HLS stream key returned.");
+    } else {
+      const res = await apiPost(`/api/events/${encodeURIComponent(eventId)}/whip/provision?key=${encodeURIComponent(key)}`, {});
+      server = "https://global.whip.live-video.net";
+      token = res?.bearer_token || "";
+      expiresAt = res?.expires_at || "";
+      if(!token) throw new Error("No bearer token returned.");
+    }
+
+    obsService.textContent = service;
     obsServer.textContent = server;
     obsToken.textContent = token;
     btnCopyObs.disabled = false;
-    obsInfo.textContent = res?.expires_at ? `Token ready. Expires ${res.expires_at}.` : "Token ready.";
-    return { server, token };
+    obsInfo.textContent = expiresAt ? `Token ready. Expires ${expiresAt}.` : "OBS setup ready.";
+    return { service, server, token };
   }
 
   async function copyObsSetup(){
@@ -625,9 +658,9 @@
     if(!server || !token || token === "(not generated)") return;
     const text = [
       "OBS Stream Settings",
-      "Service: WHIP",
+      `Service: ${obsService.textContent || "WHIP"}`,
       `Server: ${server}`,
-      `Bearer Token: ${token}`,
+      `Key / Token: ${token}`,
     ].join("\n");
     try{
       await navigator.clipboard.writeText(text);
@@ -794,6 +827,7 @@
     const res = await apiPost(`/api/events/${encodeURIComponent(eventId)}/start?key=${encodeURIComponent(key)}`, { open_window: true });
     currentReadiness = res?.readiness || currentReadiness;
     renderFlags(currentReadiness);
+    updateTimeWarning(currentReadiness);
     return res;
   }
 

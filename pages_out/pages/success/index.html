@@ -44,6 +44,13 @@
       word-break:break-all;display:block;background:var(--card2);padding:10px 12px;
       border-radius:10px;border:1px solid var(--border);margin-top:6px
     }
+    .copy-field{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:stretch;margin-top:6px}
+    .copy-field input{
+      min-width:0;width:100%;box-sizing:border-box;border-radius:10px;border:1px solid var(--border);
+      background:var(--card2);color:var(--text);padding:10px 12px;font:13px ui-monospace,SFMono-Regular,Consolas,monospace
+    }
+    .copy-field button{min-height:42px;padding:10px 12px}
+    @media (max-width:520px){.copy-field{grid-template-columns:1fr}.copy-field button{width:100%}}
     .pill{
       display:inline-flex;align-items:center;gap:8px;padding:6px 10px;border-radius:999px;
       border:1px solid var(--border);background:var(--card2);font-size:12px
@@ -69,7 +76,18 @@
     </div>
   </div>
 
-  <div class="grid">
+  <div class="card" id="recordingCard" style="display:none">
+    <div class="row" style="justify-content:space-between;">
+      <strong>Recording</strong>
+      <span id="recordingState" class="pill warn"><span class="dot"></span><span>Checking...</span></span>
+    </div>
+    <div class="muted" id="recordingInfo" style="margin-top:10px;">Checking recording availability.</div>
+    <div class="row">
+      <button id="downloadRecordingBtn" class="btn" type="button" disabled>Download recording</button>
+    </div>
+  </div>
+
+  <div class="grid" id="streamGrid">
     <div class="card">
       <div class="row" style="justify-content:space-between;">
         <strong>Broadcast</strong>
@@ -93,7 +111,7 @@
     </div>
   </div>
 
-  <div class="card">
+  <div class="card" id="obsCard">
     <div class="row" style="justify-content:space-between;">
       <strong>Stream with OBS (Recommended)</strong>
       <span id="obsState" class="pill warn"><span class="dot"></span><span>Waiting</span></span>
@@ -106,10 +124,16 @@
 
     <div id="obsBox" style="display:none;margin-top:12px;">
       <div class="tiny">Server</div>
-      <code id="serverCode"></code>
+      <div class="copy-field">
+        <input id="serverCode" readonly spellcheck="false" autocomplete="off" autocapitalize="off">
+        <button id="copyServerBtn" class="secondary" type="button" disabled>Copy</button>
+      </div>
 
-      <div class="tiny" style="margin-top:10px;">Bearer token</div>
-      <code id="tokenCode"></code>
+      <div class="tiny" style="margin-top:10px;">Key / token</div>
+      <div class="copy-field">
+        <input id="tokenCode" readonly spellcheck="false" autocomplete="off" autocapitalize="off">
+        <button id="copyTokenBtn" class="secondary" type="button" disabled>Copy</button>
+      </div>
 
       <div class="tiny" id="expiresText" style="margin-top:10px;"></div>
 
@@ -125,7 +149,7 @@
     </div>
   </div>
 
-  <div class="card">
+  <div class="card" id="linksCard">
     <div class="tiny">Watch link</div>
     <code id="watchUrlCode"></code>
     <button id="copyWatchBtn" class="secondary" type="button" disabled>Copy Watch Link</button>
@@ -150,6 +174,7 @@
 <script>
 (() => {
   const API_BASE = window.RelayConfig.apiBase;
+  const RECORDING_API_BASE = window.RelayConfig.recordingApiBase || API_BASE;
   const params = new URLSearchParams(location.search);
 
   const eventId = params.get("event") || params.get("eventId") || params.get("id") || "";
@@ -158,6 +183,7 @@
   const extensionSessionId = params.get("session_id") || params.get("session") || "";
   const broadcastKey = params.get("key") || "";
   const isTest = params.get("test") === "1";
+  const recordingMode = params.get("recording") === "1";
 
   const pageTitle = document.getElementById("pageTitle");
   const topMsg = document.getElementById("topMsg");
@@ -175,9 +201,18 @@
   const watchBtn = document.getElementById("watchBtn");
   const getObsBtn = document.getElementById("getObsBtn");
   const copySetupBtn = document.getElementById("copySetupBtn");
+  const copyServerBtn = document.getElementById("copyServerBtn");
+  const copyTokenBtn = document.getElementById("copyTokenBtn");
   const copyWatchBtn = document.getElementById("copyWatchBtn");
   const copyBroadcastBtn = document.getElementById("copyBroadcastBtn");
   const resendEmailBtn = document.getElementById("resendEmailBtn");
+  const streamGrid = document.getElementById("streamGrid");
+  const obsCard = document.getElementById("obsCard");
+  const linksCard = document.getElementById("linksCard");
+  const recordingCard = document.getElementById("recordingCard");
+  const recordingState = document.getElementById("recordingState");
+  const recordingInfo = document.getElementById("recordingInfo");
+  const downloadRecordingBtn = document.getElementById("downloadRecordingBtn");
 
   const watchUrlCode = document.getElementById("watchUrlCode");
   const broadcastUrlCode = document.getElementById("broadcastUrlCode");
@@ -194,6 +229,7 @@
   let readinessTimer = null;
   let currentWatchUrl = "";
   let currentBroadcastUrl = "";
+  let currentReadiness = null;
 
   if (isTest) {
     pageTitle.textContent = "Test stream created";
@@ -206,6 +242,18 @@
     topMsg.innerHTML = "<b>Confirming your extra hour.</b>";
     subMsg.textContent = "Checking Stripe payment and updating stream time.";
     startWindowMsg.textContent = "The same broadcast and watch links continue working after extension.";
+  }
+
+  if (recordingMode) {
+    pageTitle.textContent = "Recording ready";
+    topMsg.innerHTML = "<b>Loading your recording...</b>";
+    subMsg.textContent = "Checking the MP4 download.";
+    startWindowMsg.textContent = "Recording links are private. The download can be claimed once.";
+    streamGrid.style.display = "none";
+    obsCard.style.display = "none";
+    linksCard.style.display = "none";
+    recordingCard.style.display = "";
+    resendEmailBtn.disabled = true;
   }
 
   function setPill(el, kind, text){
@@ -256,6 +304,84 @@
     });
   }
 
+  async function getRecording(){
+    return fetchJson(`${RECORDING_API_BASE}/events/${encodeURIComponent(eventId)}/recording?key=${encodeURIComponent(broadcastKey)}`, {
+      method: "GET",
+      headers: { "accept": "application/json" },
+      credentials: "include",
+      cache: "no-store"
+    });
+  }
+
+  async function prepareRecording(){
+    if (!eventId || !broadcastKey) return;
+    try{
+      await fetchJson(`${RECORDING_API_BASE}/events/${encodeURIComponent(eventId)}/recording/prepare?key=${encodeURIComponent(broadcastKey)}`, {
+        method: "POST",
+        headers: { "content-type":"application/json" },
+        body: "{}",
+        credentials: "include"
+      });
+    }catch(e){
+      console.warn("recording prepare failed", e);
+    }
+  }
+
+  async function claimRecordingDownload(){
+    downloadRecordingBtn.disabled = true;
+    recordingInfo.textContent = "Preparing download...";
+    try{
+      const result = await fetchJson(`${RECORDING_API_BASE}/events/${encodeURIComponent(eventId)}/recording/download?key=${encodeURIComponent(broadcastKey)}`, {
+        method: "POST",
+        headers: { "content-type":"application/json" },
+        body: "{}",
+        credentials: "include"
+      });
+      setPill(recordingState, "good", "Download started");
+      recordingInfo.textContent = "Your download should start now. This recording link has been claimed.";
+      window.location.href = result.url;
+    }catch(e){
+      setPill(recordingState, "bad", "Error");
+      recordingInfo.textContent = e.message || "Could not start the recording download.";
+      downloadRecordingBtn.disabled = false;
+    }
+  }
+
+  async function loadRecordingMode(){
+    if (!eventId || !broadcastKey) {
+      topMsg.innerHTML = '<b class="bad">Missing recording access key.</b>';
+      subMsg.textContent = "Open this page from the recording email.";
+      return;
+    }
+    try{
+      const result = await getRecording();
+      const r = result.recording || {};
+      if (r.download_claimed) {
+        setPill(recordingState, "bad", "Claimed");
+        topMsg.innerHTML = "<b>Recording already claimed.</b>";
+        recordingInfo.textContent = "This recording download has already been used.";
+        return;
+      }
+      if (r.download_available) {
+        setPill(recordingState, "good", "Ready");
+        topMsg.innerHTML = "<b>Your recording is ready.</b>";
+        subMsg.textContent = "Use the button below to download the MP4.";
+        recordingInfo.textContent = r.expires_at ? `Available until ${r.expires_at}.` : "Available now.";
+        downloadRecordingBtn.disabled = false;
+        return;
+      }
+      setPill(recordingState, "warn", r.status || "Processing");
+      topMsg.innerHTML = "<b>Recording is not ready yet.</b>";
+      subMsg.textContent = "Refresh this page in a few minutes.";
+      recordingInfo.textContent = r.error || "The MP4 is still being prepared.";
+    }catch(e){
+      setPill(recordingState, "bad", "Error");
+      topMsg.innerHTML = '<b class="bad">Could not load recording.</b>';
+      subMsg.textContent = e.message || "Please try again later.";
+      recordingInfo.textContent = subMsg.textContent;
+    }
+  }
+
   async function confirmExtension(){
     if (!eventId || !broadcastKey || !extensionSessionId) {
       throw new Error("Missing extension confirmation details.");
@@ -302,6 +428,7 @@
         credentials: "include"
       });
       const r = ready?.readiness || {};
+      currentReadiness = r;
 
       if (r.expired) {
         setPill(broadcastState, "bad", "Expired");
@@ -330,9 +457,9 @@
           ? "Broadcaster access is ready."
           : "Open the broadcast page to prepare the HLS channel.";
         setLinkReady(broadcastBtn, true);
-        getObsBtn.disabled = true;
-        setPill(obsState, "bad", "Not available");
-        obsInfo.textContent = "Browser HLS is used for this event.";
+        getObsBtn.disabled = !readyForHls;
+        setPill(obsState, readyForHls ? "good" : "warn", readyForHls ? "Ready" : "Preparing");
+        obsInfo.textContent = readyForHls ? "OBS setup is available for this recorded stream." : "OBS setup will unlock when the stream key is ready.";
         return true;
       }
 
@@ -450,44 +577,80 @@
     if (!broadcastParts?.eventId || !broadcastParts?.key) return;
 
     getObsBtn.disabled = true;
-    obsInfo.textContent = "Requesting OBS token…";
+    obsInfo.textContent = "Requesting OBS setup…";
 
     try{
-      const j = await fetchJson(`${API_BASE}/api/events/${encodeURIComponent(broadcastParts.eventId)}/whip/provision?key=${encodeURIComponent(broadcastParts.key)}`, {
-        method: "POST",
-        headers: { "content-type":"application/json" },
-        body: "{}",
-        credentials: "include"
-      });
+      let server = "";
+      let token = "";
+      let expires = "";
 
-      const server = j.whip_url || "https://global.whip.live-video.net";
-      const token = j.bearer_token || "";
+      if (currentReadiness?.hls_enabled && !currentReadiness?.rtc_enabled) {
+        const j = await fetchJson(`${API_BASE}/api/events/${encodeURIComponent(broadcastParts.eventId)}/hls/provision?key=${encodeURIComponent(broadcastParts.key)}`, {
+          method: "POST",
+          headers: { "content-type":"application/json" },
+          body: "{}",
+          credentials: "include"
+        });
+        server = j?.ingest?.rtmpsUrl || (j?.ingest?.endpoint ? `rtmps://${j.ingest.endpoint}:443/app/` : "");
+        token = j?.ingest?.streamKey || "";
+      } else {
+        const j = await fetchJson(`${API_BASE}/api/events/${encodeURIComponent(broadcastParts.eventId)}/whip/provision?key=${encodeURIComponent(broadcastParts.key)}`, {
+          method: "POST",
+          headers: { "content-type":"application/json" },
+          body: "{}",
+          credentials: "include"
+        });
+        server = "https://global.whip.live-video.net";
+        token = j.bearer_token || "";
+        expires = j.expires_at || "";
+      }
 
-      serverCode.textContent = server;
-      tokenCode.textContent = token;
-      expiresText.textContent = j.expires_at ? `Token expires: ${j.expires_at}` : "";
+      server = String(server || "").trim();
+      token = String(token || "").trim();
+      expires = String(expires || "").trim();
+
+      serverCode.value = server;
+      tokenCode.value = token;
+      expiresText.textContent = expires ? `Token expires: ${expires}` : "";
       obsBox.style.display = "";
       copySetupBtn.disabled = !token;
+      copyServerBtn.disabled = !server;
+      copyTokenBtn.disabled = !token;
 
-      setPill(obsState, "good", "Token ready");
-      obsInfo.textContent = "OBS token generated.";
+      setPill(obsState, "good", "Ready");
+      obsInfo.textContent = "OBS setup generated.";
     }catch(e){
       setPill(obsState, "bad", "Error");
-      obsInfo.textContent = e.message || "Could not generate OBS token.";
+      obsInfo.textContent = e.message || "Could not generate OBS setup.";
     }finally{
       getObsBtn.disabled = false;
     }
   }
 
   async function copySetup(){
-    const server = serverCode.textContent || "https://global.whip.live-video.net";
-    const token = tokenCode.textContent || "";
+    const server = String(serverCode.value || "https://global.whip.live-video.net").trim();
+    const token = String(tokenCode.value || "").trim();
     const text = `Server: ${server}\nBearer Token: ${token}`;
     try{
       await navigator.clipboard.writeText(text);
       obsInfo.textContent = "OBS setup copied.";
     }catch{
       obsInfo.textContent = "Could not copy automatically. Copy it manually below.";
+    }
+  }
+
+  async function copyObsValue(kind){
+    const input = kind === "server" ? serverCode : tokenCode;
+    const label = kind === "server" ? "Server URL" : "Token";
+    const value = String(input.value || "").trim();
+    if (!value) return;
+    try{
+      await navigator.clipboard.writeText(value);
+      obsInfo.textContent = `${label} copied.`;
+    }catch{
+      input.focus();
+      input.select();
+      obsInfo.textContent = `Could not copy automatically. ${label} is selected.`;
     }
   }
 
@@ -505,13 +668,23 @@
 
   document.getElementById("getObsBtn").addEventListener("click", getObsToken);
   document.getElementById("copySetupBtn").addEventListener("click", copySetup);
+  copyServerBtn.addEventListener("click", () => copyObsValue("server"));
+  copyTokenBtn.addEventListener("click", () => copyObsValue("token"));
+  serverCode.addEventListener("focus", () => serverCode.select());
+  tokenCode.addEventListener("focus", () => tokenCode.select());
   copyWatchBtn.addEventListener("click", () => copyPrivateLink("watch"));
   copyBroadcastBtn.addEventListener("click", () => copyPrivateLink("broadcast"));
   resendEmailBtn.addEventListener("click", resendEmail);
+  downloadRecordingBtn.addEventListener("click", claimRecordingDownload);
 
   (async () => {
     eventCode.textContent = eventId || "(missing)";
-    successCode.textContent = extensionMode ? (extensionSessionId || "(missing)") : (successToken || "(missing)");
+    successCode.textContent = extensionMode ? (extensionSessionId || "(missing)") : (successToken || broadcastKey || "(missing)");
+
+    if (recordingMode) {
+      await loadRecordingMode();
+      return;
+    }
 
     if (extensionMode) {
       try {
@@ -562,6 +735,9 @@
 
       watchParts = watchUrl ? parseLinkParts(watchUrl) : null;
       broadcastParts = broadcastUrl ? parseLinkParts(broadcastUrl) : null;
+      if (broadcastParts?.key) {
+        prepareRecording();
+      }
 
       if (watchUrl) watchBtn.href = watchUrl;
       if (broadcastUrl) broadcastBtn.href = broadcastUrl;

@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Create a Private Live Stream - Castlink</title>
-  <meta name="description" content="Create a private paid live stream in minutes. Choose HLS, WebRTC, or both, then share private broadcast and watch links after checkout." />
+  <meta name="description" content="Create a private paid live stream in minutes. Choose low-latency live, recorded stream, or both, then share private broadcast and watch links after checkout." />
   <link rel="canonical" href="https://castlink.stream/create/" />
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="Castlink" />
@@ -38,10 +38,9 @@
     .muted{color:var(--muted);font-size:13px}
     .bad{color:var(--bad)}
     .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
-    .mode-grid{display:grid;gap:10px;margin-top:8px}
-    @media(min-width:520px){.mode-grid{grid-template-columns:repeat(3,1fr)}}
+    .mode-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:8px}
     .pill{display:grid;gap:6px;min-height:94px;padding:12px;border-radius:8px;background:var(--panel2);border:1px solid var(--border);cursor:pointer;user-select:none;color:var(--text)}
-    .pill-head{display:flex;align-items:center;gap:8px;font-weight:800}
+    .pill-head{display:flex;align-items:flex-start;gap:8px;font-weight:800;line-height:1.2}
     .pill span:last-child{color:var(--muted);font-size:12px;line-height:1.35}
     .inline-check{display:flex;align-items:center;gap:9px;padding:12px;border-radius:8px;background:var(--panel3);border:1px solid var(--border);color:var(--text)}
     .price{font-size:34px;font-weight:850;margin-top:14px;letter-spacing:0}
@@ -86,12 +85,12 @@
       <div class="steps">
         <div class="step"><strong>Ready links after payment</strong><span class="muted">Castlink assigns prepared streaming resources when available.</span></div>
         <div class="step"><strong>No viewer accounts</strong><span class="muted">Guests use the private watch link you share.</span></div>
-        <div class="step"><strong>Choose delivery</strong><span class="muted">Use real-time WebRTC, HLS playback, or both. Current streams target 720p HD at up to 30fps.</span></div>
+        <div class="step"><strong>Choose delivery</strong><span class="muted">Use low-latency live, recorded stream playback, or both. Current streams target 720p HD at up to 30fps.</span></div>
       </div>
       <div class="packages">
-        <div class="package"><strong>HLS</strong><div class="money">From $59</div><div class="muted">Private playback, 720p HD target, short delay.</div></div>
-        <div class="package"><strong>WebRTC</strong><div class="money">From $79</div><div class="muted">Low latency, 720p HD target, best for smaller live sessions.</div></div>
-        <div class="package"><strong>Both</strong><div class="money">From $199</div><div class="muted">WebRTC + HLS, 720p HD target, flexible broadcast setup.</div></div>
+        <div class="package"><strong>Recorded stream</strong><div class="money">From $59</div><div class="muted">Slightly delayed private playback with MP4 recording enabled.</div></div>
+        <div class="package"><strong>Low-latency live</strong><div class="money">From $79</div><div class="muted">Shortest delay, 720p HD target, best for smaller live sessions.</div></div>
+        <div class="package"><strong>Low-latency + recording</strong><div class="money">From $199</div><div class="muted">Low-latency live plus recorded stream playback.</div></div>
       </div>
       <div id="test" class="card test-card">
         <h2>Try a free 3-minute test</h2>
@@ -102,9 +101,9 @@
           </label>
           <label>Delivery
             <select id="testMode">
-              <option value="rtc">WebRTC</option>
-              <option value="hls">HLS</option>
-              <option value="both">Both</option>
+              <option value="rtc">Low-latency live</option>
+              <option value="hls">Recorded stream</option>
+              <option value="both">Low-latency + recording</option>
             </select>
           </label>
         </div>
@@ -113,7 +112,7 @@
       </div>
     </section>
 
-    <section class="card checkout">
+    <section id="checkout" class="card checkout">
       <h2>Checkout details</h2>
       <p class="checkout-sub">Choose the event package. Stripe shows the final amount before payment.</p>
 
@@ -135,9 +134,9 @@
       <label>Delivery (choose one)</label>
       <div class="mode-grid">
         <!-- Keep UI labels, but values map cleanly to backend modes -->
-        <label class="pill"><span class="pill-head"><input type="radio" name="mode" value="rtc" checked /> WebRTC</span><span>Low latency, 720p HD target.</span></label>
-        <label class="pill"><span class="pill-head"><input type="radio" name="mode" value="hls" /> HLS</span><span>Private playback, 720p HD target, short delay.</span></label>
-        <label class="pill"><span class="pill-head"><input type="radio" name="mode" value="both" /> Both</span><span>WebRTC + HLS, 720p HD target.</span></label>
+        <label class="pill"><span class="pill-head"><input type="radio" name="mode" value="rtc" checked /> Low-latency live</span><span>Shortest delay, 720p HD target.</span></label>
+        <label class="pill"><span class="pill-head"><input type="radio" name="mode" value="hls" /> Recorded stream</span><span>Slightly delayed private playback with MP4 recording enabled.</span></label>
+        <label class="pill"><span class="pill-head"><input type="radio" name="mode" value="both" /> Low-latency + recording</span><span>Low-latency live plus recorded stream playback.</span></label>
       </div>
 
       <label class="inline-check" style="margin-top:12px;"><input id="wl" type="checkbox" /> White-label watch page footer</label>
@@ -145,7 +144,7 @@
       <div id="price" class="price">Loading price</div>
       <div id="priceNote" class="tiny">Pricing loads securely from Castlink.</div>
       <div class="summary">
-        <div class="summary-row"><span>Delivery</span><strong id="summaryMode">WebRTC</strong></div>
+        <div class="summary-row"><span>Delivery</span><strong id="summaryMode">Low-latency live</strong></div>
         <div class="summary-row"><span>Duration</span><strong id="summaryDuration">3 hours</strong></div>
         <div class="summary-row"><span>Extension</span><strong>Optional +1 hour</strong></div>
       </div>
@@ -250,7 +249,7 @@
     const totalCents = calcPriceCentsIfAvailable();
     const tier = String(document.getElementById("tier").value || "3");
     const mode = getMode();
-    const modeLabels = { rtc: "WebRTC", hls: "HLS", both: "HLS + WebRTC" };
+    const modeLabels = { rtc: "Low-latency live", hls: "Recorded stream", both: "Low-latency + recording" };
     summaryModeEl.textContent = modeLabels[mode] || mode;
     summaryDurationEl.textContent = `${tier} hour${Number(tier) === 1 ? "" : "s"}`;
     if (totalCents === null) {

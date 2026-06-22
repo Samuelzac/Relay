@@ -26,3 +26,10 @@ node_modules/
 
 # Generated QA screenshots/previews.
 /visual-previews/
+
+# Codex/local recovery scratch.
+/.codex/
+/.clean-*/
+
+# Local secrets.
+/recording-worker/.recording-webhook-secret.txt

@@ -14,6 +14,12 @@ npx.cmd wrangler whoami
 ```
 
 ```powershell
+cd C:\Relay\recording-worker
+npm.cmd install
+npm.cmd run typecheck
+```
+
+```powershell
 cd C:\Relay
 git diff --check
 node tools/local-qa.mjs
@@ -35,6 +41,10 @@ Run these Neon migrations in order:
 8. `api/sql/008_stream_warning_emails.sql`
 9. `api/sql/009_report_moderation.sql`
 10. `api/sql/010_test_streams.sql`
+11. `api/sql/011_ready_emails.sql`
+12. `api/sql/012_viewer_invites.sql`
+13. `api/sql/013_recordings.sql`
+14. `api/sql/014_ops_automation.sql`
 
 ## Cloudflare Worker Secrets
 
@@ -49,6 +59,7 @@ wrangler secret put STREAMKEY_ENC_KEY_B64
 wrangler secret put ADMIN_KEY
 wrangler secret put POSTMARK_SERVER_TOKEN
 wrangler secret put IVS_PROXY_SECRET
+wrangler secret put RECORDING_WEBHOOK_SECRET
 ```
 
 PowerShell/Wrangler version:
@@ -63,10 +74,27 @@ npx.cmd wrangler secret put STREAMKEY_ENC_KEY_B64
 npx.cmd wrangler secret put ADMIN_KEY
 npx.cmd wrangler secret put POSTMARK_SERVER_TOKEN
 npx.cmd wrangler secret put IVS_PROXY_SECRET
+npx.cmd wrangler secret put RECORDING_WEBHOOK_SECRET
 npx.cmd wrangler secret list
 ```
 
 `IVS_PROXY_SECRET` must match the IVS proxy service `PROXY_SECRET`.
+`RECORDING_WEBHOOK_SECRET` must match the recording Worker secret.
+
+## Recording Worker Secrets
+
+Set these on the `castlink-recording-worker` Worker:
+
+```powershell
+cd C:\Relay\recording-worker
+npx.cmd wrangler secret put AWS_ACCESS_KEY_ID
+npx.cmd wrangler secret put AWS_SECRET_ACCESS_KEY
+npx.cmd wrangler secret put POSTMARK_SERVER_TOKEN
+npx.cmd wrangler secret put RECORDING_WEBHOOK_SECRET
+npx.cmd wrangler secret list
+```
+
+Use the same `RECORDING_WEBHOOK_SECRET` value as the API Worker.
 
 ## Worker Vars
 
@@ -96,9 +124,11 @@ Confirm these production values:
 
 - Pages custom domain: `castlink.stream`
 - Worker custom domain: `api.castlink.stream`
+- Recording Worker custom domain: `recording.castlink.stream`
 - Redirect `castlink.co.nz` to `https://castlink.stream`
 - Redirect `www.castlink.co.nz` to `https://castlink.stream`
 - Optional redirect `www.castlink.stream` to `https://castlink.stream`
+- `https://recording.castlink.stream/healthz` returns `ok`
 
 ## Email
 
@@ -130,6 +160,15 @@ PowerShell/Wrangler version:
 
 ```powershell
 cd C:\Relay\api
+npm.cmd install
+npm.cmd run typecheck
+npx.cmd wrangler deploy
+```
+
+Deploy the recording Worker:
+
+```powershell
+cd C:\Relay\recording-worker
 npm.cmd install
 npm.cmd run typecheck
 npx.cmd wrangler deploy
@@ -168,6 +207,7 @@ start https://castlink.stream/admin
   node tools/smoke-test-stream.mjs --email you@example.com --mode both
   ```
 - HLS checkout works.
+- HLS recording page uses `https://recording.castlink.stream` and can prepare/download a completed MP4.
 - WebRTC checkout works.
 - Both checkout works.
 - Success page shows links.

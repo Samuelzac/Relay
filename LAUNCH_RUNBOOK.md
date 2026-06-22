@@ -9,6 +9,7 @@ Assumptions:
 - Pages output folder: `C:\Relay\pages_out\pages`
 - Production site: `https://castlink.stream`
 - Production API: `https://api.castlink.stream`
+- Production recording API: `https://recording.castlink.stream`
 - Support sender: `support@castlink.stream`
 
 Use PowerShell unless noted.
@@ -87,6 +88,10 @@ api/sql/007_event_cleanup_tracking.sql
 api/sql/008_stream_warning_emails.sql
 api/sql/009_report_moderation.sql
 api/sql/010_test_streams.sql
+api/sql/011_ready_emails.sql
+api/sql/012_viewer_invites.sql
+api/sql/013_recordings.sql
+api/sql/014_ops_automation.sql
 ```
 
 ### Option A: Neon Console
@@ -119,13 +124,17 @@ psql $env:DATABASE_URL -f C:\Relay\api\sql\007_event_cleanup_tracking.sql
 psql $env:DATABASE_URL -f C:\Relay\api\sql\008_stream_warning_emails.sql
 psql $env:DATABASE_URL -f C:\Relay\api\sql\009_report_moderation.sql
 psql $env:DATABASE_URL -f C:\Relay\api\sql\010_test_streams.sql
+psql $env:DATABASE_URL -f C:\Relay\api\sql\011_ready_emails.sql
+psql $env:DATABASE_URL -f C:\Relay\api\sql\012_viewer_invites.sql
+psql $env:DATABASE_URL -f C:\Relay\api\sql\013_recordings.sql
+psql $env:DATABASE_URL -f C:\Relay\api\sql\014_ops_automation.sql
 ```
 
 Verify core tables/columns:
 
 ```powershell
-psql $env:DATABASE_URL -c "select to_regclass('public.events') as events, to_regclass('public.stream_inventory') as stream_inventory, to_regclass('public.reports') as reports;"
-psql $env:DATABASE_URL -c "select column_name from information_schema.columns where table_schema='public' and table_name='events' and column_name in ('disabled','cleanup_started_at','cleanup_completed_at','cleanup_error','warning_email_sent_at','warning_email_error') order by column_name;"
+psql $env:DATABASE_URL -c "select to_regclass('public.events') as events, to_regclass('public.stream_inventory') as stream_inventory, to_regclass('public.reports') as reports, to_regclass('public.ops_alerts') as ops_alerts, to_regclass('public.link_recovery_requests') as link_recovery_requests;"
+psql $env:DATABASE_URL -c "select column_name from information_schema.columns where table_schema='public' and table_name='events' and column_name in ('disabled','cleanup_started_at','cleanup_completed_at','cleanup_error','warning_email_sent_at','warning_email_error','ready_email_attempts','viewer_invites_attempts','warning_email_attempts','recording_email_attempts') order by column_name;"
 ```
 
 ## 3. Hyperdrive
@@ -208,15 +217,30 @@ npx.cmd wrangler secret put STREAMKEY_ENC_KEY_B64
 npx.cmd wrangler secret put ADMIN_KEY
 npx.cmd wrangler secret put POSTMARK_SERVER_TOKEN
 npx.cmd wrangler secret put IVS_PROXY_SECRET
+npx.cmd wrangler secret put RECORDING_WEBHOOK_SECRET
 ```
 
 `IVS_PROXY_SECRET` must match the IVS proxy service `PROXY_SECRET`.
+`RECORDING_WEBHOOK_SECRET` must match the recording Worker secret.
 
 List known secret names:
 
 ```powershell
 npx.cmd wrangler secret list
 ```
+
+Set recording Worker secrets:
+
+```powershell
+cd C:\Relay\recording-worker
+npx.cmd wrangler secret put AWS_ACCESS_KEY_ID
+npx.cmd wrangler secret put AWS_SECRET_ACCESS_KEY
+npx.cmd wrangler secret put POSTMARK_SERVER_TOKEN
+npx.cmd wrangler secret put RECORDING_WEBHOOK_SECRET
+npx.cmd wrangler secret list
+```
+
+Use the same `RECORDING_WEBHOOK_SECRET` value as the API Worker.
 
 ## 7. Confirm Worker Vars
 
@@ -271,17 +295,28 @@ npm.cmd run typecheck
 npx.cmd wrangler deploy
 ```
 
+Deploy recording Worker:
+
+```powershell
+cd C:\Relay\recording-worker
+npm.cmd install
+npm.cmd run typecheck
+npx.cmd wrangler deploy
+```
+
 Test Worker health:
 
 ```powershell
 Invoke-WebRequest -UseBasicParsing https://api.castlink.stream/healthz
 Invoke-WebRequest -UseBasicParsing https://api.castlink.stream/api/pricing
+Invoke-WebRequest -UseBasicParsing https://recording.castlink.stream/healthz
 ```
 
 Expected:
 
 - `/healthz` returns `ok`
 - `/api/pricing` returns JSON with `ok:true`
+- recording `/healthz` returns `ok`
 
 If the custom domain is not connected yet, use the temporary `workers.dev` URL printed by Wrangler.
 
@@ -330,6 +365,7 @@ Worker custom domain:
 
 ```text
 api.castlink.stream -> stream-platform-api Worker
+recording.castlink.stream -> castlink-recording-worker Worker
 ```
 
 Redirect rules:
@@ -345,9 +381,11 @@ PowerShell checks:
 ```powershell
 Resolve-DnsName castlink.stream
 Resolve-DnsName api.castlink.stream
+Resolve-DnsName recording.castlink.stream
 Resolve-DnsName castlink.co.nz
 Invoke-WebRequest -UseBasicParsing https://castlink.stream/
 Invoke-WebRequest -UseBasicParsing https://api.castlink.stream/healthz
+Invoke-WebRequest -UseBasicParsing https://recording.castlink.stream/healthz
 ```
 
 ## 11. Stripe Webhook
@@ -490,6 +528,13 @@ For each purchase:
 13. Click Finish Stream.
 14. Confirm admin shows event status and usage.
 
+For HLS or Both purchases with recording enabled:
+
+1. Confirm `https://recording.castlink.stream/healthz` returns `ok`.
+2. Finish the stream and wait for IVS recording and MP4 conversion.
+3. Open the recording email link or `/success/?event=EVENT_ID&key=BROADCAST_KEY&recording=1`.
+4. Confirm the page calls `recording.castlink.stream`, shows recording status, and starts the MP4 download once ready.
+
 Admin events:
 
 ```powershell
@@ -557,6 +602,13 @@ Redeploy Worker:
 
 ```powershell
 cd C:\Relay\api
+npx.cmd wrangler deploy
+```
+
+Redeploy recording Worker:
+
+```powershell
+cd C:\Relay\recording-worker
 npx.cmd wrangler deploy
 ```
 

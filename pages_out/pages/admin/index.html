@@ -69,6 +69,9 @@
     .pill.pass{color:var(--good)}
     .pill.fail{color:var(--bad)}
     .section-title{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px}
+    .section-tools{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+    .section-tools select,.section-tools input{min-height:36px;padding:7px 9px;font-size:13px}
+    .section-tools input{width:min(260px,100%)}
     .scroll{overflow:auto}
     .msg{min-height:20px}
     .actions{display:flex;gap:6px;flex-wrap:wrap;min-width:260px}
@@ -171,8 +174,23 @@
 
     <section class="card" style="margin-top:12px">
       <div class="section-title">
-        <strong>Recent events</strong>
-        <span class="muted" id="eventCount"></span>
+        <div>
+          <strong>Events</strong>
+          <div class="muted" id="eventCount"></div>
+        </div>
+        <div class="section-tools">
+          <select id="eventView" aria-label="Event view">
+            <option value="active">Active</option>
+            <option value="history">History</option>
+            <option value="all">All</option>
+          </select>
+          <select id="eventHistoryLimit" aria-label="History limit">
+            <option value="10">Last 10 old</option>
+            <option value="25">Last 25 old</option>
+            <option value="all">All old</option>
+          </select>
+          <input id="eventSearch" placeholder="Search events" />
+        </div>
       </div>
       <div class="scroll">
         <table>
@@ -226,12 +244,27 @@
           <pre id="detailUsage"></pre>
         </div>
       </div>
+      <div id="detailRecording" class="detail-box" style="margin-top:10px"></div>
     </section>
 
     <section class="card" style="margin-top:12px">
       <div class="section-title">
-        <strong>Recent inventory slots</strong>
-        <span class="muted" id="slotCount"></span>
+        <div>
+          <strong>Inventory slots</strong>
+          <div class="muted" id="slotCount"></div>
+        </div>
+        <div class="section-tools">
+          <select id="slotView" aria-label="Inventory view">
+            <option value="current">Current</option>
+            <option value="old">Old/retired</option>
+            <option value="all">All</option>
+          </select>
+          <select id="slotLimit" aria-label="Inventory limit">
+            <option value="25">Last 25</option>
+            <option value="50">Last 50</option>
+            <option value="all">All loaded</option>
+          </select>
+        </div>
       </div>
       <div class="scroll">
         <table>
@@ -273,9 +306,18 @@
   const detailTitle = $("detailTitle");
   const detailMeta = $("detailMeta");
   const detailUsage = $("detailUsage");
+  const detailRecording = $("detailRecording");
+  const eventView = $("eventView");
+  const eventHistoryLimit = $("eventHistoryLimit");
+  const eventSearch = $("eventSearch");
+  const slotView = $("slotView");
+  const slotLimit = $("slotLimit");
+  let allEvents = [];
+  let allSlots = [];
 
   const params = new URLSearchParams(location.search);
   const qk = params.get("key");
+  const requestedEventId = params.get("event") || "";
   if (qk) keyInput.value = qk;
   else {
     try { keyInput.value = localStorage.getItem("RELAY_ADMIN_KEY") || ""; } catch {}
@@ -321,6 +363,14 @@
     if (ev.cleanup_started_at) return `attempt ${ev.cleanup_attempts || 0}`;
     if (ev.status === "expired") return "pending";
     return "-";
+  }
+
+  function recordingStatus(recording){
+    if (!recording) return "not checked";
+    if (!recording.enabled) return "not enabled";
+    if (recording.download_claimed) return "claimed";
+    if (recording.mp4_ready) return "ready";
+    return recording.status || "pending";
   }
 
   function setStatus(message){
@@ -387,9 +437,82 @@
     return `${finish}<button class="danger event-action" data-action="disable" data-event="${esc(ev.id)}">Disable</button>`;
   }
 
+  function renderRecordingDetail(ev){
+    const r = ev.recording || null;
+    const rows = [
+      ["Enabled", r ? String(!!r.enabled) : "-"],
+      ["Status", recordingStatus(r)],
+      ["MP4 job", r?.mp4_job_status || r?.mp4_job_id || "-"],
+      ["Ready", r?.mp4_ready ? "yes" : "no"],
+      ["Download", r?.download_claimed ? `claimed ${when(r.download_claimed_at)}` : r?.download_available ? "available" : "-"],
+      ["Email", r?.email_sent_at ? `sent ${when(r.email_sent_at)}` : r?.email_error ? `error: ${r.email_error}` : "-"],
+      ["Error", r?.error || r?.mp4_job_error || "-"],
+      ["Expires", when(r?.expires_at) || "-"],
+    ];
+    const status = recordingStatus(r);
+    const canDiscover = r?.enabled && !r?.mp4_ready && !r?.mp4_job_id;
+    const canRetry = r?.enabled && !!r?.mp4_job_id && (r.status === "failed" || r.status === "processing" || r.error || r.mp4_job_error);
+    const canEmail = r?.mp4_ready && !r?.email_sent_at;
+    detailRecording.innerHTML = `
+      <div class="section-title">
+        <strong>Recording</strong>
+        <span class="pill ${r?.mp4_ready ? "pass" : r?.status === "failed" ? "bad" : "warn"}">${esc(status)}</span>
+      </div>
+      <div class="kv">${rows.map(([k, v]) => `<div><span>${esc(k)}</span><span>${esc(v)}</span></div>`).join("")}</div>
+      <div class="actions" style="margin-top:10px">
+        <button class="secondary recording-action" data-action="discover" data-event="${esc(ev.id)}" ${canDiscover ? "" : "disabled"}>Find S3 recording</button>
+        <button class="secondary recording-action" data-action="retry" data-event="${esc(ev.id)}" ${canRetry ? "" : "disabled"}>Retry conversion</button>
+        <button class="secondary recording-action" data-action="email" data-event="${esc(ev.id)}" ${canEmail ? "" : "disabled"}>Send recording email</button>
+      </div>
+      <div class="muted" style="margin-top:8px">Find S3 recording searches the IVS recording bucket for this channel, stores the manifest, and submits conversion.</div>
+    `;
+    detailRecording.querySelectorAll("button.recording-action").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const eventId = btn.getAttribute("data-event");
+        const action = btn.getAttribute("data-action");
+        if (!eventId || !action) return;
+        btn.disabled = true;
+        try {
+          if (action === "discover") {
+            if (!confirm("Search S3 for this event recording and submit MP4 conversion?")) return;
+            await api(`/api/admin/events/${encodeURIComponent(eventId)}/recording/discover`, {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: "{}",
+            });
+            setStatus("Recording discovered and conversion submitted");
+          }
+          if (action === "retry") {
+            if (!confirm("Retry MP4 conversion for this recording?")) return;
+            await api(`/api/admin/events/${encodeURIComponent(eventId)}/recording/convert`, {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ retry: true }),
+            });
+            setStatus("Recording conversion retry submitted");
+          }
+          if (action === "email") {
+            if (!confirm("Send the recording download email now?")) return;
+            await api(`/api/admin/events/${encodeURIComponent(eventId)}/recording`, {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ status: "ready" }),
+            });
+            setStatus("Recording email queued");
+          }
+          await loadEventDetail(eventId, true);
+        } catch(e) {
+          setStatus(e.message || "Recording action failed");
+        } finally {
+          btn.disabled = false;
+        }
+      });
+    });
+  }
+
   function renderSummary(rows){
     const modes = ["hls", "rtc", "both"];
-    const statuses = ["available", "assigned", "failed", "retired"];
+    const statuses = ["available", "reserved", "assigned", "failed", "retired"];
     const lookup = new Map((rows || []).map(r => [`${r.mode}:${r.status}`, r.count]));
     summaryEl.innerHTML = modes.flatMap(mode => statuses.map(status => {
       const count = Number(lookup.get(`${mode}:${status}`) || 0);
@@ -397,8 +520,53 @@
     })).join("");
   }
 
+  function isActiveAdminEvent(ev){
+    if ((ev.status === "paid" || ev.status === "live") && !ev.cleanup_completed_at) return true;
+    if (ev.status === "expired" && (!ev.cleanup_completed_at || ev.cleanup_error)) return true;
+    return false;
+  }
+
+  function eventMatchesSearch(ev, term){
+    if (!term) return true;
+    const haystack = [
+      ev.id,
+      ev.title,
+      ev.email,
+      ev.status,
+      modeForEvent(ev),
+      cleanupStatus(ev),
+    ].join(" ").toLowerCase();
+    return haystack.includes(term);
+  }
+
+  function filteredEvents(){
+    const view = eventView.value || "active";
+    const term = String(eventSearch.value || "").trim().toLowerCase();
+    const filtered = allEvents.filter(ev => {
+      const active = isActiveAdminEvent(ev);
+      if (view === "active" && !active) return false;
+      if (view === "history" && active) return false;
+      return eventMatchesSearch(ev, term);
+    });
+    if (view === "history" && !term) {
+      const limit = eventHistoryLimit.value || "10";
+      if (limit !== "all") return filtered.slice(0, Math.max(1, Number(limit) || 10));
+    }
+    return filtered;
+  }
+
+  function renderFilteredEvents(){
+    renderEvents(filteredEvents());
+  }
+
   function renderEvents(events){
-    eventCount.textContent = `${events.length} shown`;
+    const activeCount = allEvents.filter(isActiveAdminEvent).length;
+    const historyCount = Math.max(0, allEvents.length - activeCount);
+    const view = eventView.value || "active";
+    const term = String(eventSearch.value || "").trim();
+    const limitedHistory = view === "history" && !term && eventHistoryLimit.value !== "all";
+    const hiddenCount = limitedHistory ? Math.max(0, historyCount - events.length) : 0;
+    eventCount.textContent = `${events.length} shown - ${activeCount} active - ${historyCount} history${hiddenCount ? ` - ${hiddenCount} hidden` : ""}`;
     if (!events.length) {
       eventsBody.innerHTML = `<tr><td colspan="7" class="muted">No events found.</td></tr>`;
       return;
@@ -572,6 +740,7 @@
       ["Playback", ev.playback_url || "-"],
     ].map(([k, v]) => `<div><span>${esc(k)}</span><span>${esc(v)}</span></div>`).join("");
     detailUsage.textContent = JSON.stringify(ev.usage || {}, null, 2);
+    renderRecordingDetail(ev);
     if (reveal) eventDetail.classList.remove("hidden");
     return ev;
   }
@@ -607,8 +776,28 @@
     return slot.status === "available" || slot.status === "failed";
   }
 
+  function filteredSlots(){
+    const view = slotView.value || "current";
+    const limit = slotLimit.value || "25";
+    const currentStatuses = new Set(["available", "reserved", "assigned", "failed"]);
+    let slots = allSlots.filter(slot => {
+      if (view === "current") return currentStatuses.has(slot.status);
+      if (view === "old") return slot.status === "retired";
+      return true;
+    });
+    if (limit !== "all") slots = slots.slice(0, Math.max(1, Number(limit) || 25));
+    return slots;
+  }
+
+  function renderFilteredSlots(){
+    renderSlots(filteredSlots());
+  }
+
   function renderSlots(slots){
-    slotCount.textContent = `${slots.length} shown`;
+    const view = slotView.value || "current";
+    const currentTotal = allSlots.filter(slot => ["available", "reserved", "assigned", "failed"].includes(slot.status)).length;
+    const retiredTotal = allSlots.filter(slot => slot.status === "retired").length;
+    slotCount.textContent = `${slots.length} shown - ${currentTotal} current - ${retiredTotal} retired${view === "current" && retiredTotal ? " - old slots hidden" : ""}`;
     if (!slots.length) {
       slotsBody.innerHTML = `<tr><td colspan="6" class="muted">No inventory slots yet.</td></tr>`;
       return;
@@ -652,11 +841,14 @@
         api("/api/admin/inventory"),
         api("/api/admin/reports"),
       ]);
-      renderEvents(events.events || []);
+      allEvents = events.events || [];
+      allSlots = inventory.slots || [];
+      renderFilteredEvents();
       renderSummary(inventory.summary || []);
-      renderSlots(inventory.slots || []);
+      renderFilteredSlots();
       renderReports(reports.reports || []);
       setStatus("Loaded");
+      if (requestedEventId) await loadEventDetail(requestedEventId, true);
     }catch(e){
       setStatus(e.message || "Failed");
     }
@@ -710,6 +902,11 @@
   $("fillBtn").addEventListener("click", fill);
   $("resetAwsStateBtn").addEventListener("click", resetAwsState);
   $("closeDetailBtn").addEventListener("click", () => eventDetail.classList.add("hidden"));
+  eventView.addEventListener("change", renderFilteredEvents);
+  eventHistoryLimit.addEventListener("change", renderFilteredEvents);
+  eventSearch.addEventListener("input", renderFilteredEvents);
+  slotView.addEventListener("change", renderFilteredSlots);
+  slotLimit.addEventListener("change", renderFilteredSlots);
   apiOverride.addEventListener("change", persistSettings);
   keyInput.addEventListener("change", persistSettings);
   renderSmokeCommands();

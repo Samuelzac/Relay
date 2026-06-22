@@ -30,7 +30,12 @@
     .card{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:16px}
     .callout{background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:14px;margin:14px 0}
     .btn{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:10px 14px;border-radius:8px;background:var(--accent);color:var(--accentText);font-weight:800;text-decoration:none}
+    button.btn{border:0;cursor:pointer}
+    input{width:100%;min-height:44px;border:1px solid var(--border);border-radius:8px;background:#0b0f14;color:var(--text);padding:10px 12px;font:inherit}
+    label{display:grid;gap:6px;color:var(--muted);font-size:14px;font-weight:700}
+    form{display:grid;gap:10px;margin-top:8px}
     .btn:hover{text-decoration:none}
+    .status{min-height:22px;color:var(--muted);font-size:14px}
     ul{margin:8px 0 0;padding-left:20px;color:var(--muted)}
     li{margin:6px 0}
     code{color:#dbeafe}
@@ -56,6 +61,23 @@
       <h2>Email support</h2>
       <p><a class="btn" href="mailto:support@castlink.stream">support@castlink.stream</a></p>
       <p>For live-event issues, include the event title, event link, device/browser, approximate time, and what you were trying to do.</p>
+    </div>
+
+    <div class="callout">
+      <h2>Resend event links</h2>
+      <p>Enter the purchase email. If a matching event exists, Castlink will send the private links to that email.</p>
+      <form id="recoverForm">
+        <label>
+          Purchase email
+          <input id="recoverEmail" type="email" autocomplete="email" required placeholder="you@example.com" />
+        </label>
+        <label>
+          Event ID <span style="font-weight:500">(optional)</span>
+          <input id="recoverEventId" type="text" inputmode="text" placeholder="Only needed if you have several events" />
+        </label>
+        <button class="btn" type="submit">Resend links</button>
+        <div id="recoverStatus" class="status"></div>
+      </form>
     </div>
 
     <div class="grid two">
@@ -107,5 +129,27 @@
       <div><a href="/faq">FAQ</a> · <a href="/terms">Terms</a> · <a href="/privacy">Privacy</a></div>
     </div>
   </div>
+  <script src="/assets/relay-config.js"></script>
+  <script>
+    const form = document.getElementById("recoverForm");
+    const statusEl = document.getElementById("recoverStatus");
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const email = document.getElementById("recoverEmail").value.trim();
+      const eventId = document.getElementById("recoverEventId").value.trim();
+      statusEl.textContent = "Sending request...";
+      try {
+        await fetch(`${window.RelayConfig.apiBase}/api/events/recover-links`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ email, event_id: eventId || undefined })
+        });
+        statusEl.textContent = "If a matching event exists, the links will be sent to the purchase email.";
+        form.reset();
+      } catch (error) {
+        statusEl.textContent = "Could not send the request. Email support if the links do not arrive.";
+      }
+    });
+  </script>
 </body>
 </html>

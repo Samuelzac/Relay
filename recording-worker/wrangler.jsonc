@@ -1,0 +1,31 @@
+{
+  "name": "castlink-recording-worker",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-02-14",
+  "compatibility_flags": ["nodejs_compat"],
+  "vars": {
+    "APP_ORIGIN": "https://castlink.stream",
+    "BRAND_NAME": "Castlink",
+    "EMAIL_PROVIDER": "postmark",
+    "EMAIL_FROM": "Castlink <support@castlink.stream>",
+    "POSTMARK_MESSAGE_STREAM": "outbound",
+    "AWS_REGION": "ap-northeast-1",
+    "UNUSED_PAID_EXPIRY_HOURS": "4",
+    "RECORDING_RETENTION_HOURS": "48",
+    "RECORDINGS_S3_BUCKET": "castlink-recordings-sam-apne1",
+    "RECORDINGS_S3_SEARCH_PREFIX": "ivs/v1/557904961613/",
+    "RECORDING_CONFIGURATION_ARN": "arn:aws:ivs:ap-northeast-1:557904961613:recording-configuration/HpOVc7c5Yf0y",
+    "MEDIACONVERT_ENDPOINT": "https://mediaconvert.ap-northeast-1.amazonaws.com",
+    "MEDIACONVERT_ROLE_ARN": "arn:aws:iam::557904961613:role/CastlinkMediaConvertRole",
+    "RECORDING_MP4_NAME_MODIFIER": "-castlink"
+  },
+  "hyperdrive": [
+    {
+      "binding": "HYPERDRIVE",
+      "id": "98e25b838da84315bb551b3bed96032d"
+    }
+  ],
+  "triggers": {
+    "crons": ["*/5 * * * *"]
+  }
+}

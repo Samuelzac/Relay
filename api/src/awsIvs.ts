@@ -75,13 +75,17 @@ async function awsRestJsonCall<T>(
 }
 
 export async function createChannel(env: any, name: string): Promise<IvsChannelInfo> {
-  const resp = await awsRestJsonCall<any>(env, "/CreateChannel", {
+  const recordingConfigurationArn = String(env.RECORDING_CONFIGURATION_ARN || "").trim();
+  const payload: Record<string, any> = {
     name,
     type: "STANDARD",
     latencyMode: "LOW",
     authorized: false,
     tags: { app: "relay" },
-  });
+  };
+  if (recordingConfigurationArn) payload.recordingConfigurationArn = recordingConfigurationArn;
+
+  const resp = await awsRestJsonCall<any>(env, "/CreateChannel", payload);
 
   const ch = resp?.channel;
   const sk = resp?.streamKey;

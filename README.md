@@ -2,11 +2,13 @@
 
 This folder contains:
 - `api/` Cloudflare Worker backend (Stripe + IVS + seat limiting + broadcaster lock + expiry cron)
+- `recording-worker/` Cloudflare Worker sidecar for IVS recording ingestion, conversion, download links, and recording cleanup
 - `pages_out/pages/` static frontend pages (home, create, success, watch, broadcast, admin, FAQ, support, terms, privacy)
 
 Production domains:
 - Frontend: `https://castlink.stream`
 - API Worker: `https://api.castlink.stream`
+- Recording Worker: `https://recording.castlink.stream`
 - NZ redirect/trust domain: `https://castlink.co.nz` -> `https://castlink.stream`
 
 ## Prereqs (Windows)
@@ -18,7 +20,7 @@ Production domains:
 - Neon Postgres + Cloudflare Hyperdrive binding
 
 ## 1) Database
-Run `api/sql/001_init.sql` through `api/sql/010_test_streams.sql` against your Neon database, in order.
+Run `api/sql/001_init.sql` through `api/sql/014_ops_automation.sql` against your Neon database, in order.
 
 ## 2) Backend (Cloudflare Worker)
 From the `api` folder:
@@ -42,11 +44,13 @@ From the `api` folder:
    wrangler secret put ADMIN_KEY
    wrangler secret put POSTMARK_SERVER_TOKEN
    wrangler secret put IVS_PROXY_SECRET
+   wrangler secret put RECORDING_WEBHOOK_SECRET
    # 32-byte key, base64:
    wrangler secret put STREAMKEY_ENC_KEY_B64
    ```
 
    `IVS_PROXY_SECRET` must match the IVS proxy service's `PROXY_SECRET`.
+   `RECORDING_WEBHOOK_SECRET` must match the recording Worker secret.
 
    Tip to generate STREAMKEY_ENC_KEY_B64:
    - Use PowerShell:
@@ -61,7 +65,36 @@ From the `api` folder:
    npm run dev
    ```
 
-## 3) Stripe webhook (local)
+## 3) Recording Worker
+From the `recording-worker` folder:
+
+1. Install deps and typecheck:
+   ```bash
+   npm install
+   npm run typecheck
+   ```
+
+2. Set secrets:
+   ```bash
+   wrangler secret put AWS_ACCESS_KEY_ID
+   wrangler secret put AWS_SECRET_ACCESS_KEY
+   wrangler secret put POSTMARK_SERVER_TOKEN
+   wrangler secret put RECORDING_WEBHOOK_SECRET
+   ```
+
+3. Deploy and attach the custom domain:
+   ```bash
+   wrangler deploy
+   ```
+
+Production recording API:
+```txt
+https://recording.castlink.stream
+```
+
+For local or temporary testing, set `localStorage.RELAY_RECORDING_API_BASE` in the browser.
+
+## 4) Stripe webhook (local)
 Use Stripe CLI to forward webhooks to your worker:
 ```bash
 stripe listen --forward-to http://127.0.0.1:8787/api/stripe/webhook
@@ -73,7 +106,7 @@ Production webhook:
 https://api.castlink.stream/api/stripe/webhook
 ```
 
-## 4) Frontend (Cloudflare Pages)
+## 5) Frontend (Cloudflare Pages)
 The `pages_out/pages/` folder is plain static HTML.
 
 ### Quick local test (no Pages)
@@ -85,12 +118,14 @@ npx serve pages_out/pages -l 8788
 Then:
 - Set `APP_ORIGIN` in `wrangler.jsonc` to `http://127.0.0.1:8788`
 - Use the admin page API override or `localStorage.RELAY_API_BASE` for local Worker testing.
+- Use `localStorage.RELAY_RECORDING_API_BASE` for recording Worker testing.
 
 ### Deploy
 - Create a Pages project pointing at `pages_out/pages/`
 - Add `castlink.stream` as the primary custom domain
 - Optionally add `www.castlink.stream`
 - Add `api.castlink.stream` as the Worker custom domain
+- Add `recording.castlink.stream` as the recording Worker custom domain
 - Set Cloudflare Bulk Redirects or Redirect Rules for `castlink.co.nz` and `www.castlink.co.nz` to `https://castlink.stream`
 
 ## URLs
@@ -109,6 +144,7 @@ Then:
 - Viewer cap: enforced via a Durable Object (45s inactivity timeout).
 - Viewer upgrades: hosts can buy +100, +250, or +500 concurrent viewer capacity during a paid stream. Same watch link continues working.
 - Expiry: cron marks events expired; backend denies new sessions once expired. Paid events must start within `PAID_UNUSED_EXPIRY_DAYS` days, currently 7.
+- Ops automation: cron also reconciles recent Stripe sessions, retries failed transactional emails, sends de-duped operational alerts, sends a daily digest, audits inventory/cleanup/recordings/reports, and supports customer link recovery at `POST /api/events/recover-links`.
 - Quality: launch streams target 720p HD at up to 30fps with 128kbps stereo audio. Do not market the current configuration as 1080p.
 - Stream inventory: pre-created IVS slots can be kept warm with `INVENTORY_MIN_HLS`, `INVENTORY_MIN_RTC`, and `INVENTORY_MIN_BOTH`. Paid events claim a matching available slot before falling back to live provisioning.
 - Free tests: `/create#test` creates checkoutless test events through `/api/test-events`. Test events use the normal broadcast/watch flow, expire quickly, are rate-limited, and do not use paid inventory by default.

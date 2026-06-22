@@ -42,6 +42,7 @@ const stalePatterns = [
   /\$179 NZD/i,
   /ap-southeast-2/i,
   /base_price_with_metered/i,
+  /castlink-recording-worker\.kiwismurph\.workers\.dev/i,
   /[âāÂ�]/,
 ];
 
@@ -104,6 +105,18 @@ for (const rel of apiPages) {
   if (usesConfig && hasConfigScript) pass(`config script present: ${rel}`);
   else if (usesConfig) fail(`RelayConfig used before config script check failed: ${rel}`);
   else warn(`no RelayConfig usage: ${rel}`);
+}
+
+{
+  const config = readRel("assets/relay-config.js");
+  if (/recordingApiBase/.test(config)) pass("recording API base is configurable");
+  else fail("recording API base is configurable", "RelayConfig.recordingApiBase missing");
+}
+
+{
+  const success = readRel("success/index.html");
+  if (/RelayConfig\.recordingApiBase/.test(success)) pass("success page uses configured recording API");
+  else fail("success page uses configured recording API", "success page should not hardcode the recording Worker URL");
 }
 
 const redirects = fs.existsSync(path.join(pagesRoot, "_redirects")) ? readRel("_redirects") : "";

@@ -5,6 +5,8 @@ import { BroadcastLockDO } from "./broadcast_lock_do";
 import { stripeClient, priceForTierAndMode, hoursForTier, StreamMode, normalizeMode } from "./stripe";
 import { createChannel, getChannel } from "./awsIvs";
 import { deleteIvsChannel } from "./ivs";
+import { createSignedS3GetUrl, deleteS3RecordingObjects, listS3Objects } from "./awsS3";
+import { createMp4Job, getMp4Job, mediaConvertConfigured, recordingMp4OutputKey } from "./awsMediaConvert";
 import {
   createStage,
   createParticipantToken,
@@ -69,13 +71,15 @@ const JSON_HEADERS = {
 
 const inventoryFillBackoffUntil: Record<string, number> = {};
 let readyEmailColumnsEnsured = false;
+let recordingColumnsEnsured = false;
+let opsColumnsEnsured = false;
 
 function corsHeaders(env: Env) {
   const origin = env.APP_ORIGIN || "*";
   return {
     "access-control-allow-origin": origin,
     "access-control-allow-methods": "GET,POST,OPTIONS",
-    "access-control-allow-headers": "content-type,x-relay-admin-key",
+    "access-control-allow-headers": "content-type,x-relay-admin-key,x-relay-recording-secret",
     "access-control-allow-credentials": "true",
     vary: "Origin",
   };
@@ -135,6 +139,28 @@ function emailConfigured(env: Env) {
   if (!env.EMAIL_FROM) return false;
   if (provider === "postmark") return !!env.POSTMARK_SERVER_TOKEN;
   return !!env.RESEND_API_KEY;
+}
+
+function opsAlertEmail(env: Env) {
+  return String(env.OPS_ALERT_EMAIL || env.REPORT_ALERT_EMAIL || env.SUPPORT_EMAIL || "").trim();
+}
+
+function numberEnv(env: Env, name: string, fallback: number, min = 0, max = Number.MAX_SAFE_INTEGER) {
+  const raw = Number(env[name] ?? fallback);
+  if (!Number.isFinite(raw)) return fallback;
+  return Math.max(min, Math.min(max, raw));
+}
+
+function emailRetryMaxAttempts(env: Env) {
+  return numberEnv(env, "EMAIL_RETRY_MAX_ATTEMPTS", 4, 1, 20);
+}
+
+function emailRetryIntervalMinutes(env: Env) {
+  return numberEnv(env, "EMAIL_RETRY_INTERVAL_MINUTES", 10, 1, 1440);
+}
+
+function opsAlertRepeatHours(env: Env) {
+  return numberEnv(env, "OPS_ALERT_REPEAT_HOURS", 6, 1, 168);
 }
 
 async function sendEmail(env: Env, opts: { to: string; subject: string; html: string; text: string; tag?: string }) {
@@ -232,6 +258,59 @@ function extensionCheckoutUrl(env: Env, ev: any) {
   return `${apiOrigin(env)}/api/events/${encodeURIComponent(ev.id)}/extend/checkout?key=${encodeURIComponent(ev.broadcast_key)}`;
 }
 
+function recordingDownloadLink(env: Env, ev: any) {
+  return `${env.APP_ORIGIN}/success/?event=${encodeURIComponent(ev.id)}&key=${encodeURIComponent(ev.broadcast_key)}&recording=1`;
+}
+
+function recordingRetentionHours(env: Env) {
+  const raw = Number(env.RECORDING_RETENTION_HOURS ?? 48);
+  return Number.isFinite(raw) && raw > 0 ? Math.min(raw, 168) : 48;
+}
+
+function hasRecordingConfiguration(env: Env) {
+  return String(env.RECORDINGS_ENABLED ?? "true").toLowerCase() !== "false" && !!String(env.RECORDING_CONFIGURATION_ARN || "").trim();
+}
+
+function recordingEnabledForEvent(env: Env, ev: any) {
+  if (isTestEvent(ev)) return false;
+  return hasRecordingConfiguration(env) && !!ev?.hls_enabled;
+}
+
+function recordingExpiryIso(env: Env, endedAt?: string | null) {
+  const start = endedAt ? new Date(endedAt).getTime() : Date.now();
+  return new Date(start + recordingRetentionHours(env) * 60 * 60 * 1000).toISOString();
+}
+
+function recordingState(ev: any, env: Env) {
+  const enabled = !!ev?.recording_enabled;
+  const expiresAt = ev?.recording_expires_at || null;
+  const expired = expiresAt ? new Date(expiresAt).getTime() <= Date.now() : false;
+  const claimed = !!ev?.recording_download_claimed_at;
+  const mp4Ready = String(ev?.recording_status || "") === "ready" && !!ev?.recording_mp4_s3_key && !!ev?.recording_s3_bucket && !expired;
+  return {
+    enabled,
+    status: expired ? "expired" : String(ev?.recording_status || (enabled ? "not_started" : "disabled")),
+    retention_hours: recordingRetentionHours(env),
+    started_at: ev?.recording_started_at || null,
+    ended_at: ev?.recording_ended_at || null,
+    expires_at: expiresAt,
+    mp4_ready: mp4Ready,
+    mp4_job_id: ev?.recording_mp4_job_id || null,
+    mp4_job_status: ev?.recording_mp4_job_status || null,
+    mp4_job_error: ev?.recording_mp4_job_error || null,
+    download_available: mp4Ready && !claimed,
+    download_claimed: claimed,
+    download_claimed_at: ev?.recording_download_claimed_at || null,
+    error: ev?.recording_error || null,
+    email_sent_at: ev?.recording_email_sent_at || null,
+    email_error: ev?.recording_email_error || null,
+    email_attempts: Number(ev?.recording_email_attempts || 0),
+    email_last_attempt_at: ev?.recording_email_last_attempt_at || null,
+    cleanup_completed_at: ev?.recording_cleanup_completed_at || null,
+    cleanup_error: ev?.recording_cleanup_error || null,
+  };
+}
+
 function normalizeEmailList(value: any) {
   const source = Array.isArray(value) ? value.join(",") : String(value || "");
   const seen = new Set<string>();
@@ -296,6 +375,10 @@ function isDisabled(ev: any) {
 
 function isTestEvent(ev: any) {
   return !!ev?.is_test;
+}
+
+function isPaidAccessStatus(ev: any) {
+  return ev?.status === "paid" || ev?.status === "live";
 }
 
 function testStreamMinutes(env: Env) {
@@ -433,10 +516,45 @@ async function resolveEncoderConfigurationArn(
   return { encoderConfigurationArn: null, endpoints, source: "missing" };
 }
 
+async function ensureRecordingColumns(client: any) {
+  await client.query(`
+    alter table public.events
+      add column if not exists recording_enabled boolean not null default false,
+      add column if not exists recording_status text not null default 'not_started',
+      add column if not exists recording_s3_bucket text,
+      add column if not exists recording_s3_prefix text,
+      add column if not exists recording_hls_manifest_key text,
+      add column if not exists recording_mp4_s3_key text,
+      add column if not exists recording_mp4_job_id text,
+      add column if not exists recording_mp4_job_arn text,
+      add column if not exists recording_mp4_job_status text,
+      add column if not exists recording_mp4_job_submitted_at timestamptz,
+      add column if not exists recording_mp4_job_completed_at timestamptz,
+      add column if not exists recording_mp4_job_error text,
+      add column if not exists recording_started_at timestamptz,
+      add column if not exists recording_ended_at timestamptz,
+      add column if not exists recording_expires_at timestamptz,
+      add column if not exists recording_error text,
+      add column if not exists recording_email_sent_at timestamptz,
+      add column if not exists recording_email_error text,
+      add column if not exists recording_email_attempts int not null default 0,
+      add column if not exists recording_email_last_attempt_at timestamptz,
+      add column if not exists recording_download_claimed_at timestamptz,
+      add column if not exists recording_download_claimed_ip text,
+      add column if not exists recording_cleanup_started_at timestamptz,
+      add column if not exists recording_cleanup_completed_at timestamptz,
+      add column if not exists recording_cleanup_error text
+  `);
+}
+
 async function getEvent(client: any, id: string) {
   if (!readyEmailColumnsEnsured) {
     await ensureReadyEmailColumns(client);
     readyEmailColumnsEnsured = true;
+  }
+  if (!recordingColumnsEnsured) {
+    await ensureRecordingColumns(client);
+    recordingColumnsEnsured = true;
   }
   const { rows } = await client.query(
     `
@@ -448,9 +566,21 @@ async function getEvent(client: any, id: string) {
       rtc_stage_arn, rtc_stage_endpoints, rtc_enabled, hls_enabled, disabled,
       cleanup_started_at, cleanup_completed_at, cleanup_attempts, cleanup_error,
       warning_email_sent_at, warning_email_error,
+      warning_email_attempts, warning_email_last_attempt_at,
       ready_email_sent_at, ready_email_error,
+      ready_email_attempts, ready_email_last_attempt_at,
       viewer_recipient_emails, viewer_invites_sent_at, viewer_invites_error,
-      is_test, test_created_ip, test_expires_unused_at
+      viewer_invites_attempts, viewer_invites_last_attempt_at,
+      is_test, test_created_ip, test_expires_unused_at,
+      recording_enabled, recording_status, recording_s3_bucket, recording_s3_prefix,
+      recording_hls_manifest_key, recording_mp4_s3_key,
+      recording_mp4_job_id, recording_mp4_job_arn, recording_mp4_job_status,
+      recording_mp4_job_submitted_at, recording_mp4_job_completed_at, recording_mp4_job_error,
+      recording_started_at, recording_ended_at, recording_expires_at, recording_error,
+      recording_email_sent_at, recording_email_error,
+      recording_email_attempts, recording_email_last_attempt_at,
+      recording_download_claimed_at, recording_download_claimed_ip,
+      recording_cleanup_started_at, recording_cleanup_completed_at, recording_cleanup_error
     from public.events
     where id = $1
   `,
@@ -573,7 +703,7 @@ async function cleanupEventResources(client: any, env: Env, ev: any, reason: str
         await client.query(
           `
           update public.events
-          set ivs_channel_arn=null,
+          set ivs_channel_arn=case when recording_enabled then ivs_channel_arn else null end,
               ivs_ingest_endpoint=null,
               ivs_playback_url=null,
               ivs_stream_key_encrypted=null
@@ -668,11 +798,18 @@ async function adminEventPayload(client: any, env: Env, ev: any) {
     cleanup_error: ev.cleanup_error || null,
     warning_email_sent_at: ev.warning_email_sent_at || null,
     warning_email_error: ev.warning_email_error || null,
+    warning_email_attempts: Number(ev.warning_email_attempts || 0),
+    warning_email_last_attempt_at: ev.warning_email_last_attempt_at || null,
     ready_email_sent_at: ev.ready_email_sent_at || null,
     ready_email_error: ev.ready_email_error || null,
+    ready_email_attempts: Number(ev.ready_email_attempts || 0),
+    ready_email_last_attempt_at: ev.ready_email_last_attempt_at || null,
     viewer_recipient_emails: ev.viewer_recipient_emails || [],
     viewer_invites_sent_at: ev.viewer_invites_sent_at || null,
     viewer_invites_error: ev.viewer_invites_error || null,
+    viewer_invites_attempts: Number(ev.viewer_invites_attempts || 0),
+    viewer_invites_last_attempt_at: ev.viewer_invites_last_attempt_at || null,
+    recording: recordingState(ev, env),
     readiness: buildReadiness(ev, "broadcaster", env),
     usage,
   };
@@ -750,6 +887,300 @@ function dollarsToCents(n: any): number {
   const v = Number(n || 0);
   if (!Number.isFinite(v)) return 0;
   return Math.round(v * 100);
+}
+
+function normalizeS3Key(value: any) {
+  const s = String(value || "").trim();
+  if (!s) return null;
+  return s.replace(/^s3:\/\/[^\/]+\//, "").replace(/^\/+/, "");
+}
+
+function findDeepString(input: any, keys: string[]): string | null {
+  const wanted = new Set(keys.map((k) => k.toLowerCase()));
+  const seen = new Set<any>();
+  const stack = [input];
+  while (stack.length) {
+    const item = stack.pop();
+    if (!item || typeof item !== "object" || seen.has(item)) continue;
+    seen.add(item);
+    for (const [k, v] of Object.entries(item)) {
+      if (wanted.has(k.toLowerCase()) && typeof v === "string" && v.trim()) return v.trim();
+      if (v && typeof v === "object") stack.push(v);
+    }
+  }
+  return null;
+}
+
+function findDeepStringMatching(input: any, predicate: (value: string) => boolean): string | null {
+  const seen = new Set<any>();
+  const stack = [input];
+  while (stack.length) {
+    const item = stack.pop();
+    if (!item || seen.has(item)) continue;
+    if (typeof item === "string" && predicate(item)) return item;
+    if (typeof item !== "object") continue;
+    seen.add(item);
+    if (Array.isArray(item)) stack.push(...item);
+    else stack.push(...Object.values(item));
+  }
+  return null;
+}
+
+function recordingOutputPrefix(ev: any) {
+  const base = String(ev?.recording_s3_prefix || "castlink-recordings").replace(/^\/+|\/+$/g, "");
+  return `${base}/mp4/${ev.id}`;
+}
+
+function ivsRecordingPrefixFromChannelArn(channelArn: string) {
+  const match = String(channelArn || "").match(/^arn:aws:ivs:[^:]+:(\d+):channel\/([^\/]+)$/);
+  if (!match) return null;
+  return `ivs/v1/${match[1]}/${match[2]}/`;
+}
+
+async function discoverRecordingManifestForEvent(env: Env, ev: any) {
+  const bucket = String(ev?.recording_s3_bucket || env.RECORDINGS_S3_BUCKET || "").trim();
+  if (!bucket) throw new Error("recording_bucket_required");
+  const searchPrefix = ivsRecordingPrefixFromChannelArn(String(ev?.ivs_channel_arn || ""));
+  if (!searchPrefix) throw new Error("ivs_channel_arn_required");
+  const objects = await listS3Objects(env, bucket, searchPrefix, 5000);
+  const manifests = objects
+    .filter((obj) => /\/media\/hls\/master\.m3u8$/.test(obj.key))
+    .sort((a, b) => new Date(b.lastModified || 0).getTime() - new Date(a.lastModified || 0).getTime());
+  const manifest = manifests[0] || null;
+  if (!manifest) {
+    throw new Error(`recording_manifest_not_found under ${searchPrefix}`);
+  }
+  return {
+    bucket,
+    searchPrefix,
+    manifestKey: manifest.key,
+    prefix: manifest.key.replace(/\/media\/hls\/master\.m3u8$/, ""),
+    found: manifests.length,
+    lastModified: manifest.lastModified,
+  };
+}
+
+function extractRecordingEvent(input: any, env: Env) {
+  const rawStatus = findDeepString(input, ["recordingStatus", "recording_status", "recordingState", "status", "state"]) || "";
+  const recordingStatus = String(rawStatus || "").trim().toUpperCase();
+  const channelArn =
+    findDeepString(input, ["channelArn", "channel_arn", "ChannelArn", "channel"]) ||
+    findDeepStringMatching(input?.resources || input, (value) => /^arn:aws:ivs:[^:]+:\d+:channel\//.test(value));
+  const bucket =
+    findDeepString(input, ["recordingS3BucketName", "recording_s3_bucket_name", "s3BucketName", "bucketName", "bucket"]) ||
+    String(env.RECORDINGS_S3_BUCKET || "").trim();
+  let manifestKey =
+    normalizeS3Key(findDeepString(input, ["recordingHlsManifestKey", "recording_hls_manifest_key", "hlsManifestKey", "manifestKey", "s3ObjectKey", "objectKey", "key"])) ||
+    normalizeS3Key(findDeepStringMatching(input, (value) => /\/media\/hls\/master\.m3u8$/.test(value) || /master\.m3u8$/.test(value)));
+  const prefix =
+    normalizeS3Key(findDeepString(input, ["recordingS3KeyPrefix", "recording_s3_key_prefix", "s3KeyPrefix", "keyPrefix", "prefix"])) ||
+    (manifestKey ? manifestKey.replace(/\/media\/hls\/master\.m3u8$/, "") : null);
+  if (!manifestKey && prefix) manifestKey = `${prefix.replace(/\/+$/, "")}/media/hls/master.m3u8`;
+  const endedAt = findDeepString(input, ["recordingEndTime", "recording_end_time", "endTime", "endedAt"]) || input?.time || null;
+  const startedAt = findDeepString(input, ["recordingStartTime", "recording_start_time", "startTime", "startedAt"]) || null;
+  return { channelArn, bucket, prefix, manifestKey, startedAt, endedAt, recordingStatus };
+}
+
+function requireRecordingWebhook(request: Request, env: Env) {
+  const got = request.headers.get("x-relay-recording-secret") || request.headers.get("x-relay-admin-key") || "";
+  const expected = env.RECORDING_WEBHOOK_SECRET || env.ADMIN_KEY || "";
+  if (!expected) return json(env, { error: "recording_webhook_secret_not_configured" }, 500);
+  return requireExact(got, expected, env);
+}
+
+async function handleIvsRecordingEvent(client: any, env: Env, payload: any) {
+  await ensureRecordingColumns(client);
+  const rec = extractRecordingEvent(payload, env);
+  if (!rec.channelArn) return { ok: false, error: "missing_channel_arn", extracted: rec };
+  if (!rec.bucket) return { ok: false, error: "missing_recording_bucket", extracted: rec };
+  const ended = !!rec.endedAt || ["ENDED", "STOPPED", "COMPLETE", "COMPLETED"].includes(rec.recordingStatus);
+  if (ended && !rec.manifestKey) return { ok: false, error: "missing_hls_manifest_key", extracted: rec };
+
+  const { rows } = await client.query(
+    `
+    update public.events
+    set recording_status=case
+          when recording_status in ('ready','failed','expired') then recording_status
+          when $8::boolean then 'processing'
+          else 'recording'
+        end,
+        recording_s3_bucket=$2,
+        recording_s3_prefix=coalesce(nullif($3,''), recording_s3_prefix),
+        recording_hls_manifest_key=coalesce(nullif($4,''), recording_hls_manifest_key),
+        recording_started_at=coalesce(recording_started_at, $5::timestamptz),
+        recording_ended_at=case when $8::boolean then coalesce(recording_ended_at, $6::timestamptz, now()) else recording_ended_at end,
+        recording_expires_at=case when $8::boolean then coalesce(recording_expires_at, $7::timestamptz) else recording_expires_at end,
+        recording_error=null,
+        recording_mp4_job_error=null
+    where ivs_channel_arn=$1
+      and recording_enabled = true
+    returning *
+  `,
+    [rec.channelArn, rec.bucket, rec.prefix || null, rec.manifestKey || null, rec.startedAt || null, rec.endedAt || null, recordingExpiryIso(env, rec.endedAt || null), ended]
+  );
+  const ev = rows[0] || null;
+  if (!ev) return { ok: false, error: "event_not_found_for_channel", extracted: rec };
+  const fresh = await getEvent(client, ev.id);
+  return { ok: true, event_id: ev.id, extracted: rec, conversion: { queued: ended }, recording: recordingState(fresh || ev, env) };
+}
+
+async function startRecordingMp4Conversion(client: any, env: Env, eventId: string, reason: string) {
+  await ensureRecordingColumns(client);
+  if (!mediaConvertConfigured(env)) throw new Error("MEDIACONVERT_ROLE_ARN is not configured");
+
+  const { rows } = await client.query(
+    `
+    update public.events
+    set recording_status='processing',
+        recording_error=null,
+        recording_mp4_job_error=null
+    where id=$1
+      and recording_enabled = true
+      and recording_hls_manifest_key is not null
+      and recording_s3_bucket is not null
+      and recording_mp4_job_id is null
+      and recording_status in ('recording','processing','not_started')
+    returning *
+  `,
+    [eventId]
+  );
+  const ev = rows[0] || null;
+  if (!ev) return { skipped: true, reason: "not_claimed_or_not_ready" };
+
+  try {
+    const outputPrefix = recordingOutputPrefix(ev);
+    const outputKey = recordingMp4OutputKey(env, outputPrefix, ev.recording_hls_manifest_key);
+    const job = await createMp4Job(env, {
+      bucket: ev.recording_s3_bucket,
+      inputManifestKey: ev.recording_hls_manifest_key,
+      outputPrefix,
+      eventId,
+    });
+    const jobId = job?.Id || job?.id || null;
+    if (!jobId) throw new Error(`MediaConvert did not return a job id: ${JSON.stringify(job).slice(0, 1000)}`);
+    await client.query(
+      `
+      update public.events
+      set recording_mp4_job_id=$2,
+          recording_mp4_job_arn=$3,
+          recording_mp4_job_status=coalesce($4, 'SUBMITTED'),
+          recording_mp4_job_submitted_at=now(),
+          recording_mp4_s3_key=$5,
+          recording_error=null,
+          recording_mp4_job_error=null
+      where id=$1
+    `,
+      [eventId, jobId, job?.Arn || job?.arn || null, job?.Status || job?.status || "SUBMITTED", outputKey]
+    );
+    console.log("recording conversion submitted", JSON.stringify({ eventId, reason, jobId, outputKey }));
+    return { submitted: true, jobId, outputKey };
+  } catch (e: any) {
+    const message = (e?.message || String(e)).slice(0, 2000);
+    await client.query(`update public.events set recording_status='failed', recording_error=$2, recording_mp4_job_error=$2 where id=$1`, [eventId, message]);
+    throw e;
+  }
+}
+
+async function pollRecordingConversions(client: any, env: Env) {
+  await ensureRecordingColumns(client);
+  const { rows: pendingStartRows } = await client.query(
+    `
+    select id
+    from public.events
+    where recording_enabled = true
+      and recording_status='processing'
+      and recording_hls_manifest_key is not null
+      and recording_s3_bucket is not null
+      and recording_mp4_job_id is null
+      and status = 'expired'
+      and (expires_at is null or expires_at <= now())
+    order by recording_ended_at asc nulls last
+    limit 3
+  `
+  );
+  for (const row of pendingStartRows) {
+    await startRecordingMp4Conversion(client, env, row.id, "cron_processing_without_job").catch((e) =>
+      console.error("recording conversion submit failed", row.id, e)
+    );
+  }
+
+  const { rows } = await client.query(
+    `
+    select id, recording_mp4_job_id
+    from public.events
+    where recording_enabled = true
+      and recording_status='processing'
+      and recording_mp4_job_id is not null
+      and coalesce(recording_mp4_job_status, '') not in ('COMPLETE','ERROR','CANCELED')
+      and status = 'expired'
+      and (expires_at is null or expires_at <= now())
+    order by recording_mp4_job_submitted_at asc nulls last
+    limit 5
+  `
+  );
+  for (const row of rows) {
+    try {
+      const job = await getMp4Job(env, row.recording_mp4_job_id);
+      const status = String(job?.Status || job?.status || "").toUpperCase();
+      if (status === "COMPLETE") {
+        const { rows: updatedRows } = await client.query(
+          `
+          update public.events
+          set recording_status='ready',
+              recording_mp4_job_status=$2,
+              recording_mp4_job_completed_at=now(),
+              recording_mp4_job_error=null,
+              recording_error=null,
+              recording_ended_at=coalesce(recording_ended_at, now()),
+              recording_expires_at=coalesce(recording_expires_at, $3::timestamptz)
+          where id=$1
+          returning *
+        `,
+          [row.id, status, recordingExpiryIso(env)]
+        );
+        await sendRecordingReadyEmailOnce(client, env, row.id, "conversion_complete").catch((e) =>
+          console.error("recording ready email failed after conversion", row.id, e)
+        );
+        console.log("recording conversion complete", JSON.stringify({ eventId: row.id, recording: recordingState(updatedRows[0], env) }));
+      } else if (status === "ERROR" || status === "CANCELED") {
+        const message = String(job?.ErrorMessage || job?.errorMessage || status).slice(0, 2000);
+        await client.query(`update public.events set recording_status='failed', recording_mp4_job_status=$2, recording_mp4_job_completed_at=now(), recording_mp4_job_error=$3, recording_error=$3 where id=$1`, [row.id, status, message]);
+      } else if (status) {
+        await client.query(`update public.events set recording_mp4_job_status=$2 where id=$1`, [row.id, status]);
+      }
+    } catch (e: any) {
+      await client.query(`update public.events set recording_mp4_job_error=$2 where id=$1`, [row.id, (e?.message || String(e)).slice(0, 2000)]);
+      console.error("recording conversion poll failed", row.id, e);
+    }
+  }
+}
+
+async function cleanupExpiredRecordings(client: any, env: Env) {
+  await ensureRecordingColumns(client);
+  const { rows } = await client.query(
+    `
+    select id, recording_s3_bucket, recording_s3_prefix, recording_hls_manifest_key, recording_mp4_s3_key
+    from public.events
+    where recording_enabled = true
+      and recording_expires_at is not null
+      and recording_expires_at <= now()
+      and recording_cleanup_completed_at is null
+    order by recording_expires_at asc
+    limit 3
+  `
+  );
+  for (const ev of rows) {
+    const bucket = ev.recording_s3_bucket || String(env.RECORDINGS_S3_BUCKET || "").trim();
+    if (!bucket) continue;
+    try {
+      await client.query(`update public.events set recording_cleanup_started_at=coalesce(recording_cleanup_started_at, now()), recording_cleanup_error=null where id=$1`, [ev.id]);
+      const result = await deleteS3RecordingObjects(env, bucket, ev.recording_s3_prefix || null, [ev.recording_hls_manifest_key, ev.recording_mp4_s3_key].filter(Boolean));
+      await client.query(`update public.events set recording_status='expired', recording_cleanup_completed_at=now(), recording_cleanup_error=null where id=$1`, [ev.id]);
+      console.log("recording cleanup", JSON.stringify({ eventId: ev.id, bucket, ...result }));
+    } catch (e: any) {
+      await client.query(`update public.events set recording_cleanup_error=$2 where id=$1`, [ev.id, (e?.message || String(e)).slice(0, 2000)]);
+    }
+  }
 }
 
 function priceCentsFor(env: Env, tier: number, mode: StreamMode) {
@@ -981,10 +1412,47 @@ async function ensureReadyEmailColumns(client: any) {
     alter table public.events
       add column if not exists ready_email_sent_at timestamptz,
       add column if not exists ready_email_error text,
+      add column if not exists ready_email_attempts int not null default 0,
+      add column if not exists ready_email_last_attempt_at timestamptz,
       add column if not exists viewer_recipient_emails text[] not null default '{}',
       add column if not exists viewer_invites_sent_at timestamptz,
-      add column if not exists viewer_invites_error text
+      add column if not exists viewer_invites_error text,
+      add column if not exists viewer_invites_attempts int not null default 0,
+      add column if not exists viewer_invites_last_attempt_at timestamptz,
+      add column if not exists warning_email_attempts int not null default 0,
+      add column if not exists warning_email_last_attempt_at timestamptz
   `);
+}
+
+async function ensureOpsAutomationTables(client: any) {
+  if (opsColumnsEnsured) return;
+  await ensureReadyEmailColumns(client);
+  await ensureRecordingColumns(client);
+  await client.query(`
+    create table if not exists public.ops_alerts (
+      alert_key text primary key,
+      severity text not null check (severity in ('info','warn','critical')),
+      subject text not null,
+      detail text not null,
+      data jsonb,
+      first_seen_at timestamptz not null default now(),
+      last_seen_at timestamptz not null default now(),
+      last_sent_at timestamptz,
+      send_count int not null default 0,
+      resolved_at timestamptz
+    )
+  `);
+  await client.query(`
+    create table if not exists public.link_recovery_requests (
+      id uuid primary key default gen_random_uuid(),
+      email text not null,
+      ip_address text,
+      event_id uuid,
+      matched_count int not null default 0,
+      created_at timestamptz not null default now()
+    )
+  `);
+  opsColumnsEnsured = true;
 }
 
 async function sendViewerInviteEmailsOnce(client: any, env: Env, ev: any, reason: string) {
@@ -995,9 +1463,12 @@ async function sendViewerInviteEmailsOnce(client: any, env: Env, ev: any, reason
   const { rows } = await client.query(
     `
     update public.events
-    set viewer_invites_error=null
+    set viewer_invites_error=null,
+        viewer_invites_attempts=viewer_invites_attempts + 1,
+        viewer_invites_last_attempt_at=now()
     where id=$1
       and viewer_invites_sent_at is null
+      and coalesce(viewer_invites_last_attempt_at, 'epoch'::timestamptz) <= now() - interval '2 minutes'
     returning *
   `,
     [ev.id]
@@ -1043,9 +1514,12 @@ async function sendEventReadyEmailOnce(client: any, env: Env, eventId: string, r
   const { rows: claimedRows } = await client.query(
     `
     update public.events
-    set ready_email_error=null
+    set ready_email_error=null,
+        ready_email_attempts=ready_email_attempts + 1,
+        ready_email_last_attempt_at=now()
     where id=$1
       and ready_email_sent_at is null
+      and coalesce(ready_email_last_attempt_at, 'epoch'::timestamptz) <= now() - interval '2 minutes'
     returning *
   `,
     [eventId]
@@ -1069,6 +1543,68 @@ async function sendEventReadyEmailOnce(client: any, env: Env, eventId: string, r
     const message = (e?.message || String(e)).slice(0, 2000);
     await client.query(`update public.events set ready_email_error=$2 where id=$1`, [eventId, message]);
     console.error("event ready email failed", eventId, reason, e);
+    throw e;
+  }
+}
+
+async function sendRecordingReadyEmail(env: Env, ev: any) {
+  if (!ev?.email) return { skipped: true };
+  const brand = appName(env);
+  const downloadUrl = recordingDownloadLink(env, ev);
+  const expiresAt = ev.recording_expires_at ? new Date(ev.recording_expires_at) : null;
+  const expiresLabel = expiresAt && Number.isFinite(expiresAt.getTime())
+    ? expiresAt.toLocaleString("en-NZ", { timeZone: "Pacific/Auckland", dateStyle: "medium", timeStyle: "short" })
+    : `about ${recordingRetentionHours(env)} hours after processing`;
+  const subjectLabel = emailSubjectEventLabel(ev);
+  const subject = `${brand}: recording ready - ${subjectLabel}`;
+  const text = [
+    `${brand} recording ready`,
+    "",
+    `Event: ${ev.title || "Untitled event"}`,
+    "",
+    `Download MP4: ${downloadUrl}`,
+    "",
+    `This link can be opened once and is available until ${expiresLabel}.`,
+  ].join("\n");
+  const html = emailShell(brand, "Your recording is ready", `
+      <p style="margin:0 0 12px"><b>Event:</b> ${htmlEscape(ev.title || "Untitled event")}</p>
+      <p style="margin:0 0 16px">The MP4 recording is ready to download. This button can be opened once, and the download window closes at <b>${htmlEscape(expiresLabel)}</b>.</p>
+      <p style="margin:18px 0 8px">${emailButton("Download MP4", downloadUrl)}</p>
+      <p style="margin:0 0 18px;color:#6b7280;font-size:13px">Opening the button creates a private download link that stays valid briefly for the actual file transfer.</p>
+      <p style="margin:18px 0 0;color:#6b7280;font-size:12px">Only share this email with people who should have access to the recording.</p>
+  `);
+  return sendEmail(env, { to: ev.email, subject, html, text, tag: "recording_ready" });
+}
+
+async function sendRecordingReadyEmailOnce(client: any, env: Env, eventId: string, reason: string) {
+  await ensureRecordingColumns(client);
+  const { rows } = await client.query(
+    `
+    update public.events
+    set recording_email_error=null,
+        recording_email_attempts=recording_email_attempts + 1,
+        recording_email_last_attempt_at=now()
+    where id=$1
+      and recording_email_sent_at is null
+      and recording_status='ready'
+      and recording_mp4_s3_key is not null
+      and recording_s3_bucket is not null
+    returning *
+  `,
+    [eventId]
+  );
+  const ev = rows[0] || null;
+  if (!ev) return { skipped: true, reason: "already_sent_or_not_ready" };
+
+  try {
+    const result = await sendRecordingReadyEmail(env, ev);
+    await client.query(`update public.events set recording_email_sent_at=now(), recording_email_error=null where id=$1`, [eventId]);
+    console.log("recording ready email sent", JSON.stringify({ eventId, reason, result }));
+    return { sent: true, result };
+  } catch (e: any) {
+    const message = (e?.message || String(e)).slice(0, 2000);
+    await client.query(`update public.events set recording_email_error=$2 where id=$1`, [eventId, message]);
+    console.error("recording ready email failed", eventId, reason, e);
     throw e;
   }
 }
@@ -1860,6 +2396,14 @@ async function reconcileCleanedInventoryAssignments(client: any) {
 async function releaseAbandonedInventoryReservations(client: any) {
   const { rows: events } = await client.query(
     `
+    with stale as (
+      select si.assigned_event_id
+      from public.stream_inventory si
+      left join public.events e on e.id=si.assigned_event_id
+      where si.status='reserved'
+        and si.reserved_at < now() - interval '45 minutes'
+        and coalesce(e.status, '') not in ('paid', 'live')
+    )
     update public.events e
     set ivs_channel_arn=null,
         ivs_ingest_endpoint=null,
@@ -1867,27 +2411,29 @@ async function releaseAbandonedInventoryReservations(client: any) {
         ivs_stream_key_encrypted=null,
         rtc_stage_arn=null,
         rtc_stage_endpoints=null
-    from public.stream_inventory si
-    where si.assigned_event_id=e.id
-      and si.status='reserved'
-      and e.status='pending'
-      and si.reserved_at < now() - interval '45 minutes'
+    from stale
+    where stale.assigned_event_id=e.id
     returning e.id
   `
   );
 
   const { rows: slots } = await client.query(
     `
+    with stale as (
+      select si.id
+      from public.stream_inventory si
+      left join public.events e on e.id=si.assigned_event_id
+      where si.status='reserved'
+        and si.reserved_at < now() - interval '45 minutes'
+        and coalesce(e.status, '') not in ('paid', 'live')
+    )
     update public.stream_inventory si
     set status='available',
         assigned_event_id=null,
         reserved_at=null,
         error=null
-    from public.events e
-    where si.assigned_event_id=e.id
-      and si.status='reserved'
-      and e.status='pending'
-      and si.reserved_at < now() - interval '45 minutes'
+    from stale
+    where si.id=stale.id
     returning si.id, si.mode
   `
   );
@@ -2123,7 +2669,7 @@ async function ensureCompositionStarted(client: any, env: Env, eventId: string, 
 
 async function preProvisionPaidEvent(client: any, env: Env, eventId: string, opts: { prestartComposition?: boolean } = {}) {
   let ev = await getEvent(client, eventId);
-  if (!ev || ev.status !== "paid" || isExpired(ev) || isDisabled(ev)) return ev;
+  if (!ev || !isPaidAccessStatus(ev) || isExpired(ev) || isDisabled(ev)) return ev;
 
   const inventoryMode = inventoryModeForEvent(ev);
   const canUseInventory = !isTestEvent(ev) || String(env.TEST_USE_INVENTORY || "").toLowerCase() === "true";
@@ -2182,7 +2728,7 @@ function buildReadiness(ev: any, role: AccessRole, env?: Env): Readiness {
   const compositionStarted = !!getCompositionArnFromEndpoints(endpoints);
   const playbackUrlExists = !!ev?.ivs_playback_url;
   const whipUrlExists = !!endpoints?.whip;
-  const paid = ev?.status === "paid";
+  const paid = isPaidAccessStatus(ev);
   const disabled = isDisabled(ev);
   const expired = isExpired(ev);
   const streamWindowOpen = !!ev?.starts_at && !expired;
@@ -2265,7 +2811,7 @@ function buildReadiness(ev: any, role: AccessRole, env?: Env): Readiness {
 
 async function maybeRefreshPaidStatus(client: any, env: Env, ev: any) {
   if (!ev) return ev;
-  if (ev.status === "paid" || !ev.stripe_session_id) return ev;
+  if (isPaidAccessStatus(ev) || !ev.stripe_session_id) return ev;
 
   try {
     const stripe = stripeClient(env);
@@ -2284,11 +2830,442 @@ async function maybeRefreshPaidStatus(client: any, env: Env, ev: any) {
 
 async function preProvisionEventIfNeeded(client: any, env: Env, eventId: string, evIn: any) {
   let ev = evIn;
-  if (!ev || ev.status !== "paid" || isExpired(ev) || isDisabled(ev)) return ev;
+  if (!ev || !isPaidAccessStatus(ev) || isExpired(ev) || isDisabled(ev)) return ev;
   const needsRtc = !!ev.rtc_enabled && !ev.rtc_stage_arn;
   const needsHlsChannel = !!ev.hls_enabled && (!ev.ivs_channel_arn || !ev.ivs_ingest_endpoint || !ev.ivs_playback_url || !ev.ivs_stream_key_encrypted);
   if (!needsRtc && !needsHlsChannel) return ev;
   return await preProvisionPaidEvent(client, env, eventId);
+}
+
+async function sendOpsEmail(env: Env, subject: string, detail: string, tag = "ops_alert") {
+  const to = opsAlertEmail(env);
+  if (!to) {
+    console.log("ops alert skipped: OPS_ALERT_EMAIL/REPORT_ALERT_EMAIL/SUPPORT_EMAIL not configured", subject);
+    return { skipped: true };
+  }
+  const brand = appName(env);
+  const adminUrl = `${env.APP_ORIGIN}/admin`;
+  const text = [`${brand} operational alert`, "", detail, "", `Admin: ${adminUrl}`].join("\n");
+  const html = emailShell(brand, subject, `
+      <div style="white-space:pre-wrap;background:#f3f4f6;border:1px solid #e5e7eb;border-radius:6px;padding:12px;margin:14px 0">${htmlEscape(detail)}</div>
+      <p style="margin:18px 0 8px">${emailButton("Open admin", adminUrl)}</p>
+  `);
+  return sendEmail(env, { to, subject: `${brand}: ${subject}`, html, text, tag });
+}
+
+async function emitOpsAlert(client: any, env: Env, opts: { key: string; severity: "info" | "warn" | "critical"; subject: string; detail: string; data?: any; repeatHours?: number }) {
+  await ensureOpsAutomationTables(client);
+  const { rows } = await client.query(
+    `
+    insert into public.ops_alerts (alert_key, severity, subject, detail, data)
+    values ($1,$2,$3,$4,$5::jsonb)
+    on conflict (alert_key) do update
+      set severity=excluded.severity,
+          subject=excluded.subject,
+          detail=excluded.detail,
+          data=excluded.data,
+          last_seen_at=now(),
+          resolved_at=null
+    returning last_sent_at, send_count
+  `,
+    [opts.key, opts.severity, opts.subject, opts.detail, JSON.stringify(opts.data ?? null)]
+  );
+  const row = rows[0] || {};
+  const lastSent = row.last_sent_at ? new Date(row.last_sent_at).getTime() : 0;
+  const repeatMs = (opts.repeatHours ?? opsAlertRepeatHours(env)) * 60 * 60 * 1000;
+  if (lastSent && Date.now() - lastSent < repeatMs) return { sent: false, reason: "deduped" };
+
+  const result = await sendOpsEmail(env, opts.subject, opts.detail, `ops_${opts.severity}`);
+  if (!result?.skipped) {
+    await client.query(
+      `update public.ops_alerts set last_sent_at=now(), send_count=send_count + 1 where alert_key=$1`,
+      [opts.key]
+    );
+  }
+  return { sent: !result?.skipped, result };
+}
+
+async function reconcilePendingStripePayments(client: any, env: Env) {
+  const { rows } = await client.query(
+    `
+    select id
+    from public.events
+    where status='pending'
+      and stripe_session_id is not null
+      and created_at <= now() - interval '15 minutes'
+      and created_at > now() - interval '24 hours'
+    order by created_at asc
+    limit 10
+  `
+  );
+  let refreshed = 0;
+  for (const row of rows) {
+    const ev = await getEvent(client, row.id);
+    const next = await maybeRefreshPaidStatus(client, env, ev);
+    if (next?.status === "paid") refreshed += 1;
+  }
+  return { checked: rows.length, refreshed };
+}
+
+async function retryFailedOperationalEmails(client: any, env: Env) {
+  await ensureOpsAutomationTables(client);
+  const maxAttempts = emailRetryMaxAttempts(env);
+  const intervalMinutes = emailRetryIntervalMinutes(env);
+  const results: any = { ready: 0, viewer_invites: 0, warnings: 0, recordings: 0, errors: [] };
+
+  const { rows: readyRows } = await client.query(
+    `
+    select id
+    from public.events
+    where status in ('paid','live')
+      and ready_email_sent_at is null
+      and ready_email_error is not null
+      and coalesce(ready_email_attempts,0) < $1
+      and coalesce(ready_email_last_attempt_at, 'epoch'::timestamptz) <= now() - ($2::int * interval '1 minute')
+      and (not coalesce(hls_enabled,false) or ivs_playback_url is not null)
+      and (not coalesce(rtc_enabled,false) or rtc_stage_arn is not null)
+    order by ready_email_last_attempt_at asc nulls first
+    limit 10
+  `,
+    [maxAttempts, intervalMinutes]
+  );
+  for (const row of readyRows) {
+    try {
+      await sendEventReadyEmailOnce(client, env, row.id, "ops_retry");
+      results.ready += 1;
+    } catch (e: any) {
+      results.errors.push({ kind: "ready", id: row.id, error: e?.message || String(e) });
+    }
+  }
+
+  const { rows: inviteRows } = await client.query(
+    `
+    select id
+    from public.events
+    where viewer_invites_sent_at is null
+      and viewer_invites_error is not null
+      and cardinality(coalesce(viewer_recipient_emails, '{}')) > 0
+      and coalesce(viewer_invites_attempts,0) < $1
+      and coalesce(viewer_invites_last_attempt_at, 'epoch'::timestamptz) <= now() - ($2::int * interval '1 minute')
+    order by viewer_invites_last_attempt_at asc nulls first
+    limit 10
+  `,
+    [maxAttempts, intervalMinutes]
+  );
+  for (const row of inviteRows) {
+    try {
+      const ev = await getEvent(client, row.id);
+      await sendViewerInviteEmailsOnce(client, env, ev, "ops_retry");
+      results.viewer_invites += 1;
+    } catch (e: any) {
+      results.errors.push({ kind: "viewer_invites", id: row.id, error: e?.message || String(e) });
+    }
+  }
+
+  const { rows: warningRows } = await client.query(
+    `
+    select id
+    from public.events
+    where status='paid'
+      and starts_at is not null
+      and expires_at is not null
+      and expires_at > now()
+      and warning_email_sent_at is null
+      and warning_email_error is not null
+      and coalesce(warning_email_attempts,0) < $1
+      and coalesce(warning_email_last_attempt_at, 'epoch'::timestamptz) <= now() - ($2::int * interval '1 minute')
+    order by warning_email_last_attempt_at asc nulls first
+    limit 10
+  `,
+    [maxAttempts, intervalMinutes]
+  );
+  for (const row of warningRows) {
+    const { rows: claimedRows } = await client.query(
+      `
+      update public.events
+      set warning_email_error=null,
+          warning_email_attempts=warning_email_attempts + 1,
+          warning_email_last_attempt_at=now()
+      where id=$1
+        and warning_email_sent_at is null
+      returning *
+    `,
+      [row.id]
+    );
+    const ev = claimedRows[0] || null;
+    if (!ev) continue;
+    try {
+      await sendStreamWarningEmail(env, ev);
+      await client.query(`update public.events set warning_email_sent_at=now(), warning_email_error=null where id=$1`, [ev.id]);
+      results.warnings += 1;
+    } catch (e: any) {
+      const message = (e?.message || String(e)).slice(0, 2000);
+      await client.query(`update public.events set warning_email_error=$2 where id=$1`, [ev.id, message]);
+      results.errors.push({ kind: "warning", id: ev.id, error: message });
+    }
+  }
+
+  const { rows: recordingRows } = await client.query(
+    `
+    select id
+    from public.events
+    where recording_status='ready'
+      and recording_email_sent_at is null
+      and recording_email_error is not null
+      and recording_mp4_s3_key is not null
+      and recording_s3_bucket is not null
+      and coalesce(recording_email_attempts,0) < $1
+      and coalesce(recording_email_last_attempt_at, 'epoch'::timestamptz) <= now() - ($2::int * interval '1 minute')
+    order by recording_email_last_attempt_at asc nulls first
+    limit 10
+  `,
+    [maxAttempts, intervalMinutes]
+  );
+  for (const row of recordingRows) {
+    try {
+      await sendRecordingReadyEmailOnce(client, env, row.id, "ops_retry");
+      results.recordings += 1;
+    } catch (e: any) {
+      results.errors.push({ kind: "recording", id: row.id, error: e?.message || String(e) });
+    }
+  }
+
+  return results;
+}
+
+async function runOpsAudit(client: any, env: Env) {
+  await ensureOpsAutomationTables(client);
+  const maxAttempts = emailRetryMaxAttempts(env);
+
+  const { rows: exhaustedRows } = await client.query(
+    `
+    select
+      count(*) filter (where ready_email_sent_at is null and ready_email_error is not null and coalesce(ready_email_attempts,0) >= $1)::int as ready_exhausted,
+      count(*) filter (where viewer_invites_sent_at is null and viewer_invites_error is not null and coalesce(viewer_invites_attempts,0) >= $1)::int as viewer_invites_exhausted,
+      count(*) filter (where warning_email_sent_at is null and warning_email_error is not null and coalesce(warning_email_attempts,0) >= $1)::int as warning_exhausted,
+      count(*) filter (where recording_email_sent_at is null and recording_email_error is not null and coalesce(recording_email_attempts,0) >= $1)::int as recording_exhausted
+    from public.events
+  `,
+    [maxAttempts]
+  );
+  const exhausted = exhaustedRows[0] || {};
+  const exhaustedTotal = Number(exhausted.ready_exhausted || 0) + Number(exhausted.viewer_invites_exhausted || 0) + Number(exhausted.warning_exhausted || 0) + Number(exhausted.recording_exhausted || 0);
+  if (exhaustedTotal) {
+    await emitOpsAlert(client, env, {
+      key: "email-retries-exhausted",
+      severity: "critical",
+      subject: "Email retries need manual attention",
+      detail: `Email retries have exhausted their automatic attempts.\nReady emails: ${exhausted.ready_exhausted}\nViewer invites: ${exhausted.viewer_invites_exhausted}\nWarning emails: ${exhausted.warning_exhausted}\nRecording emails: ${exhausted.recording_exhausted}`,
+      data: exhausted,
+    });
+  }
+
+  const { rows: cleanupRows } = await client.query(
+    `
+    select count(*)::int as count, array_agg(id order by expires_at asc) filter (where id is not null) as event_ids
+    from (
+      select id, expires_at
+      from public.events
+      where status='expired'
+        and cleanup_completed_at is null
+        and coalesce(cleanup_attempts,0) >= 5
+      order by expires_at asc nulls last
+      limit 10
+    ) x
+  `
+  );
+  const cleanup = cleanupRows[0] || {};
+  if (Number(cleanup.count || 0)) {
+    await emitOpsAlert(client, env, {
+      key: "cleanup-stuck",
+      severity: "critical",
+      subject: "Expired stream cleanup is stuck",
+      detail: `${cleanup.count} expired event cleanup jobs reached the retry limit.\nEvents: ${(cleanup.event_ids || []).join(", ")}`,
+      data: cleanup,
+    });
+  }
+
+  for (const mode of ["hls", "rtc", "both"] as InventoryMode[]) {
+    const min = inventoryMinimumForMode(env, mode);
+    if (min <= 0) continue;
+    const { rows } = await client.query(
+      `select count(*)::int as available from public.stream_inventory where mode=$1 and status='available'`,
+      [mode]
+    );
+    const available = Number(rows[0]?.available || 0);
+    if (available < min) {
+      await emitOpsAlert(client, env, {
+        key: `inventory-low-${mode}`,
+        severity: "warn",
+        subject: `Stream inventory below minimum (${mode})`,
+        detail: `${mode} inventory has ${available} available slots, below the configured minimum of ${min}. Autofill will keep trying; check AWS quotas/secrets if this persists.`,
+        data: { mode, available, min },
+      });
+    }
+  }
+
+  const stuckHours = numberEnv(env, "RECORDING_STUCK_HOURS", 2, 1, 48);
+  const { rows: recordingRows } = await client.query(
+    `
+    select
+      count(*) filter (
+        where recording_status='processing'
+          and (
+            recording_mp4_job_submitted_at <= now() - ($1::int * interval '1 hour')
+            or recording_ended_at <= now() - ($1::int * interval '1 hour')
+          )
+      )::int as stuck_processing,
+      count(*) filter (
+        where recording_enabled = true
+          and (recording_status='failed' or recording_error is not null or recording_mp4_job_error is not null or recording_cleanup_error is not null)
+          and coalesce(recording_error,'') not in (
+            'duplicate_recording_manifest_repaired',
+            'recording_manifest_channel_mismatch_repaired',
+            'recording_channel_missing_for_discovery'
+          )
+          and coalesce(recording_email_error,'') not in (
+            'duplicate_recording_manifest_repaired',
+            'recording_manifest_channel_mismatch_repaired',
+            'recording_channel_missing_for_discovery'
+          )
+          and created_at >= now() - interval '24 hours'
+      )::int as failed_recordings
+    from public.events
+  `,
+    [stuckHours]
+  );
+  const recording = recordingRows[0] || {};
+  if (Number(recording.stuck_processing || 0) || Number(recording.failed_recordings || 0)) {
+    await emitOpsAlert(client, env, {
+      key: "recordings-need-attention",
+      severity: "warn",
+      subject: "Recording processing needs attention",
+      detail: `Recording audit found ${recording.stuck_processing || 0} stuck processing job(s) and ${recording.failed_recordings || 0} failed/error recording(s).`,
+      data: recording,
+    });
+  }
+
+  const reportThreshold = numberEnv(env, "OPS_REPORT_ALERT_THRESHOLD", 3, 1, 50);
+  const { rows: reportRows } = await client.query(
+    `
+    select event_id, count(*)::int as open_reports
+    from public.reports
+    where status <> 'closed'
+      and event_id is not null
+    group by event_id
+    having count(*) >= $1
+    order by open_reports desc
+    limit 10
+  `,
+    [reportThreshold]
+  );
+  if (reportRows.length) {
+    await emitOpsAlert(client, env, {
+      key: "high-report-volume",
+      severity: "warn",
+      subject: "Stream report volume crossed threshold",
+      detail: reportRows.map((r: any) => `${r.event_id}: ${r.open_reports} open reports`).join("\n"),
+      data: reportRows,
+    });
+  }
+
+  if (String(env.AUTO_DISABLE_REPORTED_EVENTS || "false").toLowerCase() === "true") {
+    const disableThreshold = numberEnv(env, "AUTO_DISABLE_REPORT_THRESHOLD", Math.max(reportThreshold + 2, 5), 1, 100);
+    const { rows: disabledRows } = await client.query(
+      `
+      update public.events e
+      set disabled=true
+      where disabled=false
+        and exists (
+          select 1
+          from public.reports r
+          where r.event_id=e.id
+            and r.status <> 'closed'
+          group by r.event_id
+          having count(*) >= $1
+        )
+      returning id, title, email
+    `,
+      [disableThreshold]
+    );
+    if (disabledRows.length) {
+      await emitOpsAlert(client, env, {
+        key: `auto-disabled-reports-${new Date().toISOString().slice(0, 10)}`,
+        severity: "critical",
+        subject: "Events auto-disabled after report threshold",
+        detail: disabledRows.map((r: any) => `${r.id} - ${r.title || "(untitled)"} - ${r.email}`).join("\n"),
+        data: disabledRows,
+        repeatHours: 1,
+      });
+    }
+  }
+
+  const { rows: pendingRows } = await client.query(
+    `
+    select count(*)::int as stale_pending
+    from public.events
+    where status='pending'
+      and stripe_session_id is not null
+      and created_at <= now() - interval '2 hours'
+  `
+  );
+  if (Number(pendingRows[0]?.stale_pending || 0)) {
+    await emitOpsAlert(client, env, {
+      key: "stale-pending-checkouts",
+      severity: "info",
+      subject: "Stale unpaid checkout sessions exist",
+      detail: `${pendingRows[0].stale_pending} checkout-backed pending event(s) are older than 2 hours. This is usually abandoned checkout, but the sentinel also polls Stripe for recent missed webhooks.`,
+      data: pendingRows[0],
+      repeatHours: 24,
+    });
+  }
+}
+
+async function sendDailyOpsDigest(client: any, env: Env) {
+  await ensureOpsAutomationTables(client);
+  const today = new Date().toISOString().slice(0, 10);
+  const { rows } = await client.query(
+    `
+    select
+      count(*) filter (where created_at >= now() - interval '24 hours')::int as events_created_24h,
+      count(*) filter (where status in ('paid','live') and created_at >= now() - interval '24 hours')::int as paid_or_live_created_24h,
+      count(*) filter (where status='live')::int as live_now,
+      count(*) filter (where status='pending')::int as pending_now,
+      count(*) filter (where status='expired' and cleanup_completed_at is null)::int as cleanup_pending,
+      count(*) filter (where cleanup_error is not null)::int as cleanup_errors,
+      count(*) filter (where ready_email_error is not null or warning_email_error is not null or viewer_invites_error is not null or recording_email_error is not null)::int as email_errors,
+      count(*) filter (where recording_enabled = true and recording_status in ('processing','ready','failed'))::int as recording_events
+    from public.events
+  `
+  );
+  const eventStats = rows[0] || {};
+  const { rows: reportRows } = await client.query(`select count(*)::int as open_reports from public.reports where status <> 'closed'`);
+  const { rows: inventoryRows } = await client.query(
+    `select mode, status, count(*)::int as count from public.stream_inventory group by mode,status order by mode,status`
+  );
+  const detail = [
+    `Daily ops digest (${today})`,
+    "",
+    `Events created in 24h: ${eventStats.events_created_24h || 0}`,
+    `Paid/live created in 24h: ${eventStats.paid_or_live_created_24h || 0}`,
+    `Live now: ${eventStats.live_now || 0}`,
+    `Pending now: ${eventStats.pending_now || 0}`,
+    `Cleanup pending/errors: ${eventStats.cleanup_pending || 0}/${eventStats.cleanup_errors || 0}`,
+    `Email errors: ${eventStats.email_errors || 0}`,
+    `Recording events processing/ready/failed: ${eventStats.recording_events || 0}`,
+    `Open reports: ${reportRows[0]?.open_reports || 0}`,
+    "",
+    "Inventory:",
+    ...(inventoryRows.length ? inventoryRows.map((r: any) => `- ${r.mode} ${r.status}: ${r.count}`) : ["- no inventory rows"]),
+  ].join("\n");
+  await emitOpsAlert(client, env, {
+    key: `daily-digest-${today}`,
+    severity: "info",
+    subject: "Daily operator digest",
+    detail,
+    data: { eventStats, reports: reportRows[0] || {}, inventory: inventoryRows },
+    repeatHours: 24,
+  });
 }
 
 async function handleScheduled(_event: ScheduledEvent, env: any, _ctx: ExecutionContext) {
@@ -2296,6 +3273,16 @@ async function handleScheduled(_event: ScheduledEvent, env: any, _ctx: Execution
 
   const client = await getClient(env);
   try {
+    if (!opsColumnsEnsured) {
+      await ensureOpsAutomationTables(client);
+      opsColumnsEnsured = true;
+    }
+    const stripeReconcile = await reconcilePendingStripePayments(client, env).catch((e) => {
+      console.error("stripe payment reconciliation failed", e);
+      return null;
+    });
+    if (stripeReconcile) console.log("stripe payment reconciliation", JSON.stringify(stripeReconcile));
+
     const { rowCount: expiredCount } = await client.query(
       `
       update public.events
@@ -2369,6 +3356,11 @@ async function handleScheduled(_event: ScheduledEvent, env: any, _ctx: Execution
     const releasedReservations = await releaseAbandonedInventoryReservations(client);
     if (releasedReservations.slots) console.log("released abandoned inventory reservations", JSON.stringify(releasedReservations));
 
+    // Recording conversion/email is owned by the recording-worker sidecar.
+    // Keeping the legacy API poller enabled can convert the first IVS segment
+    // while the paid event is still active, before later stop/start segments arrive.
+    await cleanupExpiredRecordings(client, env).catch((e) => console.error("recording cleanup poll failed", e));
+
     const warningLeadMinutes = streamWarningLeadMinutes(env);
     const { rows: warningRows } = await client.query(
       `
@@ -2395,6 +3387,10 @@ async function handleScheduled(_event: ScheduledEvent, env: any, _ctx: Execution
     );
     for (const ev of warningRows) {
       try {
+        await client.query(
+          `update public.events set warning_email_attempts=warning_email_attempts + 1, warning_email_last_attempt_at=now(), warning_email_error=null where id=$1`,
+          [ev.id]
+        );
         const result = await sendStreamWarningEmail(env, ev);
         await client.query(
           `update public.events set warning_email_sent_at=now(), warning_email_error=null where id=$1`,
@@ -2418,8 +3414,17 @@ async function handleScheduled(_event: ScheduledEvent, env: any, _ctx: Execution
         }
       }
     } else {
-      console.log("inventory refill skipped: INVENTORY_AUTOFILL_ENABLED is not true");
+          console.log("inventory refill skipped: INVENTORY_AUTOFILL_ENABLED is not true");
     }
+
+    const emailRetry = await retryFailedOperationalEmails(client, env).catch((e) => {
+      console.error("operational email retry failed", e);
+      return null;
+    });
+    if (emailRetry) console.log("operational email retry", JSON.stringify(emailRetry));
+
+    await runOpsAudit(client, env).catch((e) => console.error("ops audit failed", e));
+    await sendDailyOpsDigest(client, env).catch((e) => console.error("daily ops digest failed", e));
   } catch (e) {
     console.error("inventory scheduled refill failed", e);
   } finally {
@@ -2517,6 +3522,12 @@ export default {
           env.REPORT_ALERT_EMAIL || "REPORT_ALERT_EMAIL missing; moderation alerts will not send"
         );
         add(
+          "ops_alert_email",
+          "Ops alert email",
+          opsAlertEmail(env) ? "pass" : "warn",
+          opsAlertEmail(env) || "OPS_ALERT_EMAIL/REPORT_ALERT_EMAIL/SUPPORT_EMAIL missing; sentinel alerts will not send"
+        );
+        add(
           "aws_region",
           "AWS IVS region",
           has("AWS_REGION") && has("IVS_API_ENDPOINT") && has("IVS_REALTIME_API_ENDPOINT") ? "pass" : "fail",
@@ -2539,6 +3550,25 @@ export default {
           "IVS proxy",
           has("IVS_PROXY_BASE") && has("IVS_PROXY_SECRET") ? "pass" : "warn",
           has("IVS_PROXY_BASE") ? (has("IVS_PROXY_SECRET") ? "Proxy base and secret configured" : "IVS_PROXY_SECRET missing") : "IVS_PROXY_BASE missing"
+        );
+        const recordingsEnabled = String(env.RECORDINGS_ENABLED ?? "true").toLowerCase() !== "false";
+        const recordingWarnings: string[] = [];
+        if (recordingsEnabled) {
+          if (!has("RECORDING_WEBHOOK_SECRET")) recordingWarnings.push("RECORDING_WEBHOOK_SECRET missing");
+          if (!has("RECORDINGS_S3_BUCKET")) recordingWarnings.push("RECORDINGS_S3_BUCKET missing");
+          if (!has("RECORDING_CONFIGURATION_ARN")) recordingWarnings.push("RECORDING_CONFIGURATION_ARN missing");
+          if (!has("MEDIACONVERT_ENDPOINT")) recordingWarnings.push("MEDIACONVERT_ENDPOINT missing");
+          if (!has("MEDIACONVERT_ROLE_ARN")) recordingWarnings.push("MEDIACONVERT_ROLE_ARN missing");
+        }
+        add(
+          "recordings",
+          "Recordings",
+          !recordingsEnabled ? "warn" : recordingWarnings.length ? "fail" : "pass",
+          !recordingsEnabled
+            ? "RECORDINGS_ENABLED=false"
+            : recordingWarnings.length
+              ? recordingWarnings.join("; ")
+              : "Recording webhook, S3, IVS recording configuration, and MediaConvert are configured"
         );
 
         const pricingWarnings: string[] = [];
@@ -2612,11 +3642,13 @@ export default {
                 to_regclass('public.events') as events,
                 to_regclass('public.stream_inventory') as stream_inventory,
                 to_regclass('public.reports') as reports,
-                to_regclass('public.test_stream_requests') as test_stream_requests
+                to_regclass('public.test_stream_requests') as test_stream_requests,
+                to_regclass('public.ops_alerts') as ops_alerts,
+                to_regclass('public.link_recovery_requests') as link_recovery_requests
             `);
             const row = rows[0] || {};
-            const missing = ["events", "stream_inventory", "reports", "test_stream_requests"].filter((k) => !row[k]);
-            add("tables", "Required tables", missing.length ? "fail" : "pass", missing.length ? `Missing: ${missing.join(", ")}` : "events, stream_inventory, reports, and test_stream_requests exist");
+            const missing = ["events", "stream_inventory", "reports", "test_stream_requests", "ops_alerts", "link_recovery_requests"].filter((k) => !row[k]);
+            add("tables", "Required tables", missing.length ? "fail" : "pass", missing.length ? `Missing: ${missing.join(", ")}` : "events, stream_inventory, reports, test_stream_requests, ops_alerts, and link_recovery_requests exist");
           } catch (e: any) {
             add("tables", "Required tables", "fail", e?.message || String(e));
           }
@@ -2627,12 +3659,12 @@ export default {
               from information_schema.columns
               where table_schema='public'
                 and table_name='events'
-                and column_name in ('disabled','cleanup_started_at','cleanup_completed_at','cleanup_error','warning_email_sent_at','warning_email_error','ready_email_sent_at','ready_email_error','viewer_recipient_emails','viewer_invites_sent_at','viewer_invites_error','is_test','test_created_ip','test_expires_unused_at')
+                and column_name in ('disabled','cleanup_started_at','cleanup_completed_at','cleanup_error','warning_email_sent_at','warning_email_error','warning_email_attempts','warning_email_last_attempt_at','ready_email_sent_at','ready_email_error','ready_email_attempts','ready_email_last_attempt_at','viewer_recipient_emails','viewer_invites_sent_at','viewer_invites_error','viewer_invites_attempts','viewer_invites_last_attempt_at','is_test','test_created_ip','test_expires_unused_at','recording_enabled','recording_status','recording_s3_bucket','recording_s3_prefix','recording_hls_manifest_key','recording_mp4_s3_key','recording_mp4_job_id','recording_mp4_job_status','recording_started_at','recording_ended_at','recording_expires_at','recording_error','recording_email_sent_at','recording_email_error','recording_email_attempts','recording_email_last_attempt_at','recording_download_claimed_at','recording_cleanup_completed_at','recording_cleanup_error')
             `);
             const have = new Set(rows.map((r: any) => r.column_name));
-            const required = ["disabled", "cleanup_started_at", "cleanup_completed_at", "cleanup_error", "warning_email_sent_at", "warning_email_error", "ready_email_sent_at", "ready_email_error", "viewer_recipient_emails", "viewer_invites_sent_at", "viewer_invites_error", "is_test", "test_created_ip", "test_expires_unused_at"];
+            const required = ["disabled", "cleanup_started_at", "cleanup_completed_at", "cleanup_error", "warning_email_sent_at", "warning_email_error", "warning_email_attempts", "warning_email_last_attempt_at", "ready_email_sent_at", "ready_email_error", "ready_email_attempts", "ready_email_last_attempt_at", "viewer_recipient_emails", "viewer_invites_sent_at", "viewer_invites_error", "viewer_invites_attempts", "viewer_invites_last_attempt_at", "is_test", "test_created_ip", "test_expires_unused_at", "recording_enabled", "recording_status", "recording_s3_bucket", "recording_s3_prefix", "recording_hls_manifest_key", "recording_mp4_s3_key", "recording_mp4_job_id", "recording_mp4_job_status", "recording_started_at", "recording_ended_at", "recording_expires_at", "recording_error", "recording_email_sent_at", "recording_email_error", "recording_email_attempts", "recording_email_last_attempt_at", "recording_download_claimed_at", "recording_cleanup_completed_at", "recording_cleanup_error"];
             const missing = required.filter((c) => !have.has(c));
-            add("event_columns", "Event migration columns", missing.length ? "fail" : "pass", missing.length ? `Missing: ${missing.join(", ")}` : "Cleanup, warning, invite, disabled, and test columns exist");
+            add("event_columns", "Event migration columns", missing.length ? "fail" : "pass", missing.length ? `Missing: ${missing.join(", ")}` : "Cleanup, warning, invite, disabled, test, and recording columns exist");
           } catch (e: any) {
             add("event_columns", "Event migration columns", "fail", e?.message || String(e));
           }
@@ -2656,12 +3688,13 @@ export default {
                 count(*) filter (where cleanup_error is not null)::int as cleanup_errors,
                 count(*) filter (where warning_email_error is not null)::int as warning_email_errors,
                 count(*) filter (where ready_email_error is not null)::int as ready_email_errors,
-                count(*) filter (where viewer_invites_error is not null)::int as viewer_invite_errors
+                count(*) filter (where viewer_invites_error is not null)::int as viewer_invite_errors,
+                count(*) filter (where recording_email_error is not null)::int as recording_email_errors
               from public.events
             `);
             const row = rows[0] || {};
-            const problems = Number(row.cleanup_errors || 0) + Number(row.warning_email_errors || 0) + Number(row.ready_email_errors || 0) + Number(row.viewer_invite_errors || 0);
-            add("event_errors", "Event operational errors", problems ? "warn" : "pass", `${row.cleanup_errors || 0} cleanup errors, ${row.warning_email_errors || 0} warning email errors, ${row.ready_email_errors || 0} ready email errors, ${row.viewer_invite_errors || 0} viewer invite errors`, row);
+            const problems = Number(row.cleanup_errors || 0) + Number(row.warning_email_errors || 0) + Number(row.ready_email_errors || 0) + Number(row.viewer_invite_errors || 0) + Number(row.recording_email_errors || 0);
+            add("event_errors", "Event operational errors", problems ? "warn" : "pass", `${row.cleanup_errors || 0} cleanup errors, ${row.warning_email_errors || 0} warning email errors, ${row.ready_email_errors || 0} ready email errors, ${row.viewer_invite_errors || 0} viewer invite errors, ${row.recording_email_errors || 0} recording email errors`, row);
           } catch (e: any) {
             add("event_errors", "Event operational errors", "warn", e?.message || String(e));
           }
@@ -2843,6 +3876,7 @@ export default {
 
         const client = await getClient(env);
         try {
+          await releaseAbandonedInventoryReservations(client);
           const { rows: summary } = await client.query(
             `
             select mode, status, count(*)::int as count
@@ -2941,6 +3975,7 @@ export default {
 
         const client = await getClient(env);
         try {
+          await ensureRecordingColumns(client);
           const allowed = await testStreamRequestAllowed(client, env, email, ip);
           if (!allowed.ok) return json(env, { error: "test_limit_reached", ...allowed }, 429);
 
@@ -2949,9 +3984,10 @@ export default {
             insert into public.events
               (email, title, tier, viewer_limit, white_label,
                status, secret_key, broadcast_key, success_token_hash,
-               rtc_enabled, hls_enabled, is_test, test_created_ip, test_expires_unused_at)
+               rtc_enabled, hls_enabled, is_test, test_created_ip, test_expires_unused_at,
+               recording_enabled)
             values
-              ($1,$2,1,$3,false,'paid',$4,$5,$6,$7,$8,true,$9,$10)
+              ($1,$2,1,$3,false,'paid',$4,$5,$6,$7,$8,true,$9,$10,false)
             returning id
           `,
             [email, title || "Castlink test stream", viewerLimit, secretKey, broadcastKey, successTokenHash, rtcEnabled, hlsEnabled, ip || null, unusedExpires]
@@ -3011,17 +4047,19 @@ export default {
         let eventId: string;
         try {
           await ensureReadyEmailColumns(client);
+          await ensureRecordingColumns(client);
+          const recordingEnabled = recordingEnabledForEvent(env, { hls_enabled: hlsEnabled, is_test: false });
           const { rows } = await client.query(
             `
             insert into public.events
               (email, title, tier, viewer_limit, white_label,
                status, secret_key, broadcast_key, success_token_hash,
-               rtc_enabled, hls_enabled, viewer_recipient_emails)
+               rtc_enabled, hls_enabled, viewer_recipient_emails, recording_enabled)
             values
-              ($1,$2,$3,$4,$5,'pending',$6,$7,$8,$9,$10,$11::text[])
+              ($1,$2,$3,$4,$5,'pending',$6,$7,$8,$9,$10,$11::text[],$12)
             returning id
           `,
-            [email, title, tier, viewerLimit, whiteLabel, secretKey, broadcastKey, successTokenHash, rtcEnabled, hlsEnabled, viewerEmails]
+            [email, title, tier, viewerLimit, whiteLabel, secretKey, broadcastKey, successTokenHash, rtcEnabled, hlsEnabled, viewerEmails, recordingEnabled]
           );
           eventId = rows[0].id;
         } finally {
@@ -3080,7 +4118,68 @@ export default {
         return json(env, { ok: true, url: session.url, eventId }, 200);
       }
 
-      if (method === "POST" && pathname === "/api/stripe/webhook") {
+      if (method === "POST" && pathname === "/api/events/recover-links") {
+        const body: any = await request.json().catch(() => ({}));
+        const email = String(body.email || "").trim().toLowerCase();
+        const requestedEventId = String(body.event_id || body.eventId || "").trim();
+        const ip = requestIp(request);
+        const generic = { ok: true, message: "If a matching event exists, the links will be sent to the purchase email." };
+
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return json(env, generic);
+        if (requestedEventId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(requestedEventId)) {
+          return json(env, generic);
+        }
+
+        const client = await getClient(env);
+        try {
+          await ensureOpsAutomationTables(client);
+          const { rows: limitRows } = await client.query(
+            `
+            select
+              count(*) filter (where lower(email)=lower($1))::int as email_count,
+              count(*) filter (where ip_address=$2 and $2 <> '')::int as ip_count
+            from public.link_recovery_requests
+            where created_at > now() - interval '24 hours'
+          `,
+            [email, ip || ""]
+          );
+          const limit = limitRows[0] || {};
+          const allowed = Number(limit.email_count || 0) < numberEnv(env, "LINK_RECOVERY_PER_EMAIL_PER_DAY", 5, 1, 50)
+            && Number(limit.ip_count || 0) < numberEnv(env, "LINK_RECOVERY_PER_IP_PER_DAY", 20, 1, 200);
+          let matched = 0;
+
+          if (allowed) {
+            const { rows } = await client.query(
+              `
+              select *
+              from public.events
+              where lower(email)=lower($1)
+                and ($2::uuid is null or id=$2::uuid)
+                and status in ('paid','live','expired')
+                and coalesce(disabled,false) = false
+                and created_at >= now() - interval '90 days'
+              order by created_at desc
+              limit 3
+            `,
+              [email, requestedEventId || null]
+            );
+            matched = rows.length;
+            for (const ev of rows) {
+              await sendEventReadyEmail(env, ev).catch((e) => console.error("link recovery email failed", ev.id, e));
+            }
+          }
+
+          await client.query(
+            `insert into public.link_recovery_requests (email, ip_address, event_id, matched_count) values ($1,$2,$3::uuid,$4)`,
+            [email, ip || null, requestedEventId || null, matched]
+          );
+          return json(env, generic);
+        } finally {
+          await client.end();
+        }
+      }
+
+        if (method === "POST" && pathname === "/api/stripe/webhook") {
         const sig = request.headers.get("stripe-signature");
         if (!sig) return json(env, { error: "missing_signature" }, 400);
         if (!env.STRIPE_WEBHOOK_SECRET) return json(env, { error: "missing_STRIPE_WEBHOOK_SECRET" }, 500);
@@ -3123,8 +4222,15 @@ export default {
                 }
               } else {
                 await markPaid(client, eventId);
-                await preProvisionPaidEvent(client, env, eventId);
-                await sendEventReadyEmailOnce(client, env, eventId, "stripe_webhook").catch((e) => console.error("event ready email failed", eventId, e));
+                ctx.waitUntil((async () => {
+                  const asyncClient = await getClient(env);
+                  try {
+                    await preProvisionPaidEvent(asyncClient, env, eventId);
+                    await sendEventReadyEmailOnce(asyncClient, env, eventId, "stripe_webhook").catch((e) => console.error("event ready email failed", eventId, e));
+                  } finally {
+                    await asyncClient.end();
+                  }
+                })().catch((e) => console.error("stripe webhook post-payment work failed", eventId, e)));
               }
             } finally {
               await client.end();
@@ -3132,11 +4238,24 @@ export default {
           }
         }
 
-        return json(env, { ok: true }, 200);
-      }
+          return json(env, { ok: true }, 200);
+        }
 
-      {
-        const m = match(pathname, /^\/api\/events\/([^\/]+)\/readiness$/);
+        if (method === "POST" && pathname === "/api/ivs/recording-event") {
+          const auth = requireRecordingWebhook(request, env);
+          if (auth) return auth;
+          const payload: any = await request.json().catch(() => ({}));
+          const client = await getClient(env);
+          try {
+            const result = await handleIvsRecordingEvent(client, env, payload);
+            return json(env, { ok: true, result });
+          } finally {
+            await client.end();
+          }
+        }
+
+        {
+          const m = match(pathname, /^\/api\/events\/([^\/]+)\/readiness$/);
         if (method === "GET" && m) {
           const eventId = m[0];
           const key = url.searchParams.get("key") || "";
@@ -3183,7 +4302,7 @@ export default {
             const role = accessRoleForKey(ev, key);
             if (!role) return json(env, { error: "unauthorized" }, 401);
             if (role !== "broadcaster") return json(env, { error: "broadcaster_key_required" }, 403);
-            if (ev.status !== "paid") return json(env, { error: "not_paid" }, 403);
+            if (!isPaidAccessStatus(ev)) return json(env, { error: "not_paid" }, 403);
             if (isDisabled(ev)) return json(env, { error: "disabled" }, 403);
             if (isExpired(ev)) return json(env, { error: "expired" }, 410);
 
@@ -3298,7 +4417,7 @@ export default {
 
             const authRes = requireExact(key, ev.broadcast_key, env);
             if (authRes) return authRes;
-            if (ev.status !== "paid") return json(env, { error: "not_extendable" }, 400);
+            if (!isPaidAccessStatus(ev)) return json(env, { error: "not_extendable" }, 400);
             if (isTestEvent(ev)) return json(env, { error: "test_streams_cannot_be_extended" }, 400);
             if (isDisabled(ev)) return json(env, { error: "disabled" }, 403);
 
@@ -3395,7 +4514,7 @@ export default {
             if (!ev) return json(env, { error: "not_found" }, 404);
             const authRes = requireExact(key, ev.broadcast_key, env);
             if (authRes) return authRes;
-            if (ev.status !== "paid") return json(env, { error: "not_paid" }, 403);
+            if (!isPaidAccessStatus(ev)) return json(env, { error: "not_paid" }, 403);
             if (isTestEvent(ev)) return json(env, { error: "test_streams_cannot_be_upgraded" }, 400);
             if (isDisabled(ev)) return json(env, { error: "disabled" }, 403);
             if (isExpired(ev)) return json(env, { error: "expired" }, 410);
@@ -3449,6 +4568,80 @@ export default {
             if (!role) return json(env, { error: "unauthorized" }, 401);
             const usage = await usageSummary(client, env, eventId);
             return json(env, { ok: true, usage });
+          } finally {
+            await client.end();
+          }
+        }
+      }
+
+      {
+        const m = match(pathname, /^\/api\/events\/([^\/]+)\/recording$/);
+        if (method === "GET" && m) {
+          const eventId = m[0];
+          const key = url.searchParams.get("key") || "";
+
+          const client = await getClient(env);
+          try {
+            const ev = await getEvent(client, eventId);
+            if (!ev) return json(env, { error: "not_found" }, 404);
+            const authRes = requireExact(key, ev.broadcast_key, env);
+            if (authRes) return authRes;
+            return json(env, { ok: true, recording: recordingState(ev, env) });
+          } finally {
+            await client.end();
+          }
+        }
+      }
+
+      {
+        const m = match(pathname, /^\/api\/events\/([^\/]+)\/recording\/download$/);
+        if ((method === "GET" || method === "POST") && m) {
+          const eventId = m[0];
+          const key = url.searchParams.get("key") || "";
+
+          const client = await getClient(env);
+          try {
+            const ev = await getEvent(client, eventId);
+            if (!ev) return json(env, { error: "not_found" }, 404);
+            const authRes = requireExact(key, ev.broadcast_key, env);
+            if (authRes) return authRes;
+
+            const state = recordingState(ev, env);
+            if (!state.enabled) return json(env, { error: "recording_disabled", recording: state }, 400);
+            if (!state.mp4_ready) return json(env, { error: "recording_not_ready", recording: state }, 409);
+            if (state.download_claimed) return json(env, { error: "recording_download_already_claimed", recording: state }, 410);
+            if (method === "GET") {
+              return json(env, { error: "download_requires_post", recording: state }, 405);
+            }
+
+            const { rows } = await client.query(
+              `
+              update public.events
+              set recording_download_claimed_at=now(),
+                  recording_download_claimed_ip=$2
+              where id=$1
+                and recording_download_claimed_at is null
+                and recording_status='ready'
+                and recording_mp4_s3_key is not null
+                and recording_s3_bucket is not null
+                and (recording_expires_at is null or recording_expires_at > now())
+              returning *
+            `,
+              [eventId, requestIp(request).slice(0, 128)]
+            );
+            const claimed = rows[0] || null;
+            if (!claimed) {
+              const fresh = await getEvent(client, eventId);
+              return json(env, { error: "recording_download_already_claimed", recording: recordingState(fresh || ev, env) }, 410);
+            }
+
+            const claimedState = recordingState(claimed, env);
+            const filename = `${slugifyEventTitle(claimed.title) || String(claimed.id).slice(0, 8)}-castlink-recording.mp4`;
+            const downloadUrl = await createSignedS3GetUrl(env, claimed.recording_s3_bucket, claimed.recording_mp4_s3_key, 900, {
+              filename,
+              contentType: "video/mp4",
+            });
+            return json(env, { ok: true, url: downloadUrl, expires_in_seconds: 900, recording: claimedState });
           } finally {
             await client.end();
           }
@@ -3628,6 +4821,7 @@ export default {
               rtc_enabled: !!ev.rtc_enabled,
               hls_enabled: !!ev.hls_enabled,
               white_label: !!ev.white_label,
+              recording: role === "broadcaster" ? recordingState(ev, env) : undefined,
               readiness,
             });
           } finally {
@@ -3655,7 +4849,7 @@ export default {
             if (action === "view-session") {
               const authRes = requireExact(key, ev.secret_key, env);
               if (authRes) return authRes;
-              if (ev.status !== "paid") return json(env, { error: "not_paid" }, 403);
+              if (!isPaidAccessStatus(ev)) return json(env, { error: "not_paid" }, 403);
               if (isDisabled(ev)) return json(env, { error: "disabled" }, 403);
               if (isExpired(ev)) return json(env, { error: "expired" }, 410);
             }
@@ -3709,7 +4903,7 @@ export default {
             let ev = await getEvent(client, eventId);
             if (!ev) return json(env, { error: "not_found" }, 404);
             ev = await maybeRefreshPaidStatus(client, env, ev);
-            if (ev.status !== "paid") return json(env, { error: "not_paid" }, 400);
+            if (!isPaidAccessStatus(ev)) return json(env, { error: "not_paid" }, 400);
             if (isDisabled(ev)) return json(env, { error: "disabled" }, 403);
             if (isExpired(ev)) return json(env, { error: "expired" }, 410);
             if (!ev.hls_enabled) return json(env, { error: "hls_disabled" }, 400);
@@ -3749,7 +4943,7 @@ export default {
           try {
             let ev = await getEvent(client, eventId);
             if (!ev) return json(env, { error: "not_found" }, 404);
-            if (ev.status !== "paid") return json(env, { error: "not_paid" }, 400);
+            if (!isPaidAccessStatus(ev)) return json(env, { error: "not_paid" }, 400);
             if (isDisabled(ev)) return json(env, { error: "disabled" }, 403);
             if (isExpired(ev)) return json(env, { error: "expired" }, 410);
             if (!ev.rtc_enabled) return json(env, { error: "rtc_ingest_disabled" }, 400);
@@ -3791,7 +4985,7 @@ export default {
           try {
             let ev = await getEvent(client, eventId);
             if (!ev) return json(env, { error: "not_found" }, 404);
-            if (ev.status !== "paid") return json(env, { error: "not_paid" }, 400);
+            if (!isPaidAccessStatus(ev)) return json(env, { error: "not_paid" }, 400);
             if (isDisabled(ev)) return json(env, { error: "disabled" }, 403);
             if (isExpired(ev)) return json(env, { error: "expired" }, 410);
             if (!ev.rtc_enabled) return json(env, { error: "rtc_ingest_disabled" }, 400);
@@ -3837,7 +5031,7 @@ export default {
           try {
             let ev = await getEvent(client, eventId);
             if (!ev) return json(env, { error: "not_found" }, 404);
-            if (ev.status !== "paid") return json(env, { error: "not_paid" }, 400);
+            if (!isPaidAccessStatus(ev)) return json(env, { error: "not_paid" }, 400);
             if (isDisabled(ev)) return json(env, { error: "disabled" }, 403);
             if (isExpired(ev)) return json(env, { error: "expired" }, 410);
             if (!ev.rtc_enabled) return json(env, { error: "rtc_disabled" }, 400);
@@ -3867,6 +5061,183 @@ export default {
               participantToken: token.token,
               readiness: buildReadiness(ev, "viewer", env),
             });
+          } finally {
+            await client.end();
+          }
+        }
+      }
+
+      {
+        const m = match(pathname, /^\/api\/admin\/events\/([^\/]+)\/recording$/);
+        if (method === "POST" && m) {
+          const auth = requireAdminKey(request, env);
+          if (auth) return auth;
+
+          const eventId = m[0];
+          const body: any = await request.json().catch(() => ({}));
+          const allowed = new Set(["not_started", "recording", "processing", "ready", "expired", "failed"]);
+          const status = String(body.status || "").trim();
+          if (status && !allowed.has(status)) return json(env, { error: "invalid_status" }, 400);
+
+          const client = await getClient(env);
+          try {
+            await ensureRecordingColumns(client);
+            const ev = await getEvent(client, eventId);
+            if (!ev) return json(env, { error: "not_found" }, 404);
+
+            const endedAt = body.recording_ended_at || body.ended_at || (status === "ready" ? new Date().toISOString() : null);
+            const expiresAt = body.recording_expires_at || body.expires_at || (endedAt ? recordingExpiryIso(env, endedAt) : null);
+            const { rows } = await client.query(
+              `
+              update public.events
+              set recording_enabled=coalesce($2, recording_enabled),
+                  recording_status=coalesce(nullif($3,''), recording_status),
+                  recording_s3_bucket=coalesce(nullif($4,''), recording_s3_bucket),
+                  recording_s3_prefix=coalesce(nullif($5,''), recording_s3_prefix),
+                  recording_hls_manifest_key=coalesce(nullif($6,''), recording_hls_manifest_key),
+                  recording_mp4_s3_key=coalesce(nullif($7,''), recording_mp4_s3_key),
+                  recording_started_at=coalesce($8::timestamptz, recording_started_at),
+                  recording_ended_at=coalesce($9::timestamptz, recording_ended_at),
+                  recording_expires_at=coalesce($10::timestamptz, recording_expires_at),
+                  recording_error=$11,
+                  recording_download_claimed_at=case when $12 then null else recording_download_claimed_at end,
+                  recording_download_claimed_ip=case when $12 then null else recording_download_claimed_ip end
+              where id=$1
+              returning *
+            `,
+              [
+                eventId,
+                body.recording_enabled === undefined ? null : !!body.recording_enabled,
+                status,
+                body.recording_s3_bucket || body.bucket || null,
+                body.recording_s3_prefix || body.prefix || null,
+                body.recording_hls_manifest_key || body.hls_manifest_key || null,
+                body.recording_mp4_s3_key || body.mp4_s3_key || null,
+                body.recording_started_at || body.started_at || null,
+                endedAt,
+                expiresAt,
+                body.recording_error || body.error || null,
+                !!body.reset_download_claim || !!body.recording_reset_download_claim,
+              ]
+            );
+
+            const updated = rows[0] || null;
+            if (!updated) return json(env, { error: "not_found" }, 404);
+
+            let emailResult: any = null;
+            if (status === "ready" && updated.recording_mp4_s3_key && updated.recording_s3_bucket) {
+              emailResult = await sendRecordingReadyEmailOnce(client, env, eventId, "recording_admin_ready").catch((e) => ({
+                error: String(e?.message || e),
+              }));
+            }
+
+            const fresh = await getEvent(client, eventId);
+            return json(env, { ok: true, recording: recordingState(fresh || updated, env), email: emailResult });
+          } finally {
+            await client.end();
+          }
+        }
+      }
+
+      {
+        const m = match(pathname, /^\/api\/admin\/events\/([^\/]+)\/recording\/convert$/);
+        if (method === "POST" && m) {
+          const auth = requireAdminKey(request, env);
+          if (auth) return auth;
+
+          const eventId = m[0];
+          const body: any = await request.json().catch(() => ({}));
+          const client = await getClient(env);
+          try {
+            await ensureRecordingColumns(client);
+            const ev = await getEvent(client, eventId);
+            if (!ev) return json(env, { error: "not_found" }, 404);
+            if (!ev.recording_enabled) return json(env, { error: "recording_disabled" }, 400);
+            const bucket = String(body.recording_s3_bucket || body.bucket || ev.recording_s3_bucket || env.RECORDINGS_S3_BUCKET || "").trim();
+            const prefix = String(body.recording_s3_prefix || body.prefix || ev.recording_s3_prefix || "").trim();
+            const manifestKey = String(body.recording_hls_manifest_key || body.hls_manifest_key || body.manifest_key || ev.recording_hls_manifest_key || "").trim();
+            if (!bucket) return json(env, { error: "recording_bucket_required" }, 400);
+            if (!manifestKey) return json(env, { error: "hls_manifest_key_required" }, 400);
+            const retry = !!body.retry || !!body.reset_job || !!body.recording_reset_job;
+
+            await client.query(
+              `
+              update public.events
+              set recording_status='processing',
+                  recording_s3_bucket=$2,
+                  recording_s3_prefix=coalesce(nullif($3,''), recording_s3_prefix),
+                  recording_hls_manifest_key=$4,
+                  recording_ended_at=coalesce(recording_ended_at, now()),
+                  recording_error=null,
+                  recording_mp4_job_error=null,
+                  recording_mp4_job_id=case when $5 then null else recording_mp4_job_id end,
+                  recording_mp4_job_arn=case when $5 then null else recording_mp4_job_arn end,
+                  recording_mp4_job_status=case when $5 then null else recording_mp4_job_status end,
+                  recording_mp4_job_submitted_at=case when $5 then null else recording_mp4_job_submitted_at end,
+                  recording_mp4_job_completed_at=case when $5 then null else recording_mp4_job_completed_at end,
+                  recording_mp4_s3_key=case when $5 then null else recording_mp4_s3_key end,
+                  recording_email_sent_at=case when $5 then null else recording_email_sent_at end,
+                  recording_email_error=case when $5 then null else recording_email_error end,
+                  recording_email_attempts=case when $5 then 0 else recording_email_attempts end,
+                  recording_email_last_attempt_at=case when $5 then null else recording_email_last_attempt_at end
+              where id=$1
+            `,
+              [eventId, bucket, prefix, manifestKey, retry]
+            );
+
+            const result = await startRecordingMp4Conversion(client, env, eventId, "admin_convert");
+            const fresh = await getEvent(client, eventId);
+            return json(env, { ok: true, conversion: result, recording: recordingState(fresh, env) });
+          } finally {
+            await client.end();
+          }
+        }
+      }
+
+      {
+        const m = match(pathname, /^\/api\/admin\/events\/([^\/]+)\/recording\/discover$/);
+        if (method === "POST" && m) {
+          const auth = requireAdminKey(request, env);
+          if (auth) return auth;
+
+          const eventId = m[0];
+          const client = await getClient(env);
+          try {
+            await ensureRecordingColumns(client);
+            const ev = await getEvent(client, eventId);
+            if (!ev) return json(env, { error: "not_found" }, 404);
+            if (!ev.recording_enabled) return json(env, { error: "recording_disabled" }, 400);
+
+            const discovered = await discoverRecordingManifestForEvent(env, ev);
+            await client.query(
+              `
+              update public.events
+              set recording_status='processing',
+                  recording_s3_bucket=$2,
+                  recording_s3_prefix=$3,
+                  recording_hls_manifest_key=$4,
+                  recording_ended_at=coalesce(recording_ended_at, $5::timestamptz, now()),
+                  recording_expires_at=coalesce(recording_expires_at, $6::timestamptz),
+                  recording_error=null,
+                  recording_mp4_job_error=null,
+                  recording_mp4_job_id=null,
+                  recording_mp4_job_arn=null,
+                  recording_mp4_job_status=null,
+                  recording_mp4_job_submitted_at=null,
+                  recording_mp4_job_completed_at=null,
+                  recording_mp4_s3_key=null,
+                  recording_email_sent_at=null,
+                  recording_email_error=null,
+                  recording_email_attempts=0,
+                  recording_email_last_attempt_at=null
+              where id=$1
+            `,
+              [eventId, discovered.bucket, discovered.prefix, discovered.manifestKey, discovered.lastModified || null, recordingExpiryIso(env, discovered.lastModified || null)]
+            );
+
+            const result = await startRecordingMp4Conversion(client, env, eventId, "admin_discover");
+            const fresh = await getEvent(client, eventId);
+            return json(env, { ok: true, discovered, conversion: result, recording: recordingState(fresh, env) });
           } finally {
             await client.end();
           }

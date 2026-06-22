@@ -1,17 +1,19 @@
 window.RelayConfig = (() => {
   const canonicalHost = "castlink.stream";
   const canonicalApi = "https://api.castlink.stream";
+  const canonicalRecordingApi = "https://castlink-recording-worker.kiwismurph.workers.dev";
   const fallbackWorker = canonicalApi;
+  const fallbackRecordingWorker = canonicalRecordingApi;
   const aliasHosts = new Set(["castlink.co.nz", "www.castlink.co.nz", "www.castlink.stream"]);
 
-  function fromMeta() {
-    const el = document.querySelector('meta[name="relay-api-base"]');
+  function fromMeta(name) {
+    const el = document.querySelector(`meta[name="${name}"]`);
     return el && el.content ? el.content.trim() : "";
   }
 
-  function fromStorage() {
+  function fromStorage(key) {
     try {
-      return localStorage.getItem("RELAY_API_BASE") || "";
+      return localStorage.getItem(key) || "";
     } catch {
       return "";
     }
@@ -28,14 +30,32 @@ window.RelayConfig = (() => {
     return `https://api.${root}`;
   }
 
+  function likelyProductionRecordingApi() {
+    const host = location.hostname;
+    if (!host || host === "localhost" || host === "127.0.0.1" || host.endsWith(".pages.dev")) {
+      return fallbackRecordingWorker;
+    }
+    if (host.startsWith("recording.")) return location.origin;
+    if (host === canonicalHost || aliasHosts.has(host)) return canonicalRecordingApi;
+    const root = host.startsWith("www.") ? host.slice(4) : host;
+    return `https://recording.${root}`;
+  }
+
   function cleanBase(value) {
     return String(value || "").replace(/\/+$/, "");
   }
 
-  const apiBase = cleanBase(window.RELAY_API_BASE || fromMeta() || fromStorage() || likelyProductionApi());
+  const apiBase = cleanBase(window.RELAY_API_BASE || fromMeta("relay-api-base") || fromStorage("RELAY_API_BASE") || likelyProductionApi());
+  const recordingApiBase = cleanBase(
+    window.RELAY_RECORDING_API_BASE ||
+    fromMeta("relay-recording-api-base") ||
+    fromStorage("RELAY_RECORDING_API_BASE") ||
+    likelyProductionRecordingApi()
+  );
 
   return {
     apiBase,
+    recordingApiBase,
     brandName: window.RELAY_BRAND_NAME || "Castlink",
   };
 })();
