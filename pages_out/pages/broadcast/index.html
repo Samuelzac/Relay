@@ -339,6 +339,10 @@
     if(logsPanel) logsPanel.open = true;
   }
 
+  function isInvalidStreamKeyError(e){
+    return /invalid\s+stream\s+key|stream\s+key.*invalid/i.test(errorMessage(e));
+  }
+
   function setStatus(t, kind){
     elStatus.className = `pill ${kind || ""}`.trim();
     elStatus.querySelector("span:last-child").textContent = "status: " + t;
@@ -618,12 +622,12 @@
     return prov;
   }
 
-  async function provisionHlsChannel(){
+  async function provisionHlsChannel(options = {}){
     const eventId = elEventId.value.trim();
     const key = elEventKey.value.trim();
     if(!eventId || !key) throw new Error("Missing event or key");
 
-    const prov = await apiPost(`/api/events/${encodeURIComponent(eventId)}/hls/provision?key=${encodeURIComponent(key)}`, {});
+    const prov = await apiPost(`/api/events/${encodeURIComponent(eventId)}/hls/provision?key=${encodeURIComponent(key)}`, options);
     if(!(prov?.ingest?.endpoint || prov?.ingest?.ingestEndpoint || prov?.ingest?.rtmpsUrl) || !prov?.ingest?.streamKey) throw new Error("No HLS ingest details returned.");
     return prov;
   }
@@ -885,8 +889,23 @@
     setStatus("connecting live...", "warn");
     setReady(true, "connecting", "Publishing to IVS channel...", "warn");
     try {
-      await hlsClient.startBroadcast(prov.ingest.streamKey);
+      await hlsClient.startBroadcast(String(prov.ingest.streamKey || "").trim());
     } catch (e) {
+      if(isInvalidStreamKeyError(e)){
+        log("HLS stream key rejected; rotating key and retrying once");
+        const retryProv = await provisionHlsChannel({ rotate_stream_key: true });
+        try {
+          await hlsClient.startBroadcast(String(retryProv.ingest.streamKey || "").trim());
+        } catch (retryError) {
+          isBroadcasting = false;
+          updateBroadcastControls();
+          stopTimer();
+          try{ hlsClient && hlsClient.stopBroadcast && hlsClient.stopBroadcast(); }catch{}
+          try{ hlsClient && hlsClient.delete && hlsClient.delete(); }catch{}
+          hlsClient = null;
+          throw retryError;
+        }
+      } else {
       isBroadcasting = false;
       updateBroadcastControls();
       stopTimer();
@@ -894,6 +913,7 @@
       try{ hlsClient && hlsClient.delete && hlsClient.delete(); }catch{}
       hlsClient = null;
       throw e;
+      }
     }
 
     markBroadcastingLive("You are live.");
