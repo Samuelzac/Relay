@@ -1158,6 +1158,27 @@ async function pollRecordingConversions(client: any, env: Env) {
 
 async function cleanupExpiredRecordings(client: any, env: Env) {
   await ensureRecordingColumns(client);
+  const retentionHours = recordingRetentionHours(env);
+  const { rows: staleRows } = await client.query(
+    `
+    update public.events
+    set recording_expires_at=coalesce(
+          recording_expires_at,
+          coalesce(recording_ended_at, expires_at, created_at) + ($1::int * interval '1 hour')
+        ),
+        recording_error=coalesce(recording_error, 'stale_processing_recording_expired')
+    where recording_enabled = true
+      and recording_status = 'processing'
+      and recording_cleanup_completed_at is null
+      and coalesce(recording_ended_at, expires_at, created_at) <= now() - ($1::int * interval '1 hour')
+    returning id
+  `,
+    [retentionHours]
+  );
+  if (staleRows.length) {
+    console.log("recording stale processing marked expired", JSON.stringify({ count: staleRows.length, eventIds: staleRows.map((r: any) => r.id) }));
+  }
+
   const { rows } = await client.query(
     `
     select id, recording_s3_bucket, recording_s3_prefix, recording_hls_manifest_key, recording_mp4_s3_key
@@ -3162,11 +3183,16 @@ async function runOpsAudit(client: any, env: Env) {
   }
 
   const stuckHours = numberEnv(env, "RECORDING_STUCK_HOURS", 2, 1, 48);
+  const retentionHours = recordingRetentionHours(env);
   const { rows: recordingRows } = await client.query(
     `
     select
       count(*) filter (
         where recording_status='processing'
+          and coalesce(
+            recording_expires_at,
+            coalesce(recording_ended_at, expires_at, created_at) + ($2::int * interval '1 hour')
+          ) > now()
           and (
             recording_mp4_job_submitted_at <= now() - ($1::int * interval '1 hour')
             or recording_ended_at <= now() - ($1::int * interval '1 hour')
@@ -3189,7 +3215,7 @@ async function runOpsAudit(client: any, env: Env) {
       )::int as failed_recordings
     from public.events
   `,
-    [stuckHours]
+    [stuckHours, retentionHours]
   );
   const recording = recordingRows[0] || {};
   if (Number(recording.stuck_processing || 0) || Number(recording.failed_recordings || 0)) {
