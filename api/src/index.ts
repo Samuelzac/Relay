@@ -1,5 +1,6 @@
 import { getClient } from "./db";
 import { randomSecretUrlSafe, sha256Hex, encryptString, decryptString } from "./crypto";
+import Stripe from "stripe";
 import { SeatsDO } from "./seats_do";
 import { BroadcastLockDO } from "./broadcast_lock_do";
 import { stripeClient, priceForTierAndMode, hoursForTier, StreamMode, normalizeMode } from "./stripe";
@@ -2315,6 +2316,55 @@ async function retireInventorySlot(client: any, env: Env, slotId: string) {
   }
 }
 
+async function retireSurplusInventory(client: any, env: Env, modes: InventoryMode[]) {
+  const retired: any[] = [];
+  const errors: any[] = [];
+  const plans: any[] = [];
+
+  for (const mode of modes) {
+    const keepAvailable = inventoryMaximumForMode(env, mode);
+    const { rows: candidates } = await client.query(
+      `
+      with available_surplus as (
+        select id
+        from (
+          select id, row_number() over (order by created_at desc) as rn
+          from public.stream_inventory
+          where mode=$1
+            and status='available'
+        ) ranked
+        where rn > $2
+      ),
+      failed_slots as (
+        select id
+        from public.stream_inventory
+        where mode=$1
+          and status='failed'
+      )
+      select id
+      from available_surplus
+      union
+      select id
+      from failed_slots
+      order by id
+    `,
+      [mode, keepAvailable]
+    );
+
+    plans.push({ mode, keepAvailable, candidates: candidates.length });
+    for (const row of candidates) {
+      try {
+        const slot = await retireInventorySlot(client, env, row.id);
+        if (slot) retired.push({ id: slot.id, mode: slot.mode, status: slot.status });
+      } catch (e: any) {
+        errors.push({ id: row.id, mode, error: e?.message || String(e) });
+      }
+    }
+  }
+
+  return { plans, retired, errors };
+}
+
 async function resetAwsResourceStateAfterManualCleanup(client: any) {
   await client.query("begin");
   try {
@@ -2809,14 +2859,21 @@ function buildReadiness(ev: any, role: AccessRole, env?: Env): Readiness {
   };
 }
 
-async function maybeRefreshPaidStatus(client: any, env: Env, ev: any) {
+async function maybeRefreshPaidStatus(client: any, env: Env, ev: any, checkoutSessionId?: string | null) {
   if (!ev) return ev;
-  if (isPaidAccessStatus(ev) || !ev.stripe_session_id) return ev;
+  if (isPaidAccessStatus(ev)) return ev;
+  const sessionId = String(checkoutSessionId || ev.stripe_session_id || "").trim();
+  if (!sessionId) return ev;
+  if (ev.stripe_session_id && sessionId !== ev.stripe_session_id) return ev;
 
   try {
     const stripe = stripeClient(env);
-    const sess = await stripe.checkout.sessions.retrieve(ev.stripe_session_id);
-    if (sess.payment_status === "paid") {
+    const sess = await stripe.checkout.sessions.retrieve(sessionId);
+    if (sess?.metadata?.relay_event_id && sess.metadata.relay_event_id !== ev.id) return ev;
+    if (sess.payment_status === "paid" || sess.status === "complete") {
+      if (!ev.stripe_session_id) {
+        await client.query(`update public.events set stripe_session_id=$2 where id=$1`, [ev.id, sessionId]);
+      }
       await markPaid(client, ev.id);
       const paidEvent = await preProvisionPaidEvent(client, env, ev.id);
       await sendEventReadyEmailOnce(client, env, ev.id, "stripe_poll").catch((e) => console.error("event ready email failed after stripe poll", ev.id, e));
@@ -3918,6 +3975,24 @@ export default {
         }
       }
 
+      if (method === "POST" && pathname === "/api/admin/inventory/retire-surplus") {
+        const auth = requireAdminKey(request, env);
+        if (auth) return auth;
+
+        const body: any = await request.json().catch(() => ({}));
+        const requestedMode = body.mode ? inventoryModeFromInput(body.mode) : null;
+        const modes: InventoryMode[] = requestedMode ? [requestedMode] : ["hls", "rtc", "both"];
+
+        const client = await getClient(env);
+        try {
+          const released = await releaseAbandonedInventoryReservations(client);
+          const result = await retireSurplusInventory(client, env, modes);
+          return json(env, { ok: true, released, result });
+        } finally {
+          await client.end();
+        }
+      }
+
       if (method === "POST" && pathname === "/api/admin/aws-state/reset-after-manual-cleanup") {
         const auth = requireAdminKey(request, env);
         if (auth) return auth;
@@ -4069,7 +4144,7 @@ export default {
         const stripe = stripeClient(env);
         const price = priceForTierAndMode(env, tier, mode);
 
-        const successUrl = `${env.APP_ORIGIN}/success?event=${encodeURIComponent(eventId)}&st=${encodeURIComponent(successToken)}`;
+        const successUrl = `${env.APP_ORIGIN}/success?event=${encodeURIComponent(eventId)}&st=${encodeURIComponent(successToken)}&session_id={CHECKOUT_SESSION_ID}`;
         const cancelUrl = `${env.APP_ORIGIN}/`;
 
         const session = await stripe.checkout.sessions.create({
@@ -4103,13 +4178,6 @@ export default {
               reserved: reservation.reserved,
               slotId: reservation.slot?.id || null,
             }));
-            ctx.waitUntil(
-              refillInventoryToMinimum(env, inventoryMode).then((result) => {
-                console.log("checkout inventory refill", JSON.stringify({ eventId, mode: inventoryMode, result }));
-              }).catch((e) => {
-                console.error("checkout inventory refill failed", eventId, inventoryMode, e);
-              })
-            );
           }
         } finally {
           await client2.end();
@@ -4185,11 +4253,17 @@ export default {
         if (!env.STRIPE_WEBHOOK_SECRET) return json(env, { error: "missing_STRIPE_WEBHOOK_SECRET" }, 500);
 
         const stripe = stripeClient(env);
-        const raw = await request.arrayBuffer();
+        const raw = await request.text();
         let evt: any;
 
         try {
-          evt = stripe.webhooks.constructEvent(raw as any, sig, env.STRIPE_WEBHOOK_SECRET);
+          evt = await stripe.webhooks.constructEventAsync(
+            raw,
+            sig,
+            env.STRIPE_WEBHOOK_SECRET,
+            undefined,
+            Stripe.createSubtleCryptoProvider()
+          );
         } catch (e: any) {
           return json(env, { error: "invalid_signature", message: e?.message }, 400);
         }
@@ -4727,6 +4801,7 @@ export default {
         if (method === "GET" && m) {
           const eventId = m[0];
           const st = url.searchParams.get("st");
+          const checkoutSessionId = url.searchParams.get("session_id") || url.searchParams.get("session") || "";
 
           const client = await getClient(env);
           try {
@@ -4736,7 +4811,7 @@ export default {
             const stHash = st ? await sha256Hex(st) : "";
             if (!st || stHash !== ev.success_token_hash) return json(env, { error: "unauthorized" }, 401);
 
-            ev = await maybeRefreshPaidStatus(client, env, ev);
+            ev = await maybeRefreshPaidStatus(client, env, ev, checkoutSessionId);
             ev = await preProvisionEventIfNeeded(client, env, eventId, ev);
             const links = eventLinks(env, ev);
 

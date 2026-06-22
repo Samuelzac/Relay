@@ -158,6 +158,8 @@
           </label>
           <button id="fillBtn">Create ready slots</button>
           <div class="muted">Creates enough resources to reach the target, up to the Worker fill limit.</div>
+          <button id="retireSurplusBtn" class="secondary">Retire surplus slots</button>
+          <div class="muted">Keeps configured ready-slot targets and retires extra available or failed slots only.</div>
           <button id="resetAwsStateBtn" class="danger">Reset DB after manual AWS cleanup</button>
           <div class="muted">Use only after IVS channels and stages have been manually cleared in AWS.</div>
         </div>
@@ -876,6 +878,29 @@
     }
   }
 
+  async function retireSurplus(){
+    const ok = confirm("Retire surplus inventory slots? This keeps the configured ready targets and only touches available or failed slots.");
+    if(!ok) return;
+    setStatus("Retiring surplus slots...");
+    $("retireSurplusBtn").disabled = true;
+    try{
+      const result = await api("/api/admin/inventory/retire-surplus", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "{}",
+      });
+      const retired = result?.result?.retired?.length ?? 0;
+      const errors = result?.result?.errors?.length ?? 0;
+      const released = result?.released?.slots ?? 0;
+      setStatus(`Retired ${retired} surplus slot${retired === 1 ? "" : "s"}${released ? `, released ${released} stale reservation${released === 1 ? "" : "s"}` : ""}${errors ? `, ${errors} error${errors === 1 ? "" : "s"}` : ""}`);
+      await load();
+    }catch(e){
+      setStatus(e.message || "Surplus cleanup failed");
+    }finally{
+      $("retireSurplusBtn").disabled = false;
+    }
+  }
+
   async function resetAwsState(){
     const ok = confirm("Only run this after AWS IVS shows no Castlink channels or stages. This will retire inventory rows and clear saved IVS resource references from events. Continue?");
     if(!ok) return;
@@ -900,6 +925,7 @@
   $("loadBtn").addEventListener("click", load);
   $("launchChecksBtn").addEventListener("click", runLaunchChecks);
   $("fillBtn").addEventListener("click", fill);
+  $("retireSurplusBtn").addEventListener("click", retireSurplus);
   $("resetAwsStateBtn").addEventListener("click", resetAwsState);
   $("closeDetailBtn").addEventListener("click", () => eventDetail.classList.add("hidden"));
   eventView.addEventListener("change", renderFilteredEvents);

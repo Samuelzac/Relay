@@ -38,12 +38,13 @@
     .title-block{display:flex;flex-direction:column;gap:6px;min-width:0}
     .title{font-size:18px;font-weight:800;letter-spacing:.2px}
     .subtitle{color:var(--muted);font-size:13px;max-width:min(70vw,560px)}
-    .status-row{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+    .status-row{display:flex;gap:8px;flex-wrap:nowrap;justify-content:flex-end;min-width:0}
     .pill{display:inline-flex;align-items:center;gap:8px;min-height:32px;padding:6px 10px;border-radius:999px;background:rgba(0,0,0,.42);border:1px solid var(--border);backdrop-filter: blur(10px);font-size:12px;white-space:nowrap}
     .dot{width:8px;height:8px;border-radius:999px;background:#8a8a8a}
     .pill.good .dot{background:var(--good)}
     .pill.warn .dot{background:var(--warn)}
     .pill.bad .dot{background:var(--bad)}
+    #statusPill,#readyPill{display:none}
     .bottom-ui{position:absolute;z-index:4;inset:auto 0 0 0;padding:12px 14px calc(16px + env(safe-area-inset-bottom)) 14px;display:flex;gap:10px;align-items:flex-end;justify-content:center;pointer-events:none}
     .panel{background:var(--panel);border:1px solid var(--border);border-radius:16px;backdrop-filter: blur(16px);box-shadow:var(--shadow);pointer-events:auto}
     .controls{padding:10px;display:grid;gap:8px;width:min(720px,calc(100vw - 28px));max-width:calc(100vw - 28px)}
@@ -90,7 +91,7 @@
     @media (max-width:920px){.bottom-ui{justify-content:center}.controls{width:calc(100vw - 20px);max-width:calc(100vw - 20px)}}
     @media (max-width:760px){
       .topbar{align-items:stretch;padding-left:10px;padding-right:10px}
-      .status-row{justify-content:flex-start;gap:6px}
+      .status-row{justify-content:flex-end;gap:6px}
       .pill{font-size:11px;min-height:28px;padding:5px 8px}
       .subtitle{max-width:100%;font-size:12px}
       .input-row{grid-template-columns:1fr}
@@ -100,8 +101,9 @@
       .topbar{pointer-events:none}
       .title{font-size:14px}
       .subtitle{font-size:11px;max-height:34px;overflow:hidden}
-      .status-row{max-width:50vw;justify-content:flex-end}
-      #readyPill{display:none}
+      .status-row{max-width:54vw;justify-content:flex-end}
+      #remainingTopPill,#timerPill{font-size:10.5px;padding:5px 7px;gap:5px}
+      #remainingTopPill .dot,#timerPill .dot{width:6px;height:6px}
       .bottom-ui{padding:8px 8px calc(10px + env(safe-area-inset-bottom)) 8px}
       .controls{width:100%;max-width:100%;padding:7px;border-radius:999px;background:rgba(12,12,12,.72)}
       .actions{grid-template-columns:48px minmax(0,1fr);gap:8px}
@@ -285,6 +287,7 @@
   const obsService = $("obsService");
   const obsServer = $("obsServer");
   const obsToken = $("obsToken");
+  const logsPanel = document.querySelector(".logs-panel");
 
   let localStream = null;
   let stage = null;
@@ -319,6 +322,21 @@
     elLog.textContent += line + "\n";
     elLog.scrollTop = elLog.scrollHeight;
     console.log(...args);
+  }
+
+  function errorMessage(e){
+    if(!e) return "Unknown error";
+    if(typeof e === "string") return e;
+    return e.message || e.name || String(e);
+  }
+
+  function showBroadcastError(e){
+    const msg = errorMessage(e);
+    setStatus("error", "bad");
+    setReady(false, "error", msg, "bad");
+    elInfo.textContent = msg;
+    elLiveHint.textContent = "Broadcast did not start. Check camera access and try again.";
+    if(logsPanel) logsPanel.open = true;
   }
 
   function setStatus(t, kind){
@@ -492,6 +510,17 @@
       const ss = String(s%60).padStart(2,"0");
       elTimer.textContent = `${mm}:${ss}`;
     }, 250);
+  }
+
+  function markBroadcastingLive(message = "You are live."){
+    isBroadcasting = true;
+    updateBroadcastControls();
+    setStatus("live", "good");
+    setReady(true, "live", message, "good");
+    if(!startedAtMs){
+      startedAtMs = Date.now();
+      startTimer();
+    }
   }
 
   async function listDevices(){
@@ -855,17 +884,20 @@
 
     setStatus("connecting live...", "warn");
     setReady(true, "connecting", "Publishing to IVS channel...", "warn");
-    await hlsClient.startBroadcast(prov.ingest.streamKey);
-
-    isBroadcasting = true;
-    updateBroadcastControls();
-    setStatus("live", "good");
-    setReady(true, "live", "You are live.", "good");
-    elInfo.textContent = "Publishing to HLS channel.";
-    if(!startedAtMs){
-      startedAtMs = Date.now();
-      startTimer();
+    try {
+      await hlsClient.startBroadcast(prov.ingest.streamKey);
+    } catch (e) {
+      isBroadcasting = false;
+      updateBroadcastControls();
+      stopTimer();
+      try{ hlsClient && hlsClient.stopBroadcast && hlsClient.stopBroadcast(); }catch{}
+      try{ hlsClient && hlsClient.delete && hlsClient.delete(); }catch{}
+      hlsClient = null;
+      throw e;
     }
+
+    markBroadcastingLive("You are live.");
+    elInfo.textContent = "Publishing to HLS channel.";
   }
 
   async function goLive(){
@@ -934,14 +966,7 @@
         }catch(e){
           log("START failed (non-fatal)", String(e));
         }
-        isBroadcasting = true;
-        updateBroadcastControls();
-        setStatus("live", "good");
-        setReady(true, "live", "You are live.", "good");
-        if(!startedAtMs){
-          startedAtMs = Date.now();
-          startTimer();
-        }
+        markBroadcastingLive("You are live.");
       }
 
       if(state === StageConnectionState.CONNECTING) setStatus("connecting…", "warn");
@@ -1007,8 +1032,8 @@
       if(currentReadiness?.hls_enabled && !currentReadiness?.rtc_enabled) await goLiveHlsDirect();
       else await goLive();
     } catch(e){
-      log("GoLive error", String(e));
-      setStatus("error", "bad");
+      log("GoLive error", errorMessage(e));
+      showBroadcastError(e);
     } finally {
       updateBroadcastControls();
       btnObs.disabled = !readyToBroadcast;

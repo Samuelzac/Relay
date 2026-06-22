@@ -181,6 +181,7 @@
   const successToken = params.get("st") || params.get("token") || params.get("successToken") || "";
   const extensionMode = params.get("extension") === "1";
   const extensionSessionId = params.get("session_id") || params.get("session") || "";
+  const checkoutSessionId = params.get("session_id") || params.get("session") || "";
   const broadcastKey = params.get("key") || "";
   const isTest = params.get("test") === "1";
   const recordingMode = params.get("recording") === "1";
@@ -298,7 +299,8 @@
   }
 
   async function getLinks(){
-    return fetchJson(`${API_BASE}/api/events/${encodeURIComponent(eventId)}/links?st=${encodeURIComponent(successToken)}`, {
+    const sessionPart = checkoutSessionId ? `&session_id=${encodeURIComponent(checkoutSessionId)}` : "";
+    return fetchJson(`${API_BASE}/api/events/${encodeURIComponent(eventId)}/links?st=${encodeURIComponent(successToken)}${sessionPart}`, {
       method: "GET",
       headers: { "accept": "application/json" }
     });
