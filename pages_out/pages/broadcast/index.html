@@ -861,11 +861,17 @@
   }
 
   async function refreshRemainingAfterStart(){
-    try{
-      const readyRes = await fetchReadiness();
-      if(readyRes?.readiness) updateTimeWarning(readyRes.readiness);
-    }catch(e){
-      log("Remaining refresh failed", String(e));
+    const delays = [0, 1000, 3000, 6000];
+    for (const delay of delays) {
+      if (delay) await new Promise(resolve => setTimeout(resolve, delay));
+      try{
+        const readyRes = await fetchReadiness();
+        const readiness = readyRes?.readiness;
+        if(readiness) updateTimeWarning(readiness);
+        if(readiness?.seconds_remaining !== null && readiness?.seconds_remaining !== undefined) return;
+      }catch(e){
+        log("Remaining refresh failed", String(e));
+      }
     }
   }
 
@@ -977,6 +983,7 @@
           log("START failed (non-fatal)", String(e));
         }
         markBroadcastingLive("You are live.");
+        refreshRemainingAfterStart();
       }
 
       if(state === StageConnectionState.CONNECTING) setStatus("connecting…", "warn");
