@@ -860,6 +860,15 @@
     return res;
   }
 
+  async function refreshRemainingAfterStart(){
+    try{
+      const readyRes = await fetchReadiness();
+      if(readyRes?.readiness) updateTimeWarning(readyRes.readiness);
+    }catch(e){
+      log("Remaining refresh failed", String(e));
+    }
+  }
+
   async function goLiveHlsDirect(){
     const sdk = window.IVSBroadcastClient;
     if(!sdk) throw new Error("IVS Web Broadcast SDK not loaded.");
@@ -897,6 +906,7 @@
     }
 
     markBroadcastingLive("You are live.");
+    refreshRemainingAfterStart();
     elInfo.textContent = "Publishing to HLS channel.";
   }
 
