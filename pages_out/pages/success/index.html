@@ -185,6 +185,7 @@
   const broadcastKey = params.get("key") || "";
   const isTest = params.get("test") === "1";
   const recordingMode = params.get("recording") === "1";
+  const obsMode = params.get("obs") === "1";
 
   const pageTitle = document.getElementById("pageTitle");
   const topMsg = document.getElementById("topMsg");
@@ -300,7 +301,10 @@
 
   async function getLinks(){
     const sessionPart = checkoutSessionId ? `&session_id=${encodeURIComponent(checkoutSessionId)}` : "";
-    return fetchJson(`${API_BASE}/api/events/${encodeURIComponent(eventId)}/links?st=${encodeURIComponent(successToken)}${sessionPart}`, {
+    const authPart = successToken
+      ? `st=${encodeURIComponent(successToken)}`
+      : `key=${encodeURIComponent(broadcastKey)}`;
+    return fetchJson(`${API_BASE}/api/events/${encodeURIComponent(eventId)}/links?${authPart}${sessionPart}`, {
       method: "GET",
       headers: { "accept": "application/json" }
     });
@@ -719,8 +723,8 @@
       return;
     }
 
-    if (!eventId || !successToken) {
-      topMsg.innerHTML = '<b class="bad">Missing event or success token.</b>';
+    if (!eventId || (!successToken && !broadcastKey)) {
+      topMsg.innerHTML = '<b class="bad">Missing event access.</b>';
       subMsg.textContent = "Open this page from the normal Castlink success flow.";
       return;
     }
@@ -751,6 +755,10 @@
       resendEmailBtn.disabled = false;
 
       await refreshReadiness();
+      if (obsMode) {
+        obsCard.scrollIntoView({ behavior: "smooth", block: "start" });
+        await getObsToken();
+      }
       scheduleReadiness();
     }catch(e){
       topMsg.innerHTML = '<b class="bad">Could not load event links.</b>';

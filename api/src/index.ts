@@ -245,11 +245,10 @@ function emailSubjectEventLabel(ev: any) {
 function eventLinks(env: Env, ev: any) {
   const slug = slugifyEventTitle(ev?.title);
   const eventHash = slug ? `#${encodeURIComponent(slug)}` : "";
-  const obsHash = "#obs";
   return {
     watchUrl: `${env.APP_ORIGIN}/watch/?event=${encodeURIComponent(ev.id)}&key=${encodeURIComponent(ev.secret_key)}${eventHash}`,
     broadcastUrl: `${env.APP_ORIGIN}/broadcast/?event=${encodeURIComponent(ev.id)}&key=${encodeURIComponent(ev.broadcast_key)}${eventHash}`,
-    obsUrl: `${env.APP_ORIGIN}/broadcast/?event=${encodeURIComponent(ev.id)}&key=${encodeURIComponent(ev.broadcast_key)}&obs=1${obsHash}`,
+    obsUrl: `${env.APP_ORIGIN}/success/?event=${encodeURIComponent(ev.id)}&key=${encodeURIComponent(ev.broadcast_key)}&obs=1`,
   };
 }
 
@@ -4823,6 +4822,7 @@ export default {
         if (method === "GET" && m) {
           const eventId = m[0];
           const st = url.searchParams.get("st");
+          const key = url.searchParams.get("key") || "";
           const checkoutSessionId = url.searchParams.get("session_id") || url.searchParams.get("session") || "";
 
           const client = await getClient(env);
@@ -4831,7 +4831,9 @@ export default {
             if (!ev) return json(env, { error: "not_found" }, 404);
 
             const stHash = st ? await sha256Hex(st) : "";
-            if (!st || stHash !== ev.success_token_hash) return json(env, { error: "unauthorized" }, 401);
+            const successAuthorized = !!st && stHash === ev.success_token_hash;
+            const broadcasterAuthorized = !!key && key === (ev.broadcast_key || "");
+            if (!successAuthorized && !broadcasterAuthorized) return json(env, { error: "unauthorized" }, 401);
 
             ev = await maybeRefreshPaidStatus(client, env, ev, checkoutSessionId);
             ev = await preProvisionEventIfNeeded(client, env, eventId, ev);

@@ -309,8 +309,6 @@
   let autoExtendStarted = false;
   let hlsWarmStarted = false;
   let isBroadcasting = false;
-  const autoObsRequested = !!qs.get("obs") || location.hash.toLowerCase() === "#obs";
-  let autoObsStarted = false;
 
   elEventId.value = qs.get("event") || qs.get("id") || "";
   elEventKey.value = qs.get("key") || "";
@@ -319,11 +317,6 @@
   if (qs.get("extend")) elLiveHint.textContent = "Opening extension checkout...";
   if (qs.get("viewer_upgraded")) elLiveHint.textContent = "Viewer capacity upgrade complete. Rechecking usage...";
   if (qs.get("viewer_upgrade_cancelled")) elLiveHint.textContent = "Viewer capacity upgrade checkout was cancelled.";
-  if (autoObsRequested) {
-    if (obsPanel) obsPanel.open = true;
-    obsInfo.textContent = "Preparing OBS setup...";
-    setTimeout(() => obsPanel?.scrollIntoView({ behavior: "smooth", block: "start" }), 250);
-  }
 
   function log(...args){
     const line = args.map(a => typeof a === "string" ? a : JSON.stringify(a)).join(" ");
@@ -362,10 +355,6 @@
     elReady.className = `pill ${kind || (ready ? "good" : "warn")}`.trim();
     elReady.querySelector("span:last-child").textContent = "ready: " + text;
     elReadyInfo.textContent = detail || "";
-    if (ready && autoObsRequested && !autoObsStarted) {
-      autoObsStarted = true;
-      setTimeout(() => onObsToken(), 0);
-    }
   }
 
   function updateBroadcastControls(){
