@@ -2589,10 +2589,9 @@ async function ensureHlsChannel(client: any, env: Env, eventId: string, evIn: an
       }
 
       const ch = await createChannel(env, `relay-${eventId}`);
-      let streamKeyEncrypted = ev.ivs_stream_key_encrypted || null;
-      if (!streamKeyEncrypted && ch.streamKeyValue) {
-        streamKeyEncrypted = await encryptString(ch.streamKeyValue, env.STREAMKEY_ENC_KEY_B64);
-      }
+      const streamKeyEncrypted = ch.streamKeyValue
+        ? await encryptString(ch.streamKeyValue, env.STREAMKEY_ENC_KEY_B64)
+        : null;
       await updateIvs(client, eventId, ch.channelArn, ch.ingestEndpoint, ch.playbackUrl, streamKeyEncrypted);
       ev = await getEvent(client, eventId);
       await client.query("commit");
