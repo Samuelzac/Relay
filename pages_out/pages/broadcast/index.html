@@ -136,7 +136,7 @@
       <div class="status-row">
         <span id="statusPill" class="pill"><span class="dot"></span><span>status: —</span></span>
         <span id="readyPill" class="pill warn"><span class="dot"></span><span>ready: checking…</span></span>
-        <span id="remainingTopPill" class="pill"><span class="dot"></span><span>remaining: checking...</span></span>
+        <span id="remainingTopPill" class="pill"><span class="dot"></span><span>remaining: -</span></span>
         <span id="timerPill" class="pill"><span class="dot"></span><span>live: <span id="timer">00:00</span></span></span>
       </div>
     </div>
@@ -419,7 +419,7 @@
     remainingTopPill.className = "pill";
     if (seconds === null || seconds === undefined) {
       remainingChip.textContent = "remaining: not started";
-      remainingTopPill.querySelector("span:last-child").textContent = "remaining: not started";
+      remainingTopPill.querySelector("span:last-child").textContent = "remaining: -";
       return;
     }
     const label = `remaining: ${formatRemainingMinutes(seconds)}`;
@@ -813,7 +813,6 @@
 
   async function refreshReadiness(){
     try{
-      if(!currentReadiness) remainingTopPill.querySelector("span:last-child").textContent = "remaining: checking...";
       const pub = await loadPublicOptional();
       if(pub?.expired){
         setStatus("expired", "bad");

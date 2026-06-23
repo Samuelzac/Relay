@@ -273,8 +273,6 @@
   const elRtcVideos = $("rtcVideos");
   const elIdlePanel = $("idlePanel");
 
-  elRemainingPill.textContent = "remaining: checking...";
-
   const btnLoad = $("btnLoad");
   const btnPlay = $("btnPlay");
   const btnFullscreen = $("btnFullscreen");
@@ -426,7 +424,7 @@
   function renderRemaining(seconds, warning){
     elRemainingPill.className = "pill";
     if (seconds === null || seconds === undefined) {
-      elRemainingPill.textContent = "remaining: not started";
+      elRemainingPill.textContent = "remaining: -";
       return;
     }
     elRemainingPill.textContent = "remaining: " + formatRemainingMinutes(seconds);
@@ -595,7 +593,6 @@
     if(!eventId || !key) throw new Error("Missing event or key");
 
     setStatus("loading…");
-    if(!ev) elRemainingPill.textContent = "remaining: checking...";
     setModePill();
 
       const pub = await apiGet(`/api/events/${encodeURIComponent(eventId)}/public?key=${encodeURIComponent(key)}`);

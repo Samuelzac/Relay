@@ -775,22 +775,6 @@ async function finishEventForAdmin(client: any, env: Env, eventId: string, reaso
 async function adminEventPayload(client: any, env: Env, ev: any) {
   const usage = await usageSummary(client, env, ev.id);
   const links = eventLinks(env, ev);
-  const { rows: inventoryRows } = await client.query(
-    `
-    select id, mode, status, assigned_event_id, created_at, reserved_at, assigned_at,
-           ivs_channel_arn, ivs_ingest_endpoint, ivs_playback_url,
-           (ivs_stream_key_encrypted is not null) as has_hls_stream_key,
-           rtc_stage_arn,
-           error
-    from public.stream_inventory
-    where assigned_event_id=$1
-      and status in ('reserved','assigned')
-    order by assigned_at desc nulls last, reserved_at desc nulls last, created_at desc
-    limit 1
-  `,
-    [ev.id]
-  );
-  const inventorySlot = inventoryRows[0] || null;
   return {
     id: ev.id,
     email: ev.email,
@@ -827,30 +811,6 @@ async function adminEventPayload(client: any, env: Env, ev: any) {
     viewer_invites_attempts: Number(ev.viewer_invites_attempts || 0),
     viewer_invites_last_attempt_at: ev.viewer_invites_last_attempt_at || null,
     recording: recordingState(ev, env),
-    inventory_slot: inventorySlot ? {
-      id: inventorySlot.id,
-      mode: inventorySlot.mode,
-      status: inventorySlot.status,
-      created_at: inventorySlot.created_at || null,
-      reserved_at: inventorySlot.reserved_at || null,
-      assigned_at: inventorySlot.assigned_at || null,
-      ready_for_assignment: inventorySlotReady(inventorySlot, env),
-      age_seconds: inventorySlot.created_at ? Math.max(0, Math.floor((Date.now() - new Date(inventorySlot.created_at).getTime()) / 1000)) : null,
-      ivs_channel_arn: inventorySlot.ivs_channel_arn || null,
-      ivs_ingest_endpoint: inventorySlot.ivs_ingest_endpoint || null,
-      ivs_playback_url: inventorySlot.ivs_playback_url || null,
-      has_hls_stream_key: !!inventorySlot.has_hls_stream_key,
-      rtc_stage_arn: inventorySlot.rtc_stage_arn || null,
-      error: inventorySlot.error || null,
-    } : null,
-    stream_resources: {
-      hls_channel_arn: ev.ivs_channel_arn || null,
-      hls_ingest_endpoint: ev.ivs_ingest_endpoint || null,
-      hls_playback_url: ev.ivs_playback_url || null,
-      has_hls_stream_key: !!ev.ivs_stream_key_encrypted,
-      rtc_stage_arn: ev.rtc_stage_arn || null,
-      resources_ready: eventStreamResourcesReady(ev),
-    },
     readiness: buildReadiness(ev, "broadcaster", env),
     usage,
   };
@@ -1198,27 +1158,6 @@ async function pollRecordingConversions(client: any, env: Env) {
 
 async function cleanupExpiredRecordings(client: any, env: Env) {
   await ensureRecordingColumns(client);
-  const retentionHours = recordingRetentionHours(env);
-  const { rows: staleRows } = await client.query(
-    `
-    update public.events
-    set recording_expires_at=coalesce(
-          recording_expires_at,
-          coalesce(recording_ended_at, expires_at, created_at) + ($1::int * interval '1 hour')
-        ),
-        recording_error=coalesce(recording_error, 'stale_processing_recording_expired')
-    where recording_enabled = true
-      and recording_status = 'processing'
-      and recording_cleanup_completed_at is null
-      and coalesce(recording_ended_at, expires_at, created_at) <= now() - ($1::int * interval '1 hour')
-    returning id
-  `,
-    [retentionHours]
-  );
-  if (staleRows.length) {
-    console.log("recording stale processing marked expired", JSON.stringify({ count: staleRows.length, eventIds: staleRows.map((r: any) => r.id) }));
-  }
-
   const { rows } = await client.query(
     `
     select id, recording_s3_bucket, recording_s3_prefix, recording_hls_manifest_key, recording_mp4_s3_key
@@ -1944,7 +1883,7 @@ async function getReservedInventorySlot(client: any, eventId: string): Promise<I
   return rows[0] || null;
 }
 
-async function claimInventorySlotForEvent(client: any, env: Env, eventId: string, mode: InventoryMode) {
+async function claimInventorySlotForEvent(client: any, eventId: string, mode: InventoryMode) {
   const already = await getAssignedInventorySlot(client, eventId);
   if (already) {
     await updateEventFromInventorySlot(client, eventId, already);
@@ -1952,7 +1891,7 @@ async function claimInventorySlotForEvent(client: any, env: Env, eventId: string
   }
 
   const reserved = await getReservedInventorySlot(client, eventId);
-  if (reserved && inventorySlotSatisfies(reserved, mode) && inventorySlotReady(reserved, env)) {
+  if (reserved && inventorySlotSatisfies(reserved, mode)) {
     await client.query("begin");
     try {
       const { rows } = await client.query(
@@ -1984,7 +1923,6 @@ async function claimInventorySlotForEvent(client: any, env: Env, eventId: string
       from public.stream_inventory
       where status = 'available'
         and mode = $1
-        and created_at <= now() - ($2::int * interval '1 second')
         and (
           ($1 = 'rtc' and rtc_stage_arn is not null)
           or ($1 = 'hls' and
@@ -2005,7 +1943,7 @@ async function claimInventorySlotForEvent(client: any, env: Env, eventId: string
       for update skip locked
       limit 1
     `,
-      [mode, inventoryReadyMinSeconds(env)]
+      [mode]
     );
 
     const slot: InventorySlot | null = rows[0] || null;
@@ -2035,7 +1973,7 @@ async function claimInventorySlotForEvent(client: any, env: Env, eventId: string
   }
 }
 
-async function reserveInventorySlotForCheckout(client: any, env: Env, eventId: string, mode: InventoryMode) {
+async function reserveInventorySlotForCheckout(client: any, eventId: string, mode: InventoryMode) {
   const alreadyAssigned = await getAssignedInventorySlot(client, eventId);
   if (alreadyAssigned) return { reserved: false, slot: alreadyAssigned, source: "already_assigned" };
 
@@ -2053,7 +1991,6 @@ async function reserveInventorySlotForCheckout(client: any, env: Env, eventId: s
       from public.stream_inventory
       where status = 'available'
         and mode = $1
-        and created_at <= now() - ($2::int * interval '1 second')
         and (
           ($1 = 'rtc' and rtc_stage_arn is not null)
           or ($1 = 'hls' and
@@ -2074,7 +2011,7 @@ async function reserveInventorySlotForCheckout(client: any, env: Env, eventId: s
       for update skip locked
       limit 1
     `,
-      [mode, inventoryReadyMinSeconds(env)]
+      [mode]
     );
 
     const slot: InventorySlot | null = rows[0] || null;
@@ -2234,17 +2171,6 @@ function inventoryMaximumForMode(env: Env, mode: InventoryMode) {
   const fallback = mode === "both" ? 1 : 3;
   const raw = Number(env[key] ?? fallback);
   return Math.max(0, Number.isFinite(raw) ? raw : fallback);
-}
-
-function inventoryReadyMinSeconds(env: Env) {
-  const raw = Number(env.INVENTORY_READY_MIN_SECONDS ?? 90);
-  return Math.max(0, Number.isFinite(raw) ? raw : 90);
-}
-
-function inventorySlotReady(slot: any, env: Env) {
-  const createdAt = slot?.created_at ? new Date(slot.created_at).getTime() : 0;
-  if (!createdAt) return false;
-  return Date.now() - createdAt >= inventoryReadyMinSeconds(env) * 1000;
 }
 
 function hlsPrestartCompositionEnabled(env: Env) {
@@ -2663,9 +2589,10 @@ async function ensureHlsChannel(client: any, env: Env, eventId: string, evIn: an
       }
 
       const ch = await createChannel(env, `relay-${eventId}`);
-      const streamKeyEncrypted = ch.streamKeyValue
-        ? await encryptString(ch.streamKeyValue, env.STREAMKEY_ENC_KEY_B64)
-        : null;
+      let streamKeyEncrypted = ev.ivs_stream_key_encrypted || null;
+      if (!streamKeyEncrypted && ch.streamKeyValue) {
+        streamKeyEncrypted = await encryptString(ch.streamKeyValue, env.STREAMKEY_ENC_KEY_B64);
+      }
       await updateIvs(client, eventId, ch.channelArn, ch.ingestEndpoint, ch.playbackUrl, streamKeyEncrypted);
       ev = await getEvent(client, eventId);
       await client.query("commit");
@@ -2798,7 +2725,7 @@ async function preProvisionPaidEvent(client: any, env: Env, eventId: string, opt
   const canUseInventory = !isTestEvent(ev) || String(env.TEST_USE_INVENTORY || "").toLowerCase() === "true";
   if (canUseInventory && inventoryMode && !eventHasInventoryResourcesForMode(ev, inventoryMode)) {
     try {
-      const claim = await claimInventorySlotForEvent(client, env, eventId, inventoryMode);
+      const claim = await claimInventorySlotForEvent(client, eventId, inventoryMode);
       if (claim.slot) {
         console.log("preProvisionPaidEvent: inventory", JSON.stringify({
           eventId,
@@ -2827,61 +2754,6 @@ async function preProvisionPaidEvent(client: any, env: Env, eventId: string, opt
   }
 
   return await getEvent(client, eventId);
-}
-
-async function ensurePaidEventStreamResources(client: any, env: Env, eventId: string, reason: string) {
-  let ev = await preProvisionPaidEvent(client, env, eventId);
-  if (!ev || !isPaidAccessStatus(ev) || isExpired(ev) || isDisabled(ev)) {
-    return { eventId, reason, skipped: true, status: ev?.status || null };
-  }
-
-  const created: string[] = [];
-  try {
-    if (ev.rtc_enabled && !ev.rtc_stage_arn) {
-      const rtc = await ensureRtcStage(client, env, eventId, ev);
-      if (rtc.created) created.push("rtc_stage");
-      ev = rtc.ev;
-    }
-
-    if (ev.hls_enabled && ev.rtc_enabled && hlsPrestartCompositionEnabled(env)) {
-      const comp = await ensureCompositionStarted(client, env, eventId, ev);
-      if (comp.compositionStarted) created.push("hls_composition");
-      ev = comp.ev;
-    }
-
-    console.log("ensurePaidEventStreamResources", JSON.stringify({ eventId, reason, created }));
-    return { eventId, reason, created, event: ev };
-  } catch (e: any) {
-    console.error("ensurePaidEventStreamResources failed", JSON.stringify({ eventId, reason, error: e?.message || String(e) }));
-    throw e;
-  }
-}
-
-function eventStreamResourcesReady(ev: any) {
-  if (!ev) return false;
-  if (ev.rtc_enabled && !ev.rtc_stage_arn) return false;
-  if (ev.hls_enabled && (!ev.ivs_channel_arn || !ev.ivs_ingest_endpoint || !ev.ivs_playback_url || !ev.ivs_stream_key_encrypted)) return false;
-  return true;
-}
-
-async function sendReadyEmailWhenResourcesReady(client: any, env: Env, eventId: string, reason: string) {
-  const ev = await getEvent(client, eventId);
-  if (!eventStreamResourcesReady(ev)) {
-    await client.query(
-      `
-      update public.events
-      set ready_email_error='stream_resources_pending',
-          ready_email_attempts=coalesce(ready_email_attempts,0) + 1,
-          ready_email_last_attempt_at=now()
-      where id=$1
-        and ready_email_sent_at is null
-    `,
-      [eventId]
-    );
-    console.log("ready email deferred until stream resources exist", JSON.stringify({ eventId, reason }));
-    return { deferred: true };
-  }
-  return await sendEventReadyEmailOnce(client, env, eventId, reason);
 }
 
 function displayHoursForTier(env: Env | null | undefined, tier: number) {
@@ -3107,12 +2979,7 @@ async function retryFailedOperationalEmails(client: any, env: Env) {
       and ready_email_error is not null
       and coalesce(ready_email_attempts,0) < $1
       and coalesce(ready_email_last_attempt_at, 'epoch'::timestamptz) <= now() - ($2::int * interval '1 minute')
-      and (not coalesce(hls_enabled,false) or (
-        ivs_channel_arn is not null
-        and ivs_ingest_endpoint is not null
-        and ivs_playback_url is not null
-        and ivs_stream_key_encrypted is not null
-      ))
+      and (not coalesce(hls_enabled,false) or ivs_playback_url is not null)
       and (not coalesce(rtc_enabled,false) or rtc_stage_arn is not null)
     order by ready_email_last_attempt_at asc nulls first
     limit 10
@@ -3295,16 +3162,11 @@ async function runOpsAudit(client: any, env: Env) {
   }
 
   const stuckHours = numberEnv(env, "RECORDING_STUCK_HOURS", 2, 1, 48);
-  const retentionHours = recordingRetentionHours(env);
   const { rows: recordingRows } = await client.query(
     `
     select
       count(*) filter (
         where recording_status='processing'
-          and coalesce(
-            recording_expires_at,
-            coalesce(recording_ended_at, expires_at, created_at) + ($2::int * interval '1 hour')
-          ) > now()
           and (
             recording_mp4_job_submitted_at <= now() - ($1::int * interval '1 hour')
             or recording_ended_at <= now() - ($1::int * interval '1 hour')
@@ -3327,7 +3189,7 @@ async function runOpsAudit(client: any, env: Env) {
       )::int as failed_recordings
     from public.events
   `,
-    [stuckHours, retentionHours]
+    [stuckHours]
   );
   const recording = recordingRows[0] || {};
   if (Number(recording.stuck_processing || 0) || Number(recording.failed_recordings || 0)) {
@@ -3550,40 +3412,6 @@ async function handleScheduled(_event: ScheduledEvent, env: any, _ctx: Execution
 
     const releasedReservations = await releaseAbandonedInventoryReservations(client);
     if (releasedReservations.slots) console.log("released abandoned inventory reservations", JSON.stringify(releasedReservations));
-
-    const { rows: missingResourceRows } = await client.query(
-      `
-      select id
-      from public.events
-      where status in ('paid','live')
-        and coalesce(disabled,false) = false
-        and (expires_at is null or expires_at > now())
-        and (
-          (coalesce(rtc_enabled,false) = true and rtc_stage_arn is null)
-          or (
-            coalesce(hls_enabled,false) = true
-            and (
-              ivs_channel_arn is null
-              or ivs_ingest_endpoint is null
-              or ivs_playback_url is null
-              or ivs_stream_key_encrypted is null
-            )
-          )
-        )
-      order by created_at asc
-      limit 5
-    `
-    );
-    for (const row of missingResourceRows) {
-      try {
-        await ensurePaidEventStreamResources(client, env, row.id, "scheduled_missing_resources");
-        await sendReadyEmailWhenResourcesReady(client, env, row.id, "scheduled_resources_ready").catch((e) =>
-          console.error("scheduled ready email failed", row.id, e)
-        );
-      } catch (e) {
-        console.error("scheduled paid resource provisioning failed", row.id, e);
-      }
-    }
 
     // Recording conversion/email is owned by the recording-worker sidecar.
     // Keeping the legacy API poller enabled can convert the first IVS segment
@@ -4246,8 +4074,7 @@ export default {
             [email, ip || null, eventId]
           );
 
-          await ensurePaidEventStreamResources(client, env, eventId, "test_event").catch((e) => console.error("test event stream resource provisioning failed", eventId, e));
-          await sendReadyEmailWhenResourcesReady(client, env, eventId, "test_event").catch((e) => console.error("test event email failed", eventId, e));
+          await sendEventReadyEmailOnce(client, env, eventId, "test_event").catch((e) => console.error("test event email failed", eventId, e));
           const links = eventLinks(env, { id: eventId, title, secret_key: secretKey, broadcast_key: broadcastKey });
 
           return json(env, {
@@ -4341,6 +4168,17 @@ export default {
         const client2 = await getClient(env);
         try {
           await client2.query(`update public.events set stripe_session_id=$1 where id=$2`, [session.id, eventId]);
+          const inventoryMode = inventoryModeForEvent({ rtc_enabled: rtcEnabled, hls_enabled: hlsEnabled });
+          if (inventoryMode) {
+            const reservation = await reserveInventorySlotForCheckout(client2, eventId, inventoryMode);
+            console.log("checkout inventory reservation", JSON.stringify({
+              eventId,
+              mode: inventoryMode,
+              source: reservation.source,
+              reserved: reservation.reserved,
+              slotId: reservation.slot?.id || null,
+            }));
+          }
         } finally {
           await client2.end();
         }
@@ -4461,8 +4299,8 @@ export default {
                 ctx.waitUntil((async () => {
                   const asyncClient = await getClient(env);
                   try {
-                    await ensurePaidEventStreamResources(asyncClient, env, eventId, "stripe_webhook");
-                    await sendReadyEmailWhenResourcesReady(asyncClient, env, eventId, "stripe_webhook").catch((e) => console.error("event ready email failed", eventId, e));
+                    await preProvisionPaidEvent(asyncClient, env, eventId);
+                    await sendEventReadyEmailOnce(asyncClient, env, eventId, "stripe_webhook").catch((e) => console.error("event ready email failed", eventId, e));
                   } finally {
                     await asyncClient.end();
                   }

@@ -454,14 +454,14 @@
 
       if (r.hls_enabled && !r.rtc_enabled) {
         const readyForHls = !!r.can_issue_broadcaster_token;
-        setPill(broadcastState, readyForHls ? "good" : "warn", readyForHls ? "Ready" : "Preparing stream");
+        setPill(broadcastState, readyForHls ? "good" : "warn", readyForHls ? "Ready" : "Open broadcast");
         broadcastInfo.textContent = readyForHls
           ? "Broadcaster access is ready."
-          : "Payment is confirmed. Stream access is being attached now.";
+          : "Open the broadcast page to prepare the HLS channel.";
         setLinkReady(broadcastBtn, true);
         getObsBtn.disabled = !readyForHls;
         setPill(obsState, readyForHls ? "good" : "warn", readyForHls ? "Ready" : "Preparing");
-        obsInfo.textContent = readyForHls ? "OBS setup is available for this recorded stream." : "OBS setup will unlock when stream access is ready.";
+        obsInfo.textContent = readyForHls ? "OBS setup is available for this recorded stream." : "OBS setup will unlock when the stream key is ready.";
         return true;
       }
 
@@ -550,13 +550,13 @@
     }
 
     if (bReady || wReady) {
-      topMsg.innerHTML = "<b>Your stream is almost ready.</b>";
-      subMsg.textContent = "Payment is confirmed. Stream access is finishing setup.";
+      topMsg.innerHTML = "<b>Your event is warming up.</b>";
+      subMsg.textContent = "Some parts are ready now. The rest is warming in the background.";
       return;
     }
 
     topMsg.innerHTML = "<b>Your stream is being prepared.</b>";
-    subMsg.textContent = "Payment is confirmed. Stream access is being attached now.";
+    subMsg.textContent = "Your stream is being prepared in the background.";
   }
 
   async function refreshReadiness(){
