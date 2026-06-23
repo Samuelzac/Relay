@@ -726,6 +726,8 @@
   async function loadEventDetail(eventId, reveal = true){
     const data = await api(`/api/admin/events/${encodeURIComponent(eventId)}`);
     const ev = data.event;
+    const slot = ev.inventory_slot || null;
+    const resources = ev.stream_resources || {};
     detailTitle.textContent = ev.title || "Event details";
     detailMeta.innerHTML = [
       ["Event ID", ev.id],
@@ -740,6 +742,12 @@
       ["Watch", ev.watch_url],
       ["Broadcast", ev.broadcast_url],
       ["Playback", ev.playback_url || "-"],
+      ["Inventory slot", slot ? `${slot.mode} ${slot.status} (${slot.ready_for_assignment ? "warmed" : "warming"})` : "-"],
+      ["Inventory age", slot?.age_seconds === null || slot?.age_seconds === undefined ? "-" : `${slot.age_seconds}s`],
+      ["Inventory slot ID", slot?.id || "-"],
+      ["HLS channel", resources.hls_channel_arn || "-"],
+      ["HLS stream key", resources.has_hls_stream_key ? "present" : "-"],
+      ["Resources ready", resources.resources_ready ? "yes" : "no"],
     ].map(([k, v]) => `<div><span>${esc(k)}</span><span>${esc(v)}</span></div>`).join("");
     detailUsage.textContent = JSON.stringify(ev.usage || {}, null, 2);
     renderRecordingDetail(ev);

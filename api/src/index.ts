@@ -775,6 +775,22 @@ async function finishEventForAdmin(client: any, env: Env, eventId: string, reaso
 async function adminEventPayload(client: any, env: Env, ev: any) {
   const usage = await usageSummary(client, env, ev.id);
   const links = eventLinks(env, ev);
+  const { rows: inventoryRows } = await client.query(
+    `
+    select id, mode, status, assigned_event_id, created_at, reserved_at, assigned_at,
+           ivs_channel_arn, ivs_ingest_endpoint, ivs_playback_url,
+           (ivs_stream_key_encrypted is not null) as has_hls_stream_key,
+           rtc_stage_arn,
+           error
+    from public.stream_inventory
+    where assigned_event_id=$1
+      and status in ('reserved','assigned')
+    order by assigned_at desc nulls last, reserved_at desc nulls last, created_at desc
+    limit 1
+  `,
+    [ev.id]
+  );
+  const inventorySlot = inventoryRows[0] || null;
   return {
     id: ev.id,
     email: ev.email,
@@ -811,6 +827,30 @@ async function adminEventPayload(client: any, env: Env, ev: any) {
     viewer_invites_attempts: Number(ev.viewer_invites_attempts || 0),
     viewer_invites_last_attempt_at: ev.viewer_invites_last_attempt_at || null,
     recording: recordingState(ev, env),
+    inventory_slot: inventorySlot ? {
+      id: inventorySlot.id,
+      mode: inventorySlot.mode,
+      status: inventorySlot.status,
+      created_at: inventorySlot.created_at || null,
+      reserved_at: inventorySlot.reserved_at || null,
+      assigned_at: inventorySlot.assigned_at || null,
+      ready_for_assignment: inventorySlotReady(inventorySlot, env),
+      age_seconds: inventorySlot.created_at ? Math.max(0, Math.floor((Date.now() - new Date(inventorySlot.created_at).getTime()) / 1000)) : null,
+      ivs_channel_arn: inventorySlot.ivs_channel_arn || null,
+      ivs_ingest_endpoint: inventorySlot.ivs_ingest_endpoint || null,
+      ivs_playback_url: inventorySlot.ivs_playback_url || null,
+      has_hls_stream_key: !!inventorySlot.has_hls_stream_key,
+      rtc_stage_arn: inventorySlot.rtc_stage_arn || null,
+      error: inventorySlot.error || null,
+    } : null,
+    stream_resources: {
+      hls_channel_arn: ev.ivs_channel_arn || null,
+      hls_ingest_endpoint: ev.ivs_ingest_endpoint || null,
+      hls_playback_url: ev.ivs_playback_url || null,
+      has_hls_stream_key: !!ev.ivs_stream_key_encrypted,
+      rtc_stage_arn: ev.rtc_stage_arn || null,
+      resources_ready: eventStreamResourcesReady(ev),
+    },
     readiness: buildReadiness(ev, "broadcaster", env),
     usage,
   };
