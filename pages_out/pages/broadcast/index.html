@@ -339,14 +339,6 @@
     if(logsPanel) logsPanel.open = true;
   }
 
-  function sleep(ms){
-    return new Promise(resolve => setTimeout(resolve, ms));
-  }
-
-  function isInvalidStreamKeyError(e){
-    return /invalid\s+stream\s+key|stream\s+key.*invalid/i.test(errorMessage(e));
-  }
-
   function setStatus(t, kind){
     elStatus.className = `pill ${kind || ""}`.trim();
     elStatus.querySelector("span:last-child").textContent = "status: " + t;
@@ -893,26 +885,9 @@
 
     setStatus("connecting live...", "warn");
     setReady(true, "connecting", "Publishing to IVS channel...", "warn");
-    const streamKey = String(prov.ingest.streamKey || "").trim();
     try {
-      await hlsClient.startBroadcast(streamKey);
+      await hlsClient.startBroadcast(prov.ingest.streamKey);
     } catch (e) {
-      if(isInvalidStreamKeyError(e)){
-        log("HLS start rejected stream key; retrying once after IVS settles");
-        setReady(true, "connecting", "IVS is still preparing the stream key. Retrying...", "warn");
-        await sleep(2500);
-        try {
-          await hlsClient.startBroadcast(streamKey);
-        } catch (retryError) {
-          isBroadcasting = false;
-          updateBroadcastControls();
-          stopTimer();
-          try{ hlsClient && hlsClient.stopBroadcast && hlsClient.stopBroadcast(); }catch{}
-          try{ hlsClient && hlsClient.delete && hlsClient.delete(); }catch{}
-          hlsClient = null;
-          throw retryError;
-        }
-      } else {
       isBroadcasting = false;
       updateBroadcastControls();
       stopTimer();
@@ -920,7 +895,6 @@
       try{ hlsClient && hlsClient.delete && hlsClient.delete(); }catch{}
       hlsClient = null;
       throw e;
-      }
     }
 
     markBroadcastingLive("You are live.");
