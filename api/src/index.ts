@@ -4,7 +4,7 @@ import Stripe from "stripe";
 import { SeatsDO } from "./seats_do";
 import { BroadcastLockDO } from "./broadcast_lock_do";
 import { stripeClient, priceForTierAndMode, hoursForTier, StreamMode, normalizeMode } from "./stripe";
-import { createChannel, getChannel } from "./awsIvs";
+import { createChannel, createStreamKey, getChannel } from "./awsIvs";
 import { deleteIvsChannel } from "./ivs";
 import { createSignedS3GetUrl, deleteS3RecordingObjects, listS3Objects } from "./awsS3";
 import { createMp4Job, getMp4Job, mediaConvertConfigured, recordingMp4OutputKey } from "./awsMediaConvert";
@@ -2650,7 +2650,22 @@ async function ensureHlsInfrastructure(client: any, env: Env, eventId: string, e
 async function provisionHlsBroadcast(client: any, env: Env, eventId: string, evIn: any) {
   let ev = await ensureHlsInfrastructure(client, env, eventId, evIn);
   try {
-    return await ensureStreamKey(client, env, eventId, ev);
+    const keyResult = await ensureStreamKey(client, env, eventId, ev);
+    ev = keyResult.ev;
+
+    if (!ev?.starts_at && ev?.ivs_channel_arn && ev?.ivs_ingest_endpoint && ev?.ivs_playback_url) {
+      try {
+        const fresh = await createStreamKey(env, ev.ivs_channel_arn);
+        const streamKeyEncrypted = await encryptString(fresh.streamKeyValue, env.STREAMKEY_ENC_KEY_B64);
+        await updateIvs(client, eventId, ev.ivs_channel_arn, ev.ivs_ingest_endpoint, ev.ivs_playback_url, streamKeyEncrypted);
+        ev = await getEvent(client, eventId);
+        return { ev, streamKeyPlaintext: fresh.streamKeyValue, created: true };
+      } catch (freshKeyError) {
+        console.error("provisionHlsBroadcast: fresh stream key failed", eventId, freshKeyError);
+      }
+    }
+
+    return keyResult;
   } catch (e: any) {
     const message = String(e?.message || e);
     if (!message.includes("hls_channel_not_ready")) throw e;
