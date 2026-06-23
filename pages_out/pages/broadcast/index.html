@@ -287,6 +287,7 @@
   const obsService = $("obsService");
   const obsServer = $("obsServer");
   const obsToken = $("obsToken");
+  const obsPanel = document.querySelector(".obs-panel");
   const logsPanel = document.querySelector(".logs-panel");
 
   let localStream = null;
@@ -316,6 +317,10 @@
   if (qs.get("extend")) elLiveHint.textContent = "Opening extension checkout...";
   if (qs.get("viewer_upgraded")) elLiveHint.textContent = "Viewer capacity upgrade complete. Rechecking usage...";
   if (qs.get("viewer_upgrade_cancelled")) elLiveHint.textContent = "Viewer capacity upgrade checkout was cancelled.";
+  if (qs.get("obs") || location.hash.toLowerCase() === "#obs") {
+    if (obsPanel) obsPanel.open = true;
+    setTimeout(() => obsPanel?.scrollIntoView({ behavior: "smooth", block: "start" }), 250);
+  }
 
   function log(...args){
     const line = args.map(a => typeof a === "string" ? a : JSON.stringify(a)).join(" ");

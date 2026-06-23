@@ -245,9 +245,11 @@ function emailSubjectEventLabel(ev: any) {
 function eventLinks(env: Env, ev: any) {
   const slug = slugifyEventTitle(ev?.title);
   const eventHash = slug ? `#${encodeURIComponent(slug)}` : "";
+  const obsHash = "#obs";
   return {
     watchUrl: `${env.APP_ORIGIN}/watch/?event=${encodeURIComponent(ev.id)}&key=${encodeURIComponent(ev.secret_key)}${eventHash}`,
     broadcastUrl: `${env.APP_ORIGIN}/broadcast/?event=${encodeURIComponent(ev.id)}&key=${encodeURIComponent(ev.broadcast_key)}${eventHash}`,
+    obsUrl: `${env.APP_ORIGIN}/broadcast/?event=${encodeURIComponent(ev.id)}&key=${encodeURIComponent(ev.broadcast_key)}&obs=1${obsHash}`,
   };
 }
 
@@ -1363,7 +1365,7 @@ async function extendEventWindowOnce(client: any, eventId: string, minutes: numb
 async function sendEventReadyEmail(env: Env, ev: any) {
   if (!ev?.email) return { skipped: true };
   const brand = appName(env);
-  const { watchUrl, broadcastUrl } = eventLinks(env, ev);
+  const { watchUrl, broadcastUrl, obsUrl } = eventLinks(env, ev);
   const extendUrl = extensionCheckoutUrl(env, ev);
   const extensionPrice = extensionOneHourPrice(env);
   const test = isTestEvent(ev);
@@ -1381,11 +1383,12 @@ async function sendEventReadyEmail(env: Env, ev: any) {
     ),
     "",
     `Broadcast link (private): ${broadcastUrl}`,
+    `OBS setup link (private): ${obsUrl}`,
     `Watch link (share with viewers): ${watchUrl}`,
     "",
     "Next steps:",
     "1. Open the broadcast link on the host device.",
-    "2. Allow camera and microphone, or choose OBS Token for OBS/WHIP setup.",
+    "2. Allow camera and microphone, or open the OBS setup link for OBS/WHIP details.",
     "3. Share the watch link with viewers only.",
     "",
     test ? "Free tests cannot be extended. Create a paid event when you are ready to stream for real." : `Need more time later? Buy another hour (${formatNzMoney(extensionPrice)}): ${extendUrl}`,
@@ -1395,12 +1398,14 @@ async function sendEventReadyEmail(env: Env, ev: any) {
       ${test ? `<p style="margin:0 0 16px">This is a free setup test. The live window is <b>${htmlEscape(minutes)} minutes</b> and viewer access is limited.</p>` : `<p style="margin:0 0 16px">Start this event within <b>${htmlEscape(startDays)} days</b>. Your paid package time starts when the host goes live.</p>`}
       <p style="margin:18px 0 8px">${emailButton("Open broadcast page", broadcastUrl)}</p>
       <p style="margin:0 0 18px;color:#6b7280;font-size:13px">Use this on the host device. It includes browser broadcasting and OBS token setup.</p>
+      <p style="margin:18px 0 8px">${emailButton("Open OBS setup", obsUrl)}</p>
+      <p style="margin:0 0 18px;color:#6b7280;font-size:13px">Use this if you are streaming from OBS. Generate a temporary WHIP token on the page, then copy it into OBS.</p>
       <p style="margin:18px 0 8px">${emailButton("Open watch page", watchUrl)}</p>
       <p style="margin:0 0 18px;color:#6b7280;font-size:13px">Share this link with viewers.</p>
       ${test ? "" : `<p style="margin:18px 0 8px">${emailButton(`Buy another hour (${formatNzMoney(extensionPrice)})`, extendUrl)}</p>
       <p style="margin:0 0 18px;color:#6b7280;font-size:13px">You can extend this stream any time before it expires. Payment adds one hour to the same broadcast and watch links.</p>`}
       <div style="background:#f3f4f6;border:1px solid #e5e7eb;border-radius:6px;padding:12px;margin-top:16px">
-        <p style="margin:0 0 8px"><b>OBS:</b> open the broadcast page, choose OBS Token, then copy the WHIP server and bearer token into OBS.</p>
+        <p style="margin:0 0 8px"><b>OBS:</b> open the OBS setup link, choose OBS Token, then copy the WHIP server and bearer token into OBS.</p>
         <p style="margin:0">${test ? "Free tests cannot be extended. Create a paid event when you are ready to stream for real." : "If you need more time, use the extension payment link above before the event expires."}</p>
       </div>
       <p style="margin:18px 0 0;color:#6b7280;font-size:12px">Buttons above contain the private access links. Keep the broadcast button private and share only the watch button with viewers.</p>
