@@ -2610,10 +2610,9 @@ async function ensureHlsChannel(client: any, env: Env, eventId: string, evIn: an
       }
 
       const ch = await createChannel(env, `relay-${eventId}`);
-      let streamKeyEncrypted = ev.ivs_stream_key_encrypted || null;
-      if (!streamKeyEncrypted && ch.streamKeyValue) {
-        streamKeyEncrypted = await encryptString(ch.streamKeyValue, env.STREAMKEY_ENC_KEY_B64);
-      }
+      const streamKeyEncrypted = ch.streamKeyValue
+        ? await encryptString(ch.streamKeyValue, env.STREAMKEY_ENC_KEY_B64)
+        : null;
       await updateIvs(client, eventId, ch.channelArn, ch.ingestEndpoint, ch.playbackUrl, streamKeyEncrypted);
       ev = await getEvent(client, eventId);
       await client.query("commit");
@@ -2775,6 +2774,40 @@ async function preProvisionPaidEvent(client: any, env: Env, eventId: string, opt
   }
 
   return await getEvent(client, eventId);
+}
+
+async function ensurePaidEventStreamResources(client: any, env: Env, eventId: string, reason: string) {
+  let ev = await preProvisionPaidEvent(client, env, eventId);
+  if (!ev || !isPaidAccessStatus(ev) || isExpired(ev) || isDisabled(ev)) {
+    return { eventId, reason, skipped: true, status: ev?.status || null };
+  }
+
+  const created: string[] = [];
+  try {
+    if (ev.rtc_enabled && !ev.rtc_stage_arn) {
+      const rtc = await ensureRtcStage(client, env, eventId, ev);
+      if (rtc.created) created.push("rtc_stage");
+      ev = rtc.ev;
+    }
+
+    if (ev.hls_enabled && (!ev.ivs_channel_arn || !ev.ivs_ingest_endpoint || !ev.ivs_playback_url || !ev.ivs_stream_key_encrypted)) {
+      const hls = await ensureStreamKey(client, env, eventId, ev);
+      if (hls.created) created.push("hls_channel");
+      ev = hls.ev;
+    }
+
+    if (ev.hls_enabled && ev.rtc_enabled && hlsPrestartCompositionEnabled(env)) {
+      const comp = await ensureCompositionStarted(client, env, eventId, ev);
+      if (comp.compositionStarted) created.push("hls_composition");
+      ev = comp.ev;
+    }
+
+    console.log("ensurePaidEventStreamResources", JSON.stringify({ eventId, reason, created }));
+    return { eventId, reason, created, event: ev };
+  } catch (e: any) {
+    console.error("ensurePaidEventStreamResources failed", JSON.stringify({ eventId, reason, error: e?.message || String(e) }));
+    throw e;
+  }
 }
 
 function displayHoursForTier(env: Env | null | undefined, tier: number) {
@@ -3439,6 +3472,35 @@ async function handleScheduled(_event: ScheduledEvent, env: any, _ctx: Execution
     const releasedReservations = await releaseAbandonedInventoryReservations(client);
     if (releasedReservations.slots) console.log("released abandoned inventory reservations", JSON.stringify(releasedReservations));
 
+    const { rows: missingResourceRows } = await client.query(
+      `
+      select id
+      from public.events
+      where status in ('paid','live')
+        and coalesce(disabled,false) = false
+        and (expires_at is null or expires_at > now())
+        and (
+          (coalesce(rtc_enabled,false) = true and rtc_stage_arn is null)
+          or (
+            coalesce(hls_enabled,false) = true
+            and (
+              ivs_channel_arn is null
+              or ivs_ingest_endpoint is null
+              or ivs_playback_url is null
+              or ivs_stream_key_encrypted is null
+            )
+          )
+        )
+      order by created_at asc
+      limit 5
+    `
+    );
+    for (const row of missingResourceRows) {
+      await ensurePaidEventStreamResources(client, env, row.id, "scheduled_missing_resources").catch((e) =>
+        console.error("scheduled paid resource provisioning failed", row.id, e)
+      );
+    }
+
     // Recording conversion/email is owned by the recording-worker sidecar.
     // Keeping the legacy API poller enabled can convert the first IVS segment
     // while the paid event is still active, before later stop/start segments arrive.
@@ -4100,6 +4162,7 @@ export default {
             [email, ip || null, eventId]
           );
 
+          await ensurePaidEventStreamResources(client, env, eventId, "test_event").catch((e) => console.error("test event stream resource provisioning failed", eventId, e));
           await sendEventReadyEmailOnce(client, env, eventId, "test_event").catch((e) => console.error("test event email failed", eventId, e));
           const links = eventLinks(env, { id: eventId, title, secret_key: secretKey, broadcast_key: broadcastKey });
 
@@ -4333,7 +4396,7 @@ export default {
                 ctx.waitUntil((async () => {
                   const asyncClient = await getClient(env);
                   try {
-                    await preProvisionPaidEvent(asyncClient, env, eventId);
+                    await ensurePaidEventStreamResources(asyncClient, env, eventId, "stripe_webhook");
                     await sendEventReadyEmailOnce(asyncClient, env, eventId, "stripe_webhook").catch((e) => console.error("event ready email failed", eventId, e));
                   } finally {
                     await asyncClient.end();
