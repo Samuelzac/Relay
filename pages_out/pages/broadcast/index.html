@@ -409,6 +409,15 @@
     startRemainingTicker();
   }
 
+  function setRemainingTargetFromExpiry(expiresAt){
+    const expiresMs = expiresAt ? Date.parse(expiresAt) : NaN;
+    if (!Number.isFinite(expiresMs)) return false;
+    remainingTargetMs = expiresMs;
+    renderRemaining(secondsUntilRemainingTarget());
+    startRemainingTicker();
+    return true;
+  }
+
   function secondsUntilRemainingTarget(){
     if(!remainingTargetMs) return null;
     return Math.max(0, Math.ceil((remainingTargetMs - Date.now()) / 1000));
@@ -857,22 +866,8 @@
     currentReadiness = res?.readiness || currentReadiness;
     renderFlags(currentReadiness);
     updateTimeWarning(currentReadiness);
+    setRemainingTargetFromExpiry(res?.expires_at || currentReadiness?.expires_at);
     return res;
-  }
-
-  async function refreshRemainingAfterStart(){
-    const delays = [0, 1000, 3000, 6000];
-    for (const delay of delays) {
-      if (delay) await new Promise(resolve => setTimeout(resolve, delay));
-      try{
-        const readyRes = await fetchReadiness();
-        const readiness = readyRes?.readiness;
-        if(readiness) updateTimeWarning(readiness);
-        if(readiness?.seconds_remaining !== null && readiness?.seconds_remaining !== undefined) return;
-      }catch(e){
-        log("Remaining refresh failed", String(e));
-      }
-    }
   }
 
   async function goLiveHlsDirect(){
@@ -912,7 +907,6 @@
     }
 
     markBroadcastingLive("You are live.");
-    refreshRemainingAfterStart();
     elInfo.textContent = "Publishing to HLS channel.";
   }
 
@@ -983,7 +977,6 @@
           log("START failed (non-fatal)", String(e));
         }
         markBroadcastingLive("You are live.");
-        refreshRemainingAfterStart();
       }
 
       if(state === StageConnectionState.CONNECTING) setStatus("connecting…", "warn");
