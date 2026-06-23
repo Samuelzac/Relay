@@ -303,6 +303,7 @@
 
   let ivsPlayer = null;
   let hlsRetryTimer = null;
+  let hlsLoadedUrl = "";
   let lastStartAt = 0;
 
   let stage = null;
@@ -640,6 +641,7 @@
       try { ivsPlayer.delete(); } catch {}
       ivsPlayer = null;
     }
+    hlsLoadedUrl = "";
     const v = $("hlsVideo");
     v.srcObject = null;
     v.removeAttribute("src");
@@ -747,17 +749,39 @@
       throw new Error("IVS Player not supported in this browser.");
     }
 
-    stopHls();
+    const createHlsPlayer = () => {
+      stopHls();
+      ivsPlayer = IVSPlayer.create();
+      ivsPlayer.attachHTMLVideoElement(videoEl);
+      ivsPlayer.addEventListener(IVSPlayer.PlayerEventType.ERROR, (err) => {
+        log("IVS ERROR", err);
+        setStatus("hls error");
+        scheduleRetry("retry");
+      });
 
-    ivsPlayer = IVSPlayer.create();
-    ivsPlayer.attachHTMLVideoElement(videoEl);
+      ivsPlayer.addEventListener(IVSPlayer.PlayerEventType.ENDED, () => {
+        log("IVS ENDED");
+        setStatus("hls ended");
+        scheduleRetry("ended-retry");
+      });
+
+      ivsPlayer.addEventListener(IVSPlayer.PlayerState.PLAYING, () => {
+        setStatus("playing (hls)");
+        showError("");
+        setReadyState(true, "HLS is ready to watch.", "good");
+      });
+    };
+
+    createHlsPlayer();
 
     const tryLoad = async (label) => {
       if(!ivsPlayer) return;
       const urlNow = (ev && ev.playback_url) ? ev.playback_url : playbackUrl;
+      if(hlsLoadedUrl && hlsLoadedUrl !== urlNow) createHlsPlayer();
       log(`HLS load (${label})`, urlNow);
       try{
         ivsPlayer.load(urlNow);
+        hlsLoadedUrl = urlNow;
         await ivsPlayer.play();
         setStatus("playing (hls)");
       }catch(e){
@@ -785,24 +809,6 @@
         await tryLoad(why);
       }, 2500);
     };
-
-    ivsPlayer.addEventListener(IVSPlayer.PlayerEventType.ERROR, (err) => {
-      log("IVS ERROR", err);
-      setStatus("hls error");
-      scheduleRetry("retry");
-    });
-
-    ivsPlayer.addEventListener(IVSPlayer.PlayerEventType.ENDED, () => {
-      log("IVS ENDED");
-      setStatus("hls ended");
-      scheduleRetry("ended-retry");
-    });
-
-    ivsPlayer.addEventListener(IVSPlayer.PlayerState.PLAYING, () => {
-      setStatus("playing (hls)");
-      showError("");
-      setReadyState(true, "HLS is ready to watch.", "good");
-    });
 
     await tryLoad("initial");
   }
