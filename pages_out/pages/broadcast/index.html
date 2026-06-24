@@ -166,13 +166,6 @@
               <label class="label" for="mic">Mic</label>
               <select id="mic"></select>
             </div>
-            <div class="field">
-              <label class="label" for="videoShape">Video shape</label>
-              <select id="videoShape">
-                <option value="landscape" selected>Landscape</option>
-                <option value="portrait">Portrait</option>
-              </select>
-            </div>
           </div>
         </div>
 
@@ -272,7 +265,6 @@
   const elLiveHint = $("liveHint");
   const elCam = $("camera");
   const elMic = $("mic");
-  const elVideoShape = $("videoShape");
   const elStateLine = $("stateLine");
   const remainingChip = $("remainingChip");
   const usageChip = $("usageChip");
@@ -599,6 +591,14 @@
     setStatus("preview ready", "good");
   }
 
+  function shouldBroadcastPortrait(){
+    const track = localStream?.getVideoTracks?.()[0];
+    const settings = track?.getSettings ? track.getSettings() : {};
+    const width = Number(settings.width || videoEl.videoWidth || 0);
+    const height = Number(settings.height || videoEl.videoHeight || 0);
+    return height > width && height > 0 && width > 0;
+  }
+
   async function loadPublicOptional(){
     const eventId = elEventId.value.trim();
     const key = elEventKey.value.trim();
@@ -893,9 +893,11 @@
 
     try{ hlsClient && hlsClient.delete && hlsClient.delete(); }catch{}
     const ingestEndpoint = prov.ingest.endpoint || prov.ingest.ingestEndpoint || String(prov.ingest.rtmpsUrl || "").replace(/^rtmps:\/\//, "").replace(/:443\/app\/?$/, "");
-    const streamConfig = elVideoShape.value === "portrait" && sdk.STANDARD_PORTRAIT
+    const usePortrait = shouldBroadcastPortrait();
+    const streamConfig = usePortrait && sdk.STANDARD_PORTRAIT
       ? sdk.STANDARD_PORTRAIT
       : sdk.STANDARD_LANDSCAPE;
+    log("HLS video shape", usePortrait ? "portrait" : "landscape");
     hlsClient = sdk.create({
       streamConfig,
       ingestEndpoint,
