@@ -166,6 +166,13 @@
               <label class="label" for="mic">Mic</label>
               <select id="mic"></select>
             </div>
+            <div class="field">
+              <label class="label" for="videoShape">Video shape</label>
+              <select id="videoShape">
+                <option value="landscape" selected>Landscape</option>
+                <option value="portrait">Portrait</option>
+              </select>
+            </div>
           </div>
         </div>
 
@@ -265,6 +272,7 @@
   const elLiveHint = $("liveHint");
   const elCam = $("camera");
   const elMic = $("mic");
+  const elVideoShape = $("videoShape");
   const elStateLine = $("stateLine");
   const remainingChip = $("remainingChip");
   const usageChip = $("usageChip");
@@ -885,8 +893,11 @@
 
     try{ hlsClient && hlsClient.delete && hlsClient.delete(); }catch{}
     const ingestEndpoint = prov.ingest.endpoint || prov.ingest.ingestEndpoint || String(prov.ingest.rtmpsUrl || "").replace(/^rtmps:\/\//, "").replace(/:443\/app\/?$/, "");
+    const streamConfig = elVideoShape.value === "portrait" && sdk.STANDARD_PORTRAIT
+      ? sdk.STANDARD_PORTRAIT
+      : sdk.STANDARD_LANDSCAPE;
     hlsClient = sdk.create({
-      streamConfig: sdk.STANDARD_LANDSCAPE,
+      streamConfig,
       ingestEndpoint,
     });
 
