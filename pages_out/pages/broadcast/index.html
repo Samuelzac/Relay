@@ -609,6 +609,7 @@
   }
 
   function shouldBroadcastPortrait(){
+    if(isTouchDevice()) return isLikelyPortraitViewport();
     const track = localStream?.getVideoTracks?.()[0];
     const settings = track?.getSettings ? track.getSettings() : {};
     const width = Number(settings.width || videoEl.videoWidth || 0);
