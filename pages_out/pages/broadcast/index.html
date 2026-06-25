@@ -569,14 +569,10 @@
   async function getLocalMedia(){
     const camId = elCam.value || undefined;
     const micId = elMic.value || undefined;
-    const portrait = isLikelyPortraitViewport();
-    const videoSize = portrait
-      ? { width:{ ideal:720 }, height:{ ideal:1280 }, frameRate:{ ideal:30 } }
-      : { width:{ ideal:1280 }, height:{ ideal:720 }, frameRate:{ ideal:30 } };
 
     const constraints = {
-      video: camId ? { deviceId: { exact: camId }, ...videoSize }
-                   : { facingMode:{ ideal:"environment" }, ...videoSize },
+      video: camId ? { deviceId: { exact: camId }, width:{ ideal:1280 }, height:{ ideal:720 }, frameRate:{ ideal:30 } }
+                   : { facingMode:{ ideal:"environment" }, width:{ ideal:1280 }, height:{ ideal:720 }, frameRate:{ ideal:30 } },
       audio: micId ? { deviceId: { exact: micId } } : true
     };
 
@@ -594,28 +590,6 @@
     emptyPreview.style.display = "none";
     elInfo.textContent = "Preview ready.";
     setStatus("preview ready", "good");
-  }
-
-  function isLikelyPortraitViewport(){
-    const viewport = window.visualViewport || window;
-    const width = Number(viewport.width || window.innerWidth || 0);
-    const height = Number(viewport.height || window.innerHeight || 0);
-    const touchDevice = navigator.maxTouchPoints > 0 || matchMedia("(pointer: coarse)").matches;
-    return touchDevice && height > width;
-  }
-
-  function isTouchDevice(){
-    return navigator.maxTouchPoints > 0 || matchMedia("(pointer: coarse)").matches;
-  }
-
-  function shouldBroadcastPortrait(){
-    if(isTouchDevice()) return isLikelyPortraitViewport();
-    const track = localStream?.getVideoTracks?.()[0];
-    const settings = track?.getSettings ? track.getSettings() : {};
-    const width = Number(settings.width || videoEl.videoWidth || 0);
-    const height = Number(settings.height || videoEl.videoHeight || 0);
-    if(height > 0 && width > 0) return height > width;
-    return isLikelyPortraitViewport();
   }
 
   async function loadPublicOptional(){
@@ -912,13 +886,8 @@
 
     try{ hlsClient && hlsClient.delete && hlsClient.delete(); }catch{}
     const ingestEndpoint = prov.ingest.endpoint || prov.ingest.ingestEndpoint || String(prov.ingest.rtmpsUrl || "").replace(/^rtmps:\/\//, "").replace(/:443\/app\/?$/, "");
-    const usePortrait = shouldBroadcastPortrait();
-    const streamConfig = usePortrait && sdk.STANDARD_PORTRAIT
-      ? sdk.STANDARD_PORTRAIT
-      : sdk.STANDARD_LANDSCAPE;
-    log("HLS video shape", usePortrait ? "portrait" : "landscape");
     hlsClient = sdk.create({
-      streamConfig,
+      streamConfig: sdk.STANDARD_LANDSCAPE,
       ingestEndpoint,
     });
 
