@@ -29,15 +29,23 @@ function htmlEscape(value: any) {
 }
 
 function emailButton(label: string, href: string) {
-  return `<a href="${htmlEscape(href)}" style="display:inline-block;background:#111827;color:#fff;text-decoration:none;padding:11px 16px;border-radius:6px;font-weight:700">${htmlEscape(label)}</a>`;
+  return `<a href="${htmlEscape(href)}" style="display:inline-block;background-color:#ffffff;color:#111827;text-decoration:none;padding:11px 16px;border-radius:6px;border:1px solid #111827;font-weight:700;mso-padding-alt:0">${htmlEscape(label)}</a>`;
 }
 
 function emailShell(brand: string, heading: string, body: string) {
-  return `<!doctype html><html><body style="margin:0;background:#f6f7f9;padding:24px;font-family:Arial,sans-serif;color:#111827">
-    <div style="max-width:620px;margin:0 auto;background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:24px">
-      <div style="font-size:14px;font-weight:700;margin-bottom:18px">${htmlEscape(brand)}</div>
-      <h2 style="margin:0 0 14px;font-size:22px">${htmlEscape(heading)}</h2>${body}
-    </div></body></html>`;
+  return `<!doctype html>
+    <html>
+      <head>
+        <meta name="color-scheme" content="light">
+        <meta name="supported-color-schemes" content="light">
+      </head>
+      <body style="margin:0;background-color:#f6f7f9;padding:24px;font-family:Arial,sans-serif;color:#111827">
+        <div style="max-width:620px;margin:0 auto;background-color:#ffffff;color:#111827;border:1px solid #e5e7eb;border-radius:10px;padding:24px">
+          <div style="font-size:14px;font-weight:700;color:#111827;margin-bottom:18px">${htmlEscape(brand)}</div>
+          <h2 style="margin:0 0 14px;font-size:22px;color:#111827">${htmlEscape(heading)}</h2>${body}
+        </div>
+      </body>
+    </html>`;
 }
 
 function brand(env: Env) {
