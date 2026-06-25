@@ -1210,6 +1210,41 @@ async function cleanupExpiredRecordings(client: any, env: Env) {
   }
 }
 
+async function cleanupStaleProcessingRecordings(client: any, env: Env) {
+  await ensureRecordingColumns(client);
+  const staleHours = numberEnv(env, "RECORDING_STALE_PROCESSING_CLEANUP_HOURS", 24, 6, 168);
+  const { rows } = await client.query(
+    `
+    update public.events
+    set recording_status='expired',
+        recording_error=coalesce(recording_error, 'stale_processing_recording_cleaned'),
+        recording_mp4_job_status=coalesce(recording_mp4_job_status, 'STALE'),
+        recording_expires_at=coalesce(recording_expires_at, now()),
+        recording_email_error=null
+    where id in (
+      select id
+      from public.events
+      where recording_enabled = true
+        and status = 'expired'
+        and recording_status = 'processing'
+        and coalesce(recording_mp4_job_submitted_at, recording_ended_at, expires_at, created_at) <= now() - ($1::int * interval '1 hour')
+      order by coalesce(recording_mp4_job_submitted_at, recording_ended_at, expires_at, created_at) asc
+      limit 10
+    )
+    returning id, recording_s3_bucket, recording_s3_prefix, recording_hls_manifest_key, recording_mp4_s3_key
+  `,
+    [staleHours]
+  );
+
+  if (rows.length) {
+    console.log(
+      "stale recording processing cleanup",
+      JSON.stringify({ count: rows.length, staleHours, eventIds: rows.map((row: any) => row.id) })
+    );
+  }
+  return { count: rows.length, rows };
+}
+
 function priceCentsFor(env: Env, tier: number, mode: StreamMode) {
   return dollarsToCents(priceForTierAndMode(env, tier, mode));
 }
@@ -3492,6 +3527,7 @@ async function handleScheduled(_event: ScheduledEvent, env: any, _ctx: Execution
     // Recording conversion/email is owned by the recording-worker sidecar.
     // Keeping the legacy API poller enabled can convert the first IVS segment
     // while the paid event is still active, before later stop/start segments arrive.
+    await cleanupStaleProcessingRecordings(client, env).catch((e) => console.error("stale recording processing cleanup failed", e));
     await cleanupExpiredRecordings(client, env).catch((e) => console.error("recording cleanup poll failed", e));
 
     const warningLeadMinutes = streamWarningLeadMinutes(env);
