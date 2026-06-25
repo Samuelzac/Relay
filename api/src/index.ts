@@ -885,6 +885,23 @@ async function updateRtcEndpoints(client: any, id: string, endpoints: any) {
   return rows[0] || null;
 }
 
+async function clearRtc(client: any, id: string) {
+  await client.query(
+    `
+    update public.events
+    set rtc_stage_arn = null,
+        rtc_stage_endpoints = null
+    where id = $1
+  `,
+    [id]
+  );
+}
+
+function isRealtimeStageNotFoundError(e: any) {
+  const message = String(e?.message || e || "");
+  return /\b404\b/.test(message) || /not\s*found|NotFound|ResourceNotFound/i.test(message);
+}
+
 function dollarsToCents(n: any): number {
   const v = Number(n || 0);
   if (!Number.isFinite(v)) return 0;
@@ -2544,6 +2561,36 @@ async function ensureRtcStage(client: any, env: Env, eventId: string, evIn: any)
       throw e;
     }
   });
+}
+
+async function createEventParticipantToken(
+  client: any,
+  env: Env,
+  eventId: string,
+  ev: any,
+  userId: string,
+  capabilities: any[],
+  durationSeconds: number
+) {
+  let rtc = await ensureRtcStage(client, env, eventId, ev);
+  try {
+    const token = await createParticipantToken(env, rtc.stageArn!, userId, capabilities, durationSeconds);
+    return { rtc, token };
+  } catch (e: any) {
+    if (!isRealtimeStageNotFoundError(e)) throw e;
+
+    console.warn("Stale RTC stage detected; recreating stage", {
+      eventId,
+      stageArn: rtc.stageArn,
+      error: e?.message || String(e),
+    });
+
+    await clearRtc(client, eventId);
+    const freshEv = await getEvent(client, eventId);
+    rtc = await ensureRtcStage(client, env, eventId, freshEv || ev);
+    const token = await createParticipantToken(env, rtc.stageArn!, userId, capabilities, durationSeconds);
+    return { rtc, token };
+  }
 }
 
 async function ensureHlsChannel(client: any, env: Env, eventId: string, evIn: any) {
@@ -5050,16 +5097,16 @@ export default {
             const authRes = requireExact(key, ev.broadcast_key, env);
             if (authRes) return authRes;
 
-            const rtc = await ensureRtcStage(client, env, eventId, ev);
-            ev = rtc.ev;
-
-            const token = await createParticipantToken(
+            const { rtc, token } = await createEventParticipantToken(
+              client,
               env,
-              rtc.stageArn!,
+              eventId,
+              ev,
               `host-${eventId}`,
               ["PUBLISH", "SUBSCRIBE"],
               3600
             );
+            ev = rtc.ev;
 
             return json(env, {
               ok: true,
@@ -5092,18 +5139,18 @@ export default {
             const authRes = requireExact(key, ev.broadcast_key, env);
             if (authRes) return authRes;
 
-            const rtc = await ensureRtcStage(client, env, eventId, ev);
-            ev = rtc.ev;
-            const whipUrl = rtc.endpoints?.whip || null;
-            if (!whipUrl) return json(env, { error: "whip_not_available", endpoints: rtc.endpoints }, 500);
-
-            const token = await createParticipantToken(
+            const { rtc, token } = await createEventParticipantToken(
+              client,
               env,
-              rtc.stageArn!,
+              eventId,
+              ev,
               `obs-${eventId}`,
               ["PUBLISH"],
               3600
             );
+            ev = rtc.ev;
+            const whipUrl = rtc.endpoints?.whip || null;
+            if (!whipUrl) return json(env, { error: "whip_not_available", endpoints: rtc.endpoints }, 500);
 
             return json(env, {
               ok: true,
@@ -5138,21 +5185,16 @@ export default {
             const authRes = requireExact(key, ev.secret_key, env);
             if (authRes) return authRes;
 
-            if (!ev.rtc_stage_arn) {
-              return json(env, { error: "stage_not_ready", readiness: buildReadiness(ev, "viewer", env) }, 409);
-            }
-            const rtc = {
-              stageArn: ev.rtc_stage_arn as string,
-              endpoints: ev.rtc_stage_endpoints ?? null,
-            };
-
-            const token = await createParticipantToken(
+            const { rtc, token } = await createEventParticipantToken(
+              client,
               env,
-              rtc.stageArn,
+              eventId,
+              ev,
               `viewer-${randomSecretUrlSafe(8)}`,
               ["SUBSCRIBE"],
               3600
             );
+            ev = rtc.ev;
 
             return json(env, {
               ok: true,
