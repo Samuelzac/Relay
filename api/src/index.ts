@@ -194,6 +194,7 @@ async function sendEmail(env: Env, opts: { to: string; subject: string; html: st
         TextBody: opts.text,
         Tag: opts.tag || undefined,
         MessageStream: env.POSTMARK_MESSAGE_STREAM || "outbound",
+        TrackLinks: "None",
       }),
     });
 

@@ -69,6 +69,7 @@ async function sendEmail(env: Env, opts: { to: string; subject: string; html: st
       TextBody: opts.text,
       MessageStream: env.POSTMARK_MESSAGE_STREAM || "outbound",
       Tag: opts.tag,
+      TrackLinks: "None",
     }),
   });
   const text = await res.text();
