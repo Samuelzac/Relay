@@ -3,13 +3,13 @@ import { signAwsJsonRequest, presignS3GetUrl, listS3Objects, deleteS3RecordingOb
 
 type Env = any;
 
-function json(body: any, status = 200) {
+function json(env: Env, body: any, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
     headers: {
       "content-type": "application/json; charset=utf-8",
       "cache-control": "no-store",
-      "access-control-allow-origin": "https://castlink.stream",
+      "access-control-allow-origin": env.APP_ORIGIN || "https://castlink.stream",
       "access-control-allow-methods": "GET,POST,OPTIONS",
       "access-control-allow-headers": "content-type,x-relay-recording-secret",
       "access-control-allow-credentials": "true",
@@ -1078,7 +1078,7 @@ async function sendRecordingReady(client: Client, env: Env, eventId: string) {
 
 async function handleRecordingEvent(request: Request, env: Env) {
   const got = request.headers.get("x-relay-recording-secret") || "";
-  if (!env.RECORDING_WEBHOOK_SECRET || got !== env.RECORDING_WEBHOOK_SECRET) return json({ error: "unauthorized" }, 401);
+  if (!env.RECORDING_WEBHOOK_SECRET || got !== env.RECORDING_WEBHOOK_SECRET) return json(env, { error: "unauthorized" }, 401);
   const payload = await request.json().catch(() => ({}));
   const rec = extractRecordingEvent(payload, env);
   const client = await getClient(env);
@@ -1115,7 +1115,7 @@ async function handleRecordingEvent(request: Request, env: Env) {
         payload,
       }).catch((e) => client.query(`update public.events set recording_error=$2 where id=$1`, [eventId, String(e?.message || e).slice(0, 2000)]));
     }
-    return json({ ok: !!eventId, event_id: eventId || null, extracted: rec });
+    return json(env, { ok: !!eventId, event_id: eventId || null, extracted: rec });
   } finally {
     await client.end();
   }
@@ -1252,7 +1252,7 @@ export default {
       return new Response(null, {
         status: 204,
         headers: {
-          "access-control-allow-origin": "https://castlink.stream",
+          "access-control-allow-origin": env.APP_ORIGIN || "https://castlink.stream",
           "access-control-allow-methods": "GET,POST,OPTIONS",
           "access-control-allow-headers": "content-type,x-relay-recording-secret",
           "access-control-allow-credentials": "true",
@@ -1264,18 +1264,18 @@ export default {
     if (request.method === "POST" && url.pathname === "/ivs/recording-event") return handleRecordingEvent(request, env);
 
     if (url.pathname === "/admin/stale-events") {
-      if (!adminAuthorized(request, env)) return json({ error: "unauthorized" }, 401);
+      if (!adminAuthorized(request, env)) return json(env, { error: "unauthorized" }, 401);
       const client = await getClient(env);
       try {
         const limit = Number(url.searchParams.get("limit") || 50);
         if (request.method === "GET") {
           const events = await listStaleEvents(client, env, limit);
-          return json({ ok: true, count: events.length, events });
+          return json(env, { ok: true, count: events.length, events });
         }
         if (request.method === "POST") {
           const cleanedOpen = await expireCleanedOpenEvents(client, limit);
           const expired = await expireStaleEvents(client, env, limit);
-          return json({ ok: true, count: cleanedOpen.length + expired.length, cleaned_open: cleanedOpen, expired });
+          return json(env, { ok: true, count: cleanedOpen.length + expired.length, cleaned_open: cleanedOpen, expired });
         }
       } finally {
         await client.end();
@@ -1283,17 +1283,17 @@ export default {
     }
 
     if (url.pathname === "/admin/open-events" || url.pathname === "/admin/assigned-inventory") {
-      if (!adminAuthorized(request, env)) return json({ error: "unauthorized" }, 401);
+      if (!adminAuthorized(request, env)) return json(env, { error: "unauthorized" }, 401);
       const client = await getClient(env);
       try {
         const limit = Number(url.searchParams.get("limit") || 50);
         if (request.method === "GET" && url.pathname === "/admin/open-events") {
           const events = await listOpenEvents(client, limit);
-          return json({ ok: true, count: events.length, events });
+          return json(env, { ok: true, count: events.length, events });
         }
         if (request.method === "GET" && url.pathname === "/admin/assigned-inventory") {
           const slots = await listAssignedInventory(client, limit);
-          return json({ ok: true, count: slots.length, slots });
+          return json(env, { ok: true, count: slots.length, slots });
         }
       } finally {
         await client.end();
@@ -1301,13 +1301,13 @@ export default {
     }
 
     if (url.pathname === "/admin/recent-recordings") {
-      if (!adminAuthorized(request, env)) return json({ error: "unauthorized" }, 401);
+      if (!adminAuthorized(request, env)) return json(env, { error: "unauthorized" }, 401);
       const client = await getClient(env);
       try {
         if (request.method === "GET") {
           const limit = Number(url.searchParams.get("limit") || 25);
           const recordings = await listRecentRecordings(client, limit);
-          return json({ ok: true, count: recordings.length, recordings });
+          return json(env, { ok: true, count: recordings.length, recordings });
         }
       } finally {
         await client.end();
@@ -1316,12 +1316,12 @@ export default {
 
     const recordingDebugMatch = url.pathname.match(/^\/admin\/events\/([^/]+)\/recording-debug$/);
     if (request.method === "GET" && recordingDebugMatch) {
-      if (!adminAuthorized(request, env)) return json({ error: "unauthorized" }, 401);
+      if (!adminAuthorized(request, env)) return json(env, { error: "unauthorized" }, 401);
       const client = await getClient(env);
       try {
         const debug = await recordingDebugForEvent(client, recordingDebugMatch[1]);
-        if (!debug) return json({ error: "not_found" }, 404);
-        return json({ ok: true, ...debug });
+        if (!debug) return json(env, { error: "not_found" }, 404);
+        return json(env, { ok: true, ...debug });
       } finally {
         await client.end();
       }
@@ -1329,14 +1329,14 @@ export default {
 
     const ingestStoredMatch = url.pathname.match(/^\/admin\/events\/([^/]+)\/recording\/ingest-stored-webhook$/);
     if (request.method === "POST" && ingestStoredMatch) {
-      if (!adminAuthorized(request, env)) return json({ error: "unauthorized" }, 401);
+      if (!adminAuthorized(request, env)) return json(env, { error: "unauthorized" }, 401);
       const client = await getClient(env);
       try {
         const ingested = await ingestStoredWebhookPayload(client, env, ingestStoredMatch[1]);
         const conversion = await startConversion(client, env, ingestStoredMatch[1]);
-        return json({ ok: true, ingested, conversion });
+        return json(env, { ok: true, ingested, conversion });
       } catch (e: any) {
-        return json({ ok: false, error: String(e?.message || e) }, 500);
+        return json(env, { ok: false, error: String(e?.message || e) }, 500);
       } finally {
         await client.end();
       }
@@ -1344,7 +1344,7 @@ export default {
 
     const retryConversionMatch = url.pathname.match(/^\/admin\/events\/([^/]+)\/recording\/retry-conversion$/);
     if (request.method === "POST" && retryConversionMatch) {
-      if (!adminAuthorized(request, env)) return json({ error: "unauthorized" }, 401);
+      if (!adminAuthorized(request, env)) return json(env, { error: "unauthorized" }, 401);
       const client = await getClient(env);
       try {
         await ensureColumns(client);
@@ -1365,14 +1365,14 @@ export default {
         `,
           [retryConversionMatch[1]]
         );
-        if (!resetRows[0]) return json({ ok: false, error: "event_not_found" }, 404);
+        if (!resetRows[0]) return json(env, { ok: false, error: "event_not_found" }, 404);
         const conversion = await startConversion(client, env, retryConversionMatch[1]);
         const debug = await recordingDebugForEvent(client, retryConversionMatch[1]);
-        return json({ ok: true, reset: resetRows[0], conversion, debug });
+        return json(env, { ok: true, reset: resetRows[0], conversion, debug });
       } catch (e: any) {
         const message = String(e?.message || e).slice(0, 2000);
         await client.query(`update public.events set recording_status='failed', recording_error=$2 where id=$1`, [retryConversionMatch[1], message]).catch(() => null);
-        return json({ ok: false, error: message }, 500);
+        return json(env, { ok: false, error: message }, 500);
       } finally {
         await client.end();
       }
@@ -1380,7 +1380,7 @@ export default {
 
     const resetRecordingMatch = url.pathname.match(/^\/admin\/events\/([^/]+)\/recording\/reset-premature$/);
     if (request.method === "POST" && resetRecordingMatch) {
-      if (!adminAuthorized(request, env)) return json({ error: "unauthorized" }, 401);
+      if (!adminAuthorized(request, env)) return json(env, { error: "unauthorized" }, 401);
       const client = await getClient(env);
       try {
         await ensureColumns(client);
@@ -1402,8 +1402,8 @@ export default {
           [resetRecordingMatch[1]]
         );
         const event = rows[0] || null;
-        if (!event) return json({ error: "event_not_found" }, 404);
-        return json({ ok: true, event });
+        if (!event) return json(env, { error: "event_not_found" }, 404);
+        return json(env, { ok: true, event });
       } finally {
         await client.end();
       }
@@ -1411,17 +1411,17 @@ export default {
 
     const completeConversionMatch = url.pathname.match(/^\/admin\/events\/([^/]+)\/recording\/complete-conversion$/);
     if (request.method === "POST" && completeConversionMatch) {
-      if (!adminAuthorized(request, env)) return json({ error: "unauthorized" }, 401);
+      if (!adminAuthorized(request, env)) return json(env, { error: "unauthorized" }, 401);
       const body: any = await request.json().catch(() => ({}));
       const jobId = String(body.jobId || body.job_id || "").trim();
       const outputKey = String(body.outputKey || body.output_key || "").trim();
-      if (!jobId) return json({ error: "job_id_required" }, 400);
-      if (!outputKey) return json({ error: "output_key_required" }, 400);
+      if (!jobId) return json(env, { error: "job_id_required" }, 400);
+      if (!outputKey) return json(env, { error: "output_key_required" }, 400);
       const client = await getClient(env);
       try {
         const job = mediaConvertJob(await mediaConvert(env, "GET", `/2017-08-29/jobs/${encodeURIComponent(jobId)}`));
         const status = String(job?.Status || job?.status || "").toUpperCase();
-        if (status !== "COMPLETE") return json({
+        if (status !== "COMPLETE") return json(env, {
           ok: false,
           status,
           error: job?.ErrorMessage || job?.errorMessage || null,
@@ -1447,24 +1447,24 @@ export default {
           [completeConversionMatch[1], jobId, status, outputKey, expiryIso(env)]
         );
         const persisted = rows[0] || null;
-        if (!persisted) return json({ error: "event_not_found" }, 404);
+        if (!persisted) return json(env, { error: "event_not_found" }, 404);
         const email = await sendRecordingReady(client, env, completeConversionMatch[1]);
-        return json({ ok: true, status, persisted, email });
+        return json(env, { ok: true, status, persisted, email });
       } catch (e: any) {
-        return json({ ok: false, error: String(e?.message || e).slice(0, 2000) }, 500);
+        return json(env, { ok: false, error: String(e?.message || e).slice(0, 2000) }, 500);
       } finally {
         await client.end();
       }
     }
 
     if (url.pathname === "/admin/expired-ivs-streams/stop") {
-      if (!adminAuthorized(request, env)) return json({ error: "unauthorized" }, 401);
+      if (!adminAuthorized(request, env)) return json(env, { error: "unauthorized" }, 401);
       const client = await getClient(env);
       try {
         if (request.method === "POST") {
           const limit = Number(url.searchParams.get("limit") || 10);
           const stopped = await stopExpiredIvsStreams(client, env, limit);
-          return json({ ok: true, count: stopped.length, stopped });
+          return json(env, { ok: true, count: stopped.length, stopped });
         }
       } finally {
         await client.end();
@@ -1472,19 +1472,19 @@ export default {
     }
 
     if (url.pathname === "/admin/recording-duplicates") {
-      if (!adminAuthorized(request, env)) return json({ error: "unauthorized" }, 401);
+      if (!adminAuthorized(request, env)) return json(env, { error: "unauthorized" }, 401);
       const client = await getClient(env);
       try {
         if (request.method === "GET") {
           const duplicates = await listDuplicateRecordings(client);
-          return json({ ok: true, count: duplicates.length, duplicates });
+          return json(env, { ok: true, count: duplicates.length, duplicates });
         }
         if (request.method === "POST") {
           const mismatched = await repairMismatchedRecordingClaims(client);
           const duplicatesRepaired = await repairDuplicateRecordingClaims(client);
           const repaired = [...mismatched, ...duplicatesRepaired];
           const duplicates = await listDuplicateRecordings(client);
-          return json({ ok: true, repaired_count: repaired.length, repaired, remaining_duplicate_count: duplicates.length, remaining_duplicates: duplicates });
+          return json(env, { ok: true, repaired_count: repaired.length, repaired, remaining_duplicate_count: duplicates.length, remaining_duplicates: duplicates });
         }
       } finally {
         await client.end();
@@ -1496,12 +1496,12 @@ export default {
       const client = await getClient(env);
       try {
         const ev = await getEvent(client, prepareMatch[1]);
-        if (!ev) return json({ error: "not_found" }, 404);
-        if (url.searchParams.get("key") !== ev.broadcast_key) return json({ error: "unauthorized" }, 401);
+        if (!ev) return json(env, { error: "not_found" }, 404);
+        if (url.searchParams.get("key") !== ev.broadcast_key) return json(env, { error: "unauthorized" }, 401);
         const result = await prepareRecordingChannel(client, env, ev.id);
-        return json({ ok: true, result });
+        return json(env, { ok: true, result });
       } catch (e: any) {
-        return json({ ok: false, error: String(e?.message || e) }, 500);
+        return json(env, { ok: false, error: String(e?.message || e) }, 500);
       } finally {
         await client.end();
       }
@@ -1510,13 +1510,13 @@ export default {
     const discoverMatch = url.pathname.match(/^\/admin\/events\/([^/]+)\/recording\/discover$/);
     if (request.method === "POST" && discoverMatch) {
       const got = request.headers.get("x-relay-recording-secret") || "";
-      if (!env.RECORDING_WEBHOOK_SECRET || got !== env.RECORDING_WEBHOOK_SECRET) return json({ error: "unauthorized" }, 401);
+      if (!env.RECORDING_WEBHOOK_SECRET || got !== env.RECORDING_WEBHOOK_SECRET) return json(env, { error: "unauthorized" }, 401);
       const client = await getClient(env);
       try {
         const discovered = await discoverManifestForEvent(client, env, discoverMatch[1]);
-        return json({ ok: true, discovered });
+        return json(env, { ok: true, discovered });
       } catch (e: any) {
-        return json({ ok: false, error: String(e?.message || e) }, 500);
+        return json(env, { ok: false, error: String(e?.message || e) }, 500);
       } finally {
         await client.end();
       }
@@ -1527,9 +1527,9 @@ export default {
       const client = await getClient(env);
       try {
         const ev = await getEvent(client, statusMatch[1]);
-        if (!ev) return json({ error: "not_found" }, 404);
-        if (url.searchParams.get("key") !== ev.broadcast_key) return json({ error: "unauthorized" }, 401);
-        return json({ ok: true, recording: state(ev) });
+        if (!ev) return json(env, { error: "not_found" }, 404);
+        if (url.searchParams.get("key") !== ev.broadcast_key) return json(env, { error: "unauthorized" }, 401);
+        return json(env, { ok: true, recording: state(ev) });
       } finally { await client.end(); }
     }
 
@@ -1538,20 +1538,20 @@ export default {
       const client = await getClient(env);
       try {
         const ev = await getEvent(client, downloadMatch[1]);
-        if (!ev) return json({ error: "not_found" }, 404);
-        if (url.searchParams.get("key") !== ev.broadcast_key) return json({ error: "unauthorized" }, 401);
+        if (!ev) return json(env, { error: "not_found" }, 404);
+        if (url.searchParams.get("key") !== ev.broadcast_key) return json(env, { error: "unauthorized" }, 401);
         const s = state(ev);
-        if (!s.download_available) return json({ error: s.download_claimed ? "recording_download_already_claimed" : "recording_not_ready", recording: s }, s.download_claimed ? 410 : 409);
+        if (!s.download_available) return json(env, { error: s.download_claimed ? "recording_download_already_claimed" : "recording_not_ready", recording: s }, s.download_claimed ? 410 : 409);
         const { rows } = await client.query(`update public.events set recording_download_claimed_at=now(), recording_download_claimed_ip=$2 where id=$1 and recording_download_claimed_at is null returning *`, [ev.id, request.headers.get("cf-connecting-ip") || ""]);
         const claimed = rows[0];
-        if (!claimed) return json({ error: "recording_download_already_claimed" }, 410);
+        if (!claimed) return json(env, { error: "recording_download_already_claimed" }, 410);
         const filename = `${slug(claimed.title) || String(claimed.id).slice(0, 8)}-castlink-recording.mp4`;
         const signed = await presignS3GetUrl(env, claimed.recording_s3_bucket, claimed.recording_mp4_s3_key, 900, filename);
-        return json({ ok: true, url: signed, expires_in_seconds: 900, recording: state(claimed) });
+        return json(env, { ok: true, url: signed, expires_in_seconds: 900, recording: state(claimed) });
       } finally { await client.end(); }
     }
 
-    return json({ error: "not_found" }, 404);
+    return json(env, { error: "not_found" }, 404);
   },
   async scheduled(_event: ScheduledEvent, env: Env) {
     const client = await getClient(env);

@@ -2,6 +2,9 @@ window.RelayConfig = (() => {
   const canonicalHost = "castlink.stream";
   const canonicalApi = "https://api.castlink.stream";
   const canonicalRecordingApi = "https://castlink-recording-worker.kiwismurph.workers.dev";
+  const stagingPagesHost = "castlink-staging.pages.dev";
+  const stagingWorkerApi = "https://stream-platform-api-staging.kiwismurph.workers.dev";
+  const stagingRecordingApi = "https://castlink-recording-worker-staging.kiwismurph.workers.dev";
   const fallbackWorker = canonicalApi;
   const fallbackRecordingWorker = canonicalRecordingApi;
   const aliasHosts = new Set(["castlink.co.nz", "www.castlink.co.nz", "www.castlink.stream"]);
@@ -21,6 +24,7 @@ window.RelayConfig = (() => {
 
   function likelyProductionApi() {
     const host = location.hostname;
+    if (host === stagingPagesHost) return stagingWorkerApi;
     if (!host || host === "localhost" || host === "127.0.0.1" || host.endsWith(".pages.dev")) {
       return fallbackWorker;
     }
@@ -32,6 +36,7 @@ window.RelayConfig = (() => {
 
   function likelyProductionRecordingApi() {
     const host = location.hostname;
+    if (host === stagingPagesHost) return stagingRecordingApi;
     if (!host || host === "localhost" || host === "127.0.0.1" || host.endsWith(".pages.dev")) {
       return fallbackRecordingWorker;
     }
