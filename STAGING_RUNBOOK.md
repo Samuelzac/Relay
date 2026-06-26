@@ -39,6 +39,16 @@ If `psql` is not installed, run the files in `C:\Relay\api\sql` in order through
 
 ## 3. Create Staging Hyperdrive
 
+Current staging Hyperdrive ID:
+
+```txt
+ac0741140e02450caa6b243cb7e2fe51
+```
+
+The staging config files already point at this ID.
+
+To recreate it later:
+
 ```powershell
 $env:DATABASE_URL = Read-Host "Paste staging Neon connection string"
 
@@ -171,4 +181,3 @@ Confirm:
 - recording email arrives
 - recording download works
 - admin shows staging-only events
-

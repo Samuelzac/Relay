@@ -90,7 +90,7 @@
     "hyperdrive":  [
                        {
                            "binding":  "HYPERDRIVE",
-                           "id":  "REPLACE_WITH_STAGING_HYPERDRIVE_ID"
+                           "id":  "ac0741140e02450caa6b243cb7e2fe51"
                        }
                    ],
     "durable_objects":  {
