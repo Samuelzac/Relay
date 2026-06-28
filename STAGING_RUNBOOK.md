@@ -69,6 +69,15 @@ Replace `REPLACE_WITH_STAGING_HYPERDRIVE_ID` in:
 
 Use Stripe test-mode values for staging.
 
+Preferred prompt-based helper:
+
+```powershell
+cd C:\Relay
+.\tools\set-staging-secrets.ps1
+```
+
+Manual API commands:
+
 ```powershell
 cd C:\Relay\api
 
