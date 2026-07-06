@@ -303,6 +303,9 @@
 
   let ivsPlayer = null;
   let hlsRetryTimer = null;
+  let hlsWatchdogTimer = null;
+  let hlsWatchdogAttempts = 0;
+  let hlsPlayConfirmed = false;
   let hlsLoadedUrl = "";
   let lastStartAt = 0;
 
@@ -636,6 +639,12 @@
       clearTimeout(hlsRetryTimer);
       hlsRetryTimer = null;
     }
+    if(hlsWatchdogTimer){
+      clearTimeout(hlsWatchdogTimer);
+      hlsWatchdogTimer = null;
+    }
+    hlsWatchdogAttempts = 0;
+    hlsPlayConfirmed = false;
     if(ivsPlayer){
       try { ivsPlayer.pause(); } catch {}
       try { ivsPlayer.delete(); } catch {}
@@ -751,6 +760,7 @@
 
     const createHlsPlayer = () => {
       stopHls();
+      hlsPlayConfirmed = false;
       ivsPlayer = IVSPlayer.create();
       ivsPlayer.attachHTMLVideoElement(videoEl);
       ivsPlayer.addEventListener(IVSPlayer.PlayerEventType.ERROR, (err) => {
@@ -766,6 +776,12 @@
       });
 
       ivsPlayer.addEventListener(IVSPlayer.PlayerState.PLAYING, () => {
+        hlsPlayConfirmed = true;
+        hlsWatchdogAttempts = 0;
+        if(hlsWatchdogTimer){
+          clearTimeout(hlsWatchdogTimer);
+          hlsWatchdogTimer = null;
+        }
         setStatus("playing (hls)");
         showError("");
         setReadyState(true, "HLS is ready to watch.", "good");
@@ -810,7 +826,25 @@
       }, 2500);
     };
 
+    const scheduleWatchdog = () => {
+      if(hlsWatchdogTimer || hlsPlayConfirmed || manualStop || elMode.value !== "hls") return;
+      hlsWatchdogTimer = setTimeout(async () => {
+        hlsWatchdogTimer = null;
+        if(hlsPlayConfirmed || manualStop || elMode.value !== "hls") return;
+        if(hlsWatchdogAttempts >= 5) return;
+        hlsWatchdogAttempts += 1;
+        try{
+          ev = await loadPublic();
+          await tryLoad(`watchdog-${hlsWatchdogAttempts}`);
+        }catch(e){
+          log("HLS watchdog retry failed", String(e));
+        }
+        scheduleWatchdog();
+      }, 3500);
+    };
+
     await tryLoad("initial");
+    scheduleWatchdog();
   }
 
   function stopRtc(){
